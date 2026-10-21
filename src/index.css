@@ -275,7 +275,7 @@ select {
 }
 
 .composer-select-trigger {
-  @apply border-0 py-0 shadow-none hover:bg-accent data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
+  @apply border-0 py-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
 }
 
 .composer-select-content {
