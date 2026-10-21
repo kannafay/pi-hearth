@@ -76,6 +76,7 @@ export function WorkspaceNavigation({
           </span>
         </TooltipTrigger>
         <TooltipContent
+          variant="card"
           role="tooltip"
           id={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
           side="right"
@@ -246,6 +247,7 @@ export function WorkspaceNavigation({
                           </div>
                         </TooltipTrigger>
                         <TooltipContent
+                          variant="card"
                           role="tooltip"
                           id={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
                           side="right"
