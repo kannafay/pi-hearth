@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -7,6 +7,8 @@ import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
 import { controlWindow, listenForWindowFocus } from '@/lib/desktop'
 import { WorkspaceShell } from './workspace-shell'
+
+const renderConversation = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/desktop', () => ({
   isDesktop: () => true,
@@ -25,7 +27,10 @@ vi.mock('@/components/ui/resizable', () => ({
   ResizableHandle: () => null,
 }))
 vi.mock('@/features/conversation/conversation-panel', () => ({
-  ConversationPanel: () => <textarea aria-label="消息" />,
+  ConversationPanel: () => {
+    renderConversation()
+    return <textarea aria-label="消息" />
+  },
 }))
 
 beforeEach(() => {
@@ -35,6 +40,7 @@ beforeEach(() => {
   useConversationStore.setState({ status: 'ready' })
   vi.mocked(useMediaQuery).mockReturnValue(false)
   vi.mocked(controlWindow).mockClear()
+  renderConversation.mockClear()
   vi.mocked(listenForWindowFocus).mockImplementation(async (changed) => {
     changed(true)
     return vi.fn<() => void>()
@@ -123,7 +129,7 @@ test('compact inspector can be opened and closed from the header while the works
   expect(workspace).not.toHaveAttribute('inert')
 })
 
-test('native window activation updates shell appearance without interrupting an open dialog', async () => {
+test('window activation updates appearance immediately without rendering messages or interrupting a dialog', async () => {
   let changed!: (focused: boolean) => void
   const unlisten = vi.fn()
   vi.mocked(listenForWindowFocus).mockImplementation(async (handler) => {
@@ -136,12 +142,14 @@ test('native window activation updates shell appearance without interrupting an 
   const shell = screen.getByRole('banner').closest('.workspace-shell')
   expect(shell).toHaveAttribute('data-window-focused', 'true')
   await user.click(screen.getByRole('button', { name: '设置' }))
-  act(() => changed(false))
+  const renders = renderConversation.mock.calls.length
+  changed(false)
   expect(shell).toHaveAttribute('data-window-focused', 'false')
   expect(screen.getByRole('dialog', { name: '设置' })).toBeVisible()
-  act(() => changed(true))
+  changed(true)
   expect(shell).toHaveAttribute('data-window-focused', 'true')
   expect(screen.getByRole('dialog', { name: '设置' })).toBeVisible()
+  expect(renderConversation).toHaveBeenCalledTimes(renders)
   unmount()
   expect(unlisten).toHaveBeenCalledOnce()
 })

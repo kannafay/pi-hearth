@@ -92,6 +92,40 @@ test('a failed initial native focus query releases its listener', async () => {
   expect(unlisten).toHaveBeenCalledOnce()
 })
 
+test('desktop DOM focus updates immediately while the native query is pending', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  const unlisten = vi.fn()
+  nativeWindow.onFocusChanged.mockResolvedValue(unlisten)
+  let resolveInitial!: (focused: boolean) => void
+  nativeWindow.isFocused.mockReturnValue(
+    new Promise<boolean>((resolve) => (resolveInitial = resolve)),
+  )
+  const onChange = vi.fn()
+  const pending = listenForWindowFocus(onChange)
+  await vi.waitFor(() => expect(nativeWindow.isFocused).toHaveBeenCalledOnce())
+  window.dispatchEvent(new Event('blur'))
+  expect(onChange).toHaveBeenLastCalledWith(false)
+  window.dispatchEvent(new Event('focus'))
+  expect(onChange).toHaveBeenLastCalledWith(true)
+  resolveInitial(false)
+  const stop = await pending
+  expect(onChange.mock.calls).toEqual([[false], [true]])
+  stop()
+  window.dispatchEvent(new Event('blur'))
+  expect(onChange).toHaveBeenCalledTimes(2)
+  expect(unlisten).toHaveBeenCalledOnce()
+})
+
+test('a failed native focus subscription also releases the DOM listeners', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  nativeWindow.onFocusChanged.mockRejectedValue(new Error('focus unavailable'))
+  const onChange = vi.fn()
+  await expect(listenForWindowFocus(onChange)).rejects.toThrow('focus unavailable')
+  window.dispatchEvent(new Event('focus'))
+  window.dispatchEvent(new Event('blur'))
+  expect(onChange).not.toHaveBeenCalled()
+})
+
 test('browser focus uses DOM events and removes both listeners on cleanup', async () => {
   vi.mocked(isTauri).mockReturnValue(false)
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)

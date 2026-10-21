@@ -1,15 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { listenForWindowFocus } from '@/lib/desktop'
 
 export function useWindowFocus() {
-  const [focused, setFocused] = useState(() => document.hasFocus())
+  const shell = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let disposed = false
     let cleanup: (() => void) | undefined
-    void listenForWindowFocus((value) => {
-      if (!disposed) setFocused(value)
-    }).then(
+    // Activation must not wait for the conversation tree to render.
+    const update = (focused: boolean) => {
+      const value = String(focused)
+      if (!disposed && shell.current && shell.current.dataset.windowFocused !== value) {
+        shell.current.dataset.windowFocused = value
+      }
+    }
+    update(document.hasFocus())
+    void listenForWindowFocus(update).then(
       (unlisten) => {
         if (disposed) unlisten()
         else cleanup = unlisten
@@ -24,5 +30,5 @@ export function useWindowFocus() {
     }
   }, [])
 
-  return focused
+  return shell
 }

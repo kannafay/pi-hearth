@@ -20,32 +20,40 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null) {
 }
 
 export async function listenForWindowFocus(onChange: (focused: boolean) => void) {
+  let changed = false
+  const update = (focused: boolean) => {
+    changed = true
+    onChange(focused)
+  }
+  const focus = () => update(true)
+  const blur = () => update(false)
+  window.addEventListener('focus', focus)
+  window.addEventListener('blur', blur)
+  const stopDom = () => {
+    window.removeEventListener('focus', focus)
+    window.removeEventListener('blur', blur)
+  }
+
   if (!isDesktop()) {
-    const focus = () => onChange(true)
-    const blur = () => onChange(false)
-    window.addEventListener('focus', focus)
-    window.addEventListener('blur', blur)
     onChange(document.hasFocus())
-    return () => {
-      window.removeEventListener('focus', focus)
-      window.removeEventListener('blur', blur)
-    }
+    return stopDom
   }
 
   const nativeWindow = getCurrentWindow()
-  let changed = false
-  const unlisten = await nativeWindow.onFocusChanged(({ payload }) => {
-    changed = true
-    onChange(payload)
-  })
+  let unlisten: (() => void) | undefined
   try {
+    unlisten = await nativeWindow.onFocusChanged(({ payload }) => update(payload))
     const focused = await nativeWindow.isFocused()
     if (!changed) onChange(focused)
   } catch (reason) {
-    unlisten()
+    unlisten?.()
+    stopDom()
     throw reason
   }
-  return unlisten
+  return () => {
+    unlisten?.()
+    stopDom()
+  }
 }
 
 export async function selectProjectDirectory(title = '添加项目') {
