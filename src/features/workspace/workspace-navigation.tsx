@@ -5,6 +5,8 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  LayoutGrid,
+  MessageSquare,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -103,19 +105,18 @@ export function WorkspaceNavigation({
   )
 
   return (
-    <nav
-      aria-label="项目与会话"
-      className="workspace-navigation flex h-full min-h-0 flex-col pt-3 pb-2"
-    >
-      <Button
-        variant="ghost"
-        className="mx-2 h-8 justify-start gap-2.5 px-2 text-[13px]"
-        disabled={!desktop || busy}
-        onClick={() => void workspace.newConversation(null)}
-      >
-        <SquarePen className="size-4 stroke-[1.6]" />
-        新建聊天
-      </Button>
+    <nav aria-label="项目与会话" className="workspace-navigation flex h-full min-h-0 flex-col pb-2">
+      <div className="flex h-11 shrink-0 items-center px-2 pt-px">
+        <Button
+          variant="ghost"
+          className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
+          disabled={!desktop || busy}
+          onClick={() => void workspace.newConversation(null)}
+        >
+          <SquarePen className="size-4 stroke-[1.6]" />
+          新建聊天
+        </Button>
+      </div>
       <Tabs.Root
         value={filter}
         onValueChange={(value) => setFilter(String(value))}
@@ -128,16 +129,17 @@ export function WorkspaceNavigation({
           >
             {(
               [
-                ['all', '全部'],
-                ['projects', '项目'],
-                ['chats', '聊天'],
+                ['all', '全部', LayoutGrid],
+                ['projects', '项目', Folder],
+                ['chats', '聊天', MessageSquare],
               ] as const
-            ).map(([value, label]) => (
+            ).map(([value, label, Icon]) => (
               <Tabs.Tab
                 key={value}
                 value={value}
-                className="relative z-10 flex h-7 items-center justify-center rounded-md text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-active:text-foreground"
+                className="relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-md text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-active:text-foreground"
               >
+                <Icon aria-hidden="true" className="size-3.5 shrink-0 stroke-[1.5]" />
                 {label}
               </Tabs.Tab>
             ))}
