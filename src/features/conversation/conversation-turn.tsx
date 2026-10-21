@@ -34,7 +34,6 @@ export const ConversationTurn = memo(function ConversationTurn({
       )}
       {hasAssistant && (
         <article aria-label="Pi 的回复" className="space-y-3">
-          <p className="text-xs font-medium text-muted-foreground">Pi</p>
           {process.length > 0 && <ExecutionProcess items={process} active={active} />}
           {reply ? (
             <Streamdown
