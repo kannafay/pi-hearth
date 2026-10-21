@@ -14,7 +14,9 @@ export function IconButton({
       >
         {children}
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent variant="card" showArrow={false}>
+        {label}
+      </TooltipContent>
     </Tooltip>
   )
 }
