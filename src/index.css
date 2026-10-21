@@ -55,8 +55,7 @@
   --titlebar-height: 40px;
   --workspace-inset: 4px;
   --shell-tint: oklch(0.967 0.008 300 / 82%);
-  --shell-inactive-tint: oklch(0.98 0 0 / 98%);
-  --window-active-border: oklch(0.94 0.002 300);
+  --workspace-border: oklch(0.94 0.002 300);
   --caption-hover: oklch(0.9 0.006 300);
   --caption-pressed: oklch(0.85 0.006 300);
   --background: oklch(1 0 0);
@@ -95,8 +94,7 @@
 
 .dark {
   --shell-tint: oklch(0.23 0.008 300 / 88%);
-  --shell-inactive-tint: oklch(0.19 0 0 / 98%);
-  --window-active-border: oklch(1 0 0 / 9%);
+  --workspace-border: oklch(1 0 0 / 9%);
   --caption-hover: oklch(0.37 0.008 300);
   --caption-pressed: oklch(0.43 0.008 300);
   --background: oklch(0.145 0 0);
@@ -211,27 +209,24 @@ select {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.workspace-shell[data-window-focused='true'] .workspace-surface {
-  border-color: var(--window-active-border);
-}
-
-.workspace-shell[data-window-focused='false'] {
-  background: var(--shell-inactive-tint);
-}
-
-.workspace-shell[data-window-focused='false'] [data-window-header] {
-  color: var(--muted-foreground);
-}
-
 .workspace-body {
-  padding: 0 var(--workspace-inset) var(--workspace-inset);
+  padding: 0 var(--workspace-inset) var(--workspace-inset) 0;
 }
 
 .workspace-surface {
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
+  border: 1px solid var(--workspace-border);
   border-radius: 8px;
   background: var(--background);
+}
+
+.composer-select-trigger {
+  @apply border-0 py-0 shadow-none hover:bg-accent dark:bg-transparent dark:hover:bg-accent;
+}
+
+.composer-select-content {
+  @apply w-max max-w-[calc(100vw-2rem)];
+  min-width: max(12rem, var(--anchor-width));
 }
 
 .os-theme-hearth {
@@ -275,7 +270,7 @@ select {
 }
 
 [data-slot='dialog-overlay'] {
-  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
+  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset) 0;
   border-radius: 8px;
 }
 

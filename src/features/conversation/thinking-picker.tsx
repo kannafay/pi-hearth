@@ -2,6 +2,7 @@ import { BrainCircuit } from 'lucide-react'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -34,21 +35,23 @@ export function ThinkingPicker() {
         aria-label="思考强度"
         title={supported ? '思考强度' : '当前模型不支持调节思考强度'}
         size="sm"
-        className="shrink-0 border-0 py-0 text-muted-foreground shadow-none hover:bg-accent dark:bg-transparent dark:hover:bg-accent"
+        className="composer-select-trigger shrink-0"
       >
         <BrainCircuit className="size-3.5 stroke-[1.6]" />
         <SelectValue placeholder="思考强度" />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} align="start" className="min-w-28">
-        {items.map((item) => (
-          <SelectItem
-            key={item.value}
-            value={item.value}
-            disabled={!availableThinkingLevels.includes(item.value)}
-          >
-            {item.label}
-          </SelectItem>
-        ))}
+      <SelectContent alignItemWithTrigger={false} align="start" className="composer-select-content">
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              disabled={!availableThinkingLevels.includes(item.value)}
+            >
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   )

@@ -156,11 +156,12 @@ export function WorkspaceNavigation({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="space-y-0.5">
+                <div className="flex flex-col gap-1">
                   {workspace.projects.map((project) => (
                     <Collapsible
                       key={`${project.path}-${samePath(project.path, workspace.projectPath)}`}
                       defaultOpen={samePath(project.path, workspace.projectPath)}
+                      className="flex flex-col gap-1"
                     >
                       <div className="group/project flex h-8 items-center rounded-md hover:bg-sidebar-accent focus-within:bg-sidebar-accent">
                         <CollapsibleTrigger
@@ -215,7 +216,7 @@ export function WorkspaceNavigation({
                           </DropdownMenu>
                         </div>
                       </div>
-                      <CollapsibleContent className="ml-3 space-y-0.5 border-l border-border/60 pt-0.5 pl-1.5">
+                      <CollapsibleContent className="ml-3 flex flex-col gap-1 border-l border-border/60 pl-1.5">
                         {rows(
                           workspace.sessions.filter((session) =>
                             samePath(session.cwd, project.path),
@@ -256,7 +257,7 @@ export function WorkspaceNavigation({
                     <Plus className="size-3.5" />
                   </Button>
                 </div>
-                <div className="space-y-0.5">
+                <div className="flex flex-col gap-1">
                   {rows(general)}
                   {rows(ungrouped)}
                 </div>

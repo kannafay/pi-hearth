@@ -5,17 +5,14 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
-import { controlWindow, listenForWindowFocus } from '@/lib/desktop'
+import { controlWindow } from '@/lib/desktop'
 import { WorkspaceShell } from './workspace-shell'
-
-const renderConversation = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/desktop', () => ({
   isDesktop: () => true,
   getAppVersion: vi.fn().mockResolvedValue('0.1.0'),
   controlWindow: vi.fn().mockResolvedValue(undefined),
   selectProjectDirectory: vi.fn().mockResolvedValue(null),
-  listenForWindowFocus: vi.fn(),
 }))
 
 vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
@@ -27,10 +24,7 @@ vi.mock('@/components/ui/resizable', () => ({
   ResizableHandle: () => null,
 }))
 vi.mock('@/features/conversation/conversation-panel', () => ({
-  ConversationPanel: () => {
-    renderConversation()
-    return <textarea aria-label="消息" />
-  },
+  ConversationPanel: () => <textarea aria-label="消息" />,
 }))
 
 beforeEach(() => {
@@ -40,11 +34,6 @@ beforeEach(() => {
   useConversationStore.setState({ status: 'ready' })
   vi.mocked(useMediaQuery).mockReturnValue(false)
   vi.mocked(controlWindow).mockClear()
-  renderConversation.mockClear()
-  vi.mocked(listenForWindowFocus).mockImplementation(async (changed) => {
-    changed(true)
-    return vi.fn<() => void>()
-  })
 })
 
 test('header search remains available when the sidebar is collapsed', async () => {
@@ -127,31 +116,6 @@ test('compact inspector can be opened and closed from the header while the works
   await user.click(screen.getByRole('button', { name: '收起查看面板' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(workspace).not.toHaveAttribute('inert')
-})
-
-test('window activation updates appearance immediately without rendering messages or interrupting a dialog', async () => {
-  let changed!: (focused: boolean) => void
-  const unlisten = vi.fn()
-  vi.mocked(listenForWindowFocus).mockImplementation(async (handler) => {
-    changed = handler
-    handler(true)
-    return unlisten
-  })
-  const user = userEvent.setup()
-  const { unmount } = render(<WorkspaceShell />)
-  const shell = screen.getByRole('banner').closest('.workspace-shell')
-  expect(shell).toHaveAttribute('data-window-focused', 'true')
-  await user.click(screen.getByRole('button', { name: '设置' }))
-  const renders = renderConversation.mock.calls.length
-  changed(false)
-  expect(shell).toHaveAttribute('data-window-focused', 'false')
-  expect(screen.getByRole('dialog', { name: '设置' })).toBeVisible()
-  changed(true)
-  expect(shell).toHaveAttribute('data-window-focused', 'true')
-  expect(screen.getByRole('dialog', { name: '设置' })).toBeVisible()
-  expect(renderConversation).toHaveBeenCalledTimes(renders)
-  unmount()
-  expect(unlisten).toHaveBeenCalledOnce()
 })
 
 test('attachment previews lock only the workspace and closing restores the draft', async () => {

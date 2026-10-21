@@ -21,7 +21,7 @@ export function ModelPicker({
   const groups = groupModelsByProvider(models)
   const items = models.map((item) => ({
     value: modelKey(item),
-    label: `${item.name} · ${item.provider}`,
+    label: item.name,
   }))
   return (
     <Select
@@ -36,15 +36,15 @@ export function ModelPicker({
       <SelectTrigger
         aria-label={label}
         size="sm"
-        className={
-          compact
-            ? 'max-w-64 min-w-0 border-0 py-0 shadow-none hover:bg-accent dark:bg-transparent dark:hover:bg-accent'
-            : 'max-w-72'
-        }
+        className={compact ? 'composer-select-trigger max-w-64 min-w-0' : 'max-w-72'}
       >
         <SelectValue placeholder="选择模型" />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} align="start" className="min-w-max">
+      <SelectContent
+        alignItemWithTrigger={false}
+        align="start"
+        className={compact ? 'composer-select-content' : 'min-w-max'}
+      >
         {groups.map((group) => (
           <SelectGroup key={group.provider}>
             <SelectLabel>{group.provider}</SelectLabel>

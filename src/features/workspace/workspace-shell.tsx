@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
-import { useWindowFocus } from '@/app/use-window-focus'
 import { IconButton } from '@/components/icon-button'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
@@ -19,7 +18,6 @@ import { controlWindow, isDesktop, selectProjectDirectory } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
 
 export function WorkspaceShell() {
-  const shell = useWindowFocus()
   const workspace = useWorkspaceStore()
   const {
     projectPath,
@@ -92,10 +90,7 @@ export function WorkspaceShell() {
   }
 
   return (
-    <div
-      ref={shell}
-      className="workspace-shell flex h-dvh min-h-0 flex-col overflow-hidden text-foreground"
-    >
+    <div className="workspace-shell flex h-dvh min-h-0 flex-col overflow-hidden text-foreground">
       <header
         data-window-header
         data-tauri-drag-region

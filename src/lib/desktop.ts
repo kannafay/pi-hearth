@@ -19,43 +19,6 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null) {
   if (isDesktop()) await getCurrentWindow().setTheme(theme)
 }
 
-export async function listenForWindowFocus(onChange: (focused: boolean) => void) {
-  let changed = false
-  const update = (focused: boolean) => {
-    changed = true
-    onChange(focused)
-  }
-  const focus = () => update(true)
-  const blur = () => update(false)
-  window.addEventListener('focus', focus)
-  window.addEventListener('blur', blur)
-  const stopDom = () => {
-    window.removeEventListener('focus', focus)
-    window.removeEventListener('blur', blur)
-  }
-
-  if (!isDesktop()) {
-    onChange(document.hasFocus())
-    return stopDom
-  }
-
-  const nativeWindow = getCurrentWindow()
-  let unlisten: (() => void) | undefined
-  try {
-    unlisten = await nativeWindow.onFocusChanged(({ payload }) => update(payload))
-    const focused = await nativeWindow.isFocused()
-    if (!changed) onChange(focused)
-  } catch (reason) {
-    unlisten?.()
-    stopDom()
-    throw reason
-  }
-  return () => {
-    unlisten?.()
-    stopDom()
-  }
-}
-
 export async function selectProjectDirectory(title = '添加项目') {
   requireDesktop()
   const selected = await open({ directory: true, multiple: false, title })
