@@ -366,6 +366,14 @@ select {
   color: color-mix(in oklch, var(--muted-foreground) 75%, var(--background));
 }
 
+.user-message-bubble {
+  --muted: oklch(0.37 0 0);
+  --muted-foreground: oklch(0.8 0 0);
+  --border: oklch(1 0 0 / 15%);
+  background: oklch(0.28 0 0);
+  color: oklch(0.985 0 0);
+}
+
 [data-slot='dialog-overlay'] {
   inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
   border-radius: 8px;

@@ -24,7 +24,7 @@ export const ConversationTurn = memo(function ConversationTurn({
       {user && (
         <article
           aria-label="你的消息"
-          className="ml-auto w-fit min-w-0 max-w-[85%] space-y-3 rounded-2xl bg-foreground/8 px-4 py-2.5 dark:bg-muted"
+          className="user-message-bubble ml-auto w-fit min-w-0 max-w-[85%] space-y-3 rounded-2xl px-4 py-2.5"
         >
           <AttachmentList files={user.attachments ?? []} />
           {user.text && (
