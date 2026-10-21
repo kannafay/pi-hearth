@@ -35,31 +35,45 @@ impl Bounds {
 }
 
 fn place_popup(cursor: PhysicalPosition<f64>, area: Bounds, scale: f64) -> Bounds {
-    let width = ((WIDTH * scale).ceil() as u32).min(area.width);
-    let height = ((HEIGHT * scale).ceil() as u32).min(area.height);
     let inset = (INSET * scale).round() as i32;
+    // Only the visible card is constrained; transparent shadow padding may cross
+    // a work-area edge without moving the menu away from the click.
+    let width = ((WIDTH * scale).ceil() as u32 - 2 * inset as u32).min(area.width);
+    let height = ((HEIGHT * scale).ceil() as u32 - 2 * inset as u32).min(area.height);
     let gap = (4.0 * scale).round() as i32;
     let cursor_x = cursor.x.round() as i32;
     let cursor_y = cursor.y.round() as i32;
-    let right = cursor_x - inset;
-    let left = cursor_x - width as i32 + inset;
-    let below = cursor_y + gap - inset;
-    let above = cursor_y - height as i32 + inset - gap;
+    let right = cursor_x;
+    let left = cursor_x - width as i32;
+    let below = cursor_y + gap;
+    let above = cursor_y - height as i32 - gap;
     Bounds {
         x: (if right + width as i32 <= area.x + area.width as i32 {
             right
         } else {
             left
         })
-        .clamp(area.x, area.x + (area.width - width) as i32),
+        .clamp(area.x, area.x + (area.width - width) as i32)
+            - inset,
         y: (if below + height as i32 <= area.y + area.height as i32 {
             below
         } else {
             above
         })
-        .clamp(area.y, area.y + (area.height - height) as i32),
-        width,
-        height,
+        .clamp(area.y, area.y + (area.height - height) as i32)
+            - inset,
+        width: width + 2 * inset as u32,
+        height: height + 2 * inset as u32,
+    }
+}
+
+fn placement_area(cursor: PhysicalPosition<f64>, work: Bounds, screen: Bounds) -> Bounds {
+    // Like Windows context menus, a click on the taskbar uses the whole monitor
+    // instead of being pulled back into the desktop work area.
+    if work.contains(cursor.x.round() as i32, cursor.y.round() as i32) {
+        work
+    } else {
+        screen
     }
 }
 
@@ -201,7 +215,7 @@ pub fn show(app: &AppHandle, position: PhysicalPosition<f64>) -> Result<(), Stri
         .ok_or("无法定位托盘所在屏幕。")?;
     let scale = monitor.scale_factor();
     let work = monitor.work_area();
-    let bounds = place_popup(
+    let area = placement_area(
         position,
         Bounds {
             x: work.position.x,
@@ -209,8 +223,14 @@ pub fn show(app: &AppHandle, position: PhysicalPosition<f64>) -> Result<(), Stri
             width: work.size.width,
             height: work.size.height,
         },
-        scale,
+        Bounds {
+            x: monitor.position().x,
+            y: monitor.position().y,
+            width: monitor.size().width,
+            height: monitor.size().height,
+        },
     );
+    let bounds = place_popup(position, area, scale);
     let epoch = state.epoch.fetch_add(1, Ordering::SeqCst) + 1;
     hide(&popup)?;
     popup
@@ -364,13 +384,71 @@ mod tests {
         assert_eq!(popup.x + popup.width as i32 - INSET as i32, 1812);
         assert_eq!(popup.y + popup.height as i32 - INSET as i32, 988);
 
-        // A click on the taskbar still keeps the entire popup in the work area.
-        let popup = place_popup(PhysicalPosition::new(1900.0, 1060.0), area, 1.0);
-        assert_eq!(popup.y + popup.height as i32, 1040);
+        let popup = place_popup(PhysicalPosition::new(0.0, 0.0), area, 1.0);
+        assert_eq!(popup.x + INSET as i32, 0);
+        assert_eq!(popup.y + INSET as i32, 4);
+    }
+
+    #[test]
+    fn taskbar_clicks_stay_near_the_pointer_without_a_shadow_sized_gap() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let screen = Bounds {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            };
+            let work = Bounds {
+                height: 1020,
+                ..screen
+            };
+            let cursor = PhysicalPosition::new(1200.0, 1050.0);
+            let area = placement_area(cursor, work, screen);
+            assert_eq!(area, screen);
+            let popup = place_popup(cursor, area, scale);
+            let inset = (INSET * scale).round() as i32;
+            let gap = (4.0 * scale).round() as i32;
+            assert_eq!(popup.x + inset, cursor.x as i32);
+            assert_eq!(popup.y + popup.height as i32 - inset, cursor.y as i32 - gap);
+
+            let cursor = PhysicalPosition::new(1200.0, 1000.0);
+            assert_eq!(placement_area(cursor, work, screen), work);
+            let popup = place_popup(PhysicalPosition::new(1200.0, 1019.0), work, scale);
+            assert_eq!(popup.y + popup.height as i32 - inset, 1019 - gap);
+        }
+    }
+
+    #[test]
+    fn taskbars_on_any_screen_edge_use_the_monitor_containing_the_click() {
+        let screen = Bounds {
+            x: -1920,
+            y: -1080,
+            width: 1920,
+            height: 1080,
+        };
+        let work = Bounds {
+            x: -1860,
+            y: -1020,
+            width: 1800,
+            height: 960,
+        };
+        for cursor in [
+            PhysicalPosition::new(-1890.0, -500.0),
+            PhysicalPosition::new(-30.0, -500.0),
+            PhysicalPosition::new(-900.0, -1050.0),
+            PhysicalPosition::new(-900.0, -30.0),
+        ] {
+            assert_eq!(placement_area(cursor, work, screen), screen);
+        }
+        assert_eq!(
+            placement_area(PhysicalPosition::new(-900.0, -500.0), work, screen),
+            work
+        );
     }
     #[test]
     fn popup_and_click_bounds_match_on_scaled_and_negative_monitors() {
         for scale in [1.0, 1.25, 1.5, 2.0] {
+            let inset = (INSET * scale).round() as i32;
             let area = Bounds {
                 x: -2560,
                 y: -200,
@@ -382,12 +460,12 @@ mod tests {
                     let cursor = PhysicalPosition::new(x as f64, y as f64);
                     let popup = place_popup(cursor, area, scale);
                     assert!(
-                        popup.x >= area.x
-                            && popup.x + popup.width as i32 <= area.x + area.width as i32
+                        popup.x + inset >= area.x
+                            && popup.x + popup.width as i32 - inset <= area.x + area.width as i32
                     );
                     assert!(
-                        popup.y >= area.y
-                            && popup.y + popup.height as i32 <= area.y + area.height as i32
+                        popup.y + inset >= area.y
+                            && popup.y + popup.height as i32 - inset <= area.y + area.height as i32
                     );
                     assert!(popup.contains(popup.x, popup.y));
                     assert!(!popup.contains(popup.x + popup.width as i32, popup.y));
@@ -396,7 +474,6 @@ mod tests {
             }
             let cursor = PhysicalPosition::new(-1280.0, 500.0);
             let popup = place_popup(cursor, area, scale);
-            let inset = (INSET * scale).round() as i32;
             let gap = (4.0 * scale).round() as i32;
             assert_eq!(popup.x + inset, cursor.x as i32);
             assert_eq!(popup.y + inset, cursor.y as i32 + gap);

@@ -100,8 +100,25 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
     let popup = window.clone();
     window
         .run_on_main_thread(move || {
-            // Tauri's normal show path can activate a previously configured window.
-            unsafe { ShowWindow(hwnd as _, SW_SHOWNOACTIVATE) };
+            // The shell flyout can become topmost after this hidden popup was
+            // created. Show and reinsert it at the top on every open, keeping
+            // the flyout's foreground activation and owner order intact.
+            if unsafe {
+                SetWindowPos(
+                    hwnd as _,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
+                )
+            } == 0
+            {
+                eprintln!("Cannot show tray menu: {}", std::io::Error::last_os_error());
+                let _ = dismiss(&popup, presentation.epoch);
+                return;
+            }
             if let Err(error) = watch(popup.clone(), presentation) {
                 eprintln!("Cannot monitor tray menu input: {error}");
                 let _ = dismiss(&popup, presentation.epoch);
