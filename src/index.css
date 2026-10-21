@@ -240,6 +240,11 @@ select {
   background: var(--sidebar-accent);
 }
 
+.workspace-navigation .os-scrollbar-vertical {
+  --os-size: 4px;
+  --os-padding-perpendicular: 0;
+}
+
 .sidebar-tabs {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
