@@ -146,7 +146,7 @@ export function WorkspaceNavigation({
         </div>
         <Tabs.Panel value={filter} className="flex min-h-0 flex-1 flex-col">
           <ScrollArea
-            className="mr-(--workspace-inset) min-h-0 flex-1"
+            className="min-h-0 flex-1"
             viewportClassName="h-full overflow-x-hidden overflow-y-auto px-2"
           >
             {filter !== 'chats' && (
