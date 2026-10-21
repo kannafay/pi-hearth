@@ -22,9 +22,10 @@ function TooltipContent({
   align = 'center',
   alignOffset = 0,
   variant = 'default',
+  showArrow = true,
   children,
   ...props
-}: TooltipPrimitive.Popup.Props & { variant?: 'default' | 'card' } & Pick<
+}: TooltipPrimitive.Popup.Props & { variant?: 'default' | 'card'; showArrow?: boolean } & Pick<
     TooltipPrimitive.Positioner.Props,
     'align' | 'alignOffset' | 'side' | 'sideOffset'
   >) {
@@ -49,15 +50,17 @@ function TooltipContent({
           {...props}
         >
           {children}
-          <TooltipPrimitive.Arrow
-            data-slot="tooltip-arrow"
-            className={cn(
-              'z-50 size-2.5 rotate-45 rounded-[2px] data-[side=bottom]:-top-1.25 data-[side=left]:-right-1.25 data-[side=right]:-left-1.25 data-[side=top]:-bottom-1.25',
-              variant === 'card'
-                ? 'border-foreground/10 bg-popover data-[side=bottom]:border-t data-[side=bottom]:border-l data-[side=left]:border-t data-[side=left]:border-r data-[side=right]:border-b data-[side=right]:border-l data-[side=top]:border-r data-[side=top]:border-b'
-                : 'bg-foreground',
-            )}
-          />
+          {showArrow && (
+            <TooltipPrimitive.Arrow
+              data-slot="tooltip-arrow"
+              className={cn(
+                'z-50 size-2.5 rotate-45 rounded-[2px] data-[side=bottom]:-top-1.25 data-[side=left]:-right-1.25 data-[side=right]:-left-1.25 data-[side=top]:-bottom-1.25',
+                variant === 'card'
+                  ? 'border-foreground/10 bg-popover data-[side=bottom]:border-t data-[side=bottom]:border-l data-[side=left]:border-t data-[side=left]:border-r data-[side=right]:border-b data-[side=right]:border-l data-[side=top]:border-r data-[side=top]:border-b'
+                  : 'bg-foreground',
+              )}
+            />
+          )}
         </TooltipPrimitive.Popup>
       </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>

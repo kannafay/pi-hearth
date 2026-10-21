@@ -71,12 +71,10 @@ export function WorkspaceNavigation({
           }
         >
           <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground/75">
-            {sessionTime(session.modified)}
-          </span>
         </TooltipTrigger>
         <TooltipContent
           variant="card"
+          showArrow={false}
           role="tooltip"
           id={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
           side="right"
@@ -248,6 +246,7 @@ export function WorkspaceNavigation({
                         </TooltipTrigger>
                         <TooltipContent
                           variant="card"
+                          showArrow={false}
                           role="tooltip"
                           id={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
                           side="right"
