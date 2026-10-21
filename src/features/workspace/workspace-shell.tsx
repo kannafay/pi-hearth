@@ -161,7 +161,11 @@ export function WorkspaceShell() {
           {error || workspace.error}
         </p>
       )}
-      <div className="workspace-body min-h-0 flex-1" inert={dialogOpen}>
+      <div
+        className="workspace-body min-h-0 flex-1"
+        data-sidebar-open={sidebarOpen}
+        inert={dialogOpen}
+      >
         <ResizablePanelGroup orientation="horizontal">
           {sidebarOpen && (
             <>

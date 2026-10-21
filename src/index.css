@@ -267,6 +267,10 @@ select {
   padding: 0 var(--workspace-inset) var(--workspace-inset) 0;
 }
 
+.workspace-body[data-sidebar-open='false'] {
+  padding-left: var(--workspace-inset);
+}
+
 .workspace-surface {
   overflow: hidden;
   border: 1px solid var(--workspace-border);
