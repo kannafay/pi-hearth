@@ -183,6 +183,9 @@ html[data-surface='tray-menu'] body {
 
 .tray-menu-item {
   @apply flex h-8.5 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] outline-none select-none hover:bg-accent data-highlighted:bg-accent disabled:pointer-events-none data-pending:opacity-50;
+  transition:
+    background-color 100ms ease-out,
+    color 100ms ease-out;
 }
 
 .tray-menu-item[data-destructive] {
