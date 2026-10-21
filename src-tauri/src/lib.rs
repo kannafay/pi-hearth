@@ -1,9 +1,6 @@
+mod desktop;
 mod pi;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use tauri::Manager;
 
 #[tauri::command]
@@ -32,12 +29,30 @@ pub fn run() {
         }
         context
     };
-    let shutting_down = Arc::new(AtomicBool::new(false));
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if !app.state::<desktop::Lifecycle>().is_shutting_down() {
+                let _ = desktop::show_window(app);
+            }
+        }))
+        .manage(desktop::Lifecycle::default())
         .manage(pi::PiManager::default())
         .manage(pi::WorkspaceManager::default())
         .manage(pi::attachments::AttachmentManager::default())
         .plugin(tauri_plugin_dialog::init())
+        .setup(desktop::setup)
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && !window
+                    .app_handle()
+                    .state::<desktop::Lifecycle>()
+                    .is_shutting_down()
+            {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
             pi::attachments::attachment_paths,
@@ -61,16 +76,13 @@ pub fn run() {
         ])
         .build(context)
         .expect("failed to build pi-hearth")
-        .run(move |app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event
-                && !shutting_down.swap(true, Ordering::SeqCst)
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event
+                && code != Some(tauri::RESTART_EXIT_CODE)
+                && !app.state::<desktop::Lifecycle>().is_shutting_down()
             {
                 api.prevent_exit();
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    app.state::<pi::PiManager>().disconnect().await;
-                    app.exit(0);
-                });
+                desktop::shutdown(app, desktop::Shutdown::Exit(code.unwrap_or(0)));
             }
         });
 }

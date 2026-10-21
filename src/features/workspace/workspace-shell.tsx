@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Minus, PanelLeft, PanelRight, Square, X } from 'lucide-react'
+import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useWindowFocus } from '@/app/use-window-focus'
@@ -107,6 +107,14 @@ export function WorkspaceShell() {
         <IconButton label={sidebarOpen ? '收起侧栏' : '展开侧栏'} onClick={toggleSidebar}>
           <PanelLeft />
         </IconButton>
+        <IconButton
+          label="搜索会话"
+          title="搜索会话 (Ctrl+K)"
+          onClick={() => setSearchOpen(true)}
+          disabled={dialogOpen && !searchOpen}
+        >
+          <Search />
+        </IconButton>
         <div data-tauri-drag-region className="h-full flex-1" />
         <IconButton
           label={inspectorOpen ? '收起查看面板' : '打开查看面板'}
@@ -159,7 +167,6 @@ export function WorkspaceShell() {
                   onAdd={() => void addProject()}
                   onCreate={() => setProjectDialog('create')}
                   onSettings={() => setSettingsOpen(true)}
-                  onSearch={() => setSearchOpen(true)}
                   onInstructions={setProjectDialog}
                 />
               </ResizablePanel>
@@ -207,7 +214,7 @@ export function WorkspaceShell() {
       <WorkspaceDialog open={inspectorOpen && compact} onOpenChange={setInspectorOpen}>
         <DialogContent
           showCloseButton={false}
-          className="top-[calc(var(--titlebar-height)+var(--workspace-inset))] right-(--workspace-inset) left-auto h-[calc(100dvh-var(--titlebar-height)-2*var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 rounded-md p-0 sm:max-w-100"
+          className="top-(--titlebar-height) right-(--workspace-inset) left-auto h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 rounded-md p-0 sm:max-w-100"
         >
           <DialogTitle className="sr-only">项目文件与变更</DialogTitle>
           <DialogDescription className="sr-only">查看当前项目的文件和 Git 差异。</DialogDescription>

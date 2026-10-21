@@ -41,6 +41,20 @@ beforeEach(() => {
   })
 })
 
+test('header search remains available when the sidebar is collapsed', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  const search = screen.getByRole('button', { name: '搜索会话' })
+  expect(search.closest('[data-window-header]')).not.toBeNull()
+  await user.click(screen.getByRole('button', { name: '收起侧栏' }))
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  await user.click(search)
+  expect(await screen.findByRole('dialog', { name: '搜索会话' })).toBeVisible()
+  expect(screen.getByRole('combobox', { name: '搜索项目、标题或对话内容' })).toHaveFocus()
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
 test('settings blocks the workspace while header controls remain accessible and keep it open', async () => {
   const user = userEvent.setup()
   render(<WorkspaceShell />)

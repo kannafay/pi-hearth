@@ -22,7 +22,6 @@ test('project menu actions fire and close the menu', async () => {
       onAdd={vi.fn()}
       onCreate={onCreate}
       onSettings={vi.fn()}
-      onSearch={vi.fn()}
       onInstructions={vi.fn()}
     />,
   )
@@ -41,7 +40,7 @@ test('projects expand their sessions and their instruction menu remains usable',
         id: 'one',
         cwd: project.path,
         title: '设计讨论',
-        modified: Date.now(),
+        modified: Date.now() - 19 * 60 * 60 * 1000,
         messageCount: 2,
       },
     ],
@@ -54,7 +53,6 @@ test('projects expand their sessions and their instruction menu remains usable',
       onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
-      onSearch={vi.fn()}
       onInstructions={onInstructions}
     />,
   )
@@ -63,6 +61,7 @@ test('projects expand their sessions and their instruction menu remains usable',
   await user.click(trigger)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByRole('button', { name: /设计讨论/ })).toBeVisible()
+  expect(screen.getByText('19小时前')).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Hearth 项目菜单' }))
   await user.click(await screen.findByRole('menuitem', { name: '项目指令' }))
   expect(onInstructions).toHaveBeenCalledExactlyOnceWith(project)
@@ -72,10 +71,9 @@ test('projects expand their sessions and their instruction menu remains usable',
   expect(screen.queryByRole('button', { name: /设计讨论/ })).not.toBeInTheDocument()
 })
 
-test('sliding filters and search stay usable while a session is connecting', async () => {
+test('sliding filters and session navigation stay usable while a session is connecting', async () => {
   const openSession = vi.fn()
   const newConversation = vi.fn()
-  const onSearch = vi.fn()
   useWorkspaceStore.setState({
     projects: [project],
     projectPath: project.path,
@@ -109,7 +107,6 @@ test('sliding filters and search stay usable while a session is connecting', asy
       onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
-      onSearch={onSearch}
       onInstructions={vi.fn()}
     />,
   )
@@ -120,8 +117,6 @@ test('sliding filters and search stay usable while a session is connecting', asy
   expect(openSession).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('tab', { name: '项目' }))
   expect(screen.queryByRole('button', { name: /普通会话/ })).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '搜索会话' }))
-  expect(onSearch).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('button', { name: '新建聊天' }))
   expect(newConversation).toHaveBeenCalledWith(null)
 })

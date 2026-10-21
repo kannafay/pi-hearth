@@ -224,7 +224,7 @@ select {
 }
 
 .workspace-body {
-  padding: var(--workspace-inset);
+  padding: 0 var(--workspace-inset) var(--workspace-inset);
 }
 
 .workspace-surface {
@@ -275,8 +275,7 @@ select {
 }
 
 [data-slot='dialog-overlay'] {
-  inset: calc(var(--titlebar-height) + var(--workspace-inset)) var(--workspace-inset)
-    var(--workspace-inset);
+  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
   border-radius: 8px;
 }
 

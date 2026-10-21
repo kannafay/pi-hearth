@@ -8,7 +8,6 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
-  Search,
   Settings,
   SquarePen,
 } from 'lucide-react'
@@ -32,9 +31,9 @@ const samePath = (a: string, b: string | null) =>
 function sessionTime(modified: number) {
   const minutes = Math.max(0, (Date.now() - modified) / 60000)
   if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${Math.floor(minutes)}分`
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}时`
-  return `${Math.floor(minutes / 1440)}天`
+  if (minutes < 60) return `${Math.floor(minutes)}分钟前`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}小时前`
+  return `${Math.floor(minutes / 1440)}天前`
 }
 
 export function WorkspaceNavigation({
@@ -42,14 +41,12 @@ export function WorkspaceNavigation({
   onAdd,
   onCreate,
   onSettings,
-  onSearch,
   onInstructions,
 }: {
   desktop: boolean
   onAdd: () => void
   onCreate: () => void
   onSettings: () => void
-  onSearch: () => void
   onInstructions: (project: ProjectInfo) => void
 }) {
   const workspace = useWorkspaceStore()
@@ -61,7 +58,7 @@ export function WorkspaceNavigation({
       <Button
         key={session.path}
         variant="ghost"
-        className={`h-8 w-full min-w-0 justify-start gap-2 rounded-md px-3 text-[13px] font-normal ${samePath(session.path, sessionFile) ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground/80'}`}
+        className={`h-8 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal ${samePath(session.path, sessionFile) ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground/80'}`}
         aria-current={samePath(session.path, sessionFile) ? 'page' : undefined}
         title={`${session.title}\n${session.cwd}`}
         disabled={!desktop || busy}
@@ -85,11 +82,11 @@ export function WorkspaceNavigation({
   return (
     <nav
       aria-label="项目与会话"
-      className="workspace-navigation flex h-full min-h-0 flex-col px-4 pt-3 pb-2"
+      className="workspace-navigation flex h-full min-h-0 flex-col pt-3 pb-2"
     >
       <Button
         variant="ghost"
-        className="h-8 justify-start gap-2.5 px-3 text-[13px]"
+        className="mx-2 h-8 justify-start gap-2.5 px-2 text-[13px]"
         disabled={!desktop || busy}
         onClick={() => void workspace.newConversation(null)}
       >
@@ -101,7 +98,7 @@ export function WorkspaceNavigation({
         onValueChange={(value) => setFilter(String(value))}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="mt-3 mb-5 flex h-8 items-center gap-2">
+        <div className="mx-2 mt-3 mb-5 flex h-8 items-center">
           <Tabs.List
             aria-label="会话分类"
             className="sidebar-tabs relative isolate grid h-8 min-w-0 flex-1 grid-cols-3 items-center rounded-lg p-0.5"
@@ -123,24 +120,15 @@ export function WorkspaceNavigation({
             ))}
             <Tabs.Indicator className="sidebar-tab-indicator absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-sidebar-accent shadow-xs transition-[translate,width] duration-200 ease-out" />
           </Tabs.List>
-          <Button
-            aria-label="搜索会话"
-            title="搜索会话 (Ctrl+K)"
-            variant="ghost"
-            size="icon"
-            onClick={onSearch}
-          >
-            <Search className="size-4 stroke-[1.6]" />
-          </Button>
         </div>
         <Tabs.Panel value={filter} className="flex min-h-0 flex-1 flex-col">
           <ScrollArea
             className="min-h-0 flex-1"
-            viewportClassName="h-full overflow-x-hidden overflow-y-auto"
+            viewportClassName="h-full overflow-x-hidden overflow-y-auto px-2"
           >
             {filter !== 'chats' && (
               <section aria-label="项目" className="mb-6">
-                <div className="mb-1 flex h-7 items-center justify-between px-3">
+                <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">项目</h2>
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -179,7 +167,7 @@ export function WorkspaceNavigation({
                           render={
                             <button
                               type="button"
-                              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-2 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               title={project.path}
                             />
                           }
@@ -227,7 +215,7 @@ export function WorkspaceNavigation({
                           </DropdownMenu>
                         </div>
                       </div>
-                      <CollapsibleContent className="ml-3 space-y-0.5 border-l border-border/60 pl-1.5">
+                      <CollapsibleContent className="ml-3 space-y-0.5 border-l border-border/60 pt-0.5 pl-1.5">
                         {rows(
                           workspace.sessions.filter((session) =>
                             samePath(session.cwd, project.path),
@@ -256,7 +244,7 @@ export function WorkspaceNavigation({
             )}
             {filter !== 'projects' && (
               <section aria-label="聊天">
-                <div className="mb-1 flex h-7 items-center justify-between px-3">
+                <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">聊天</h2>
                   <Button
                     aria-label="新建普通聊天"
@@ -282,7 +270,7 @@ export function WorkspaceNavigation({
       </Tabs.Root>
       <Button
         variant="ghost"
-        className="mt-3 h-8 w-full justify-start gap-2.5 px-3 text-[13px] text-muted-foreground"
+        className="mx-2 mt-3 h-8 justify-start gap-2.5 px-2 text-[13px] text-muted-foreground"
         onClick={onSettings}
       >
         <Settings className="size-4 stroke-[1.6]" />
