@@ -1,0 +1,580 @@
+use super::{
+    client::{OpenOptions, PiManager},
+    config::local_agent_directory,
+    search::{IndexedDocument, SearchDocument, SearchIndex},
+    types::*,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::{Duration, Instant},
+};
+use tauri::{Manager, State, ipc::Channel};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+    sync::{Mutex, watch},
+    time::timeout,
+};
+
+pub struct WorkspaceManager {
+    gate: Mutex<()>,
+    open_gate: Mutex<()>,
+    opening: watch::Sender<u64>,
+    search: Mutex<SearchIndex>,
+}
+
+impl Default for WorkspaceManager {
+    fn default() -> Self {
+        Self {
+            gate: Mutex::new(()),
+            open_gate: Mutex::new(()),
+            opening: watch::channel(0).0,
+            search: Mutex::new(SearchIndex::default()),
+        }
+    }
+}
+
+impl WorkspaceManager {
+    pub fn cancel_open(&self) {
+        self.opening.send_modify(|generation| *generation += 1);
+    }
+
+    fn begin_open(&self) -> (u64, watch::Receiver<u64>) {
+        let mut request = 0;
+        self.opening.send_modify(|generation| {
+            *generation += 1;
+            request = *generation;
+        });
+        (request, self.opening.subscribe())
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Preferences {
+    projects: Vec<ProjectInfo>,
+    selection: Selection,
+}
+
+fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_local_data_dir()
+        .map_err(|_| "无法定位应用数据目录。".into())
+}
+
+async fn preferences(data: &Path) -> Result<Preferences, String> {
+    match tokio::fs::read(data.join("workspace.json")).await {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|_| "工作台配置损坏，请检查 workspace.json。".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
+        Err(_) => Err("无法读取工作台配置。".into()),
+    }
+}
+
+async fn save(data: &Path, preferences: &Preferences) -> Result<(), String> {
+    tokio::fs::create_dir_all(data)
+        .await
+        .map_err(|_| "无法创建工作台目录。")?;
+    let temp = data.join("workspace.json.tmp");
+    tokio::fs::write(&temp, serde_json::to_vec_pretty(preferences).unwrap())
+        .await
+        .map_err(|_| "无法保存工作台配置。")?;
+    tokio::fs::rename(temp, data.join("workspace.json"))
+        .await
+        .map_err(|_| "无法更新工作台配置。".into())
+}
+
+pub async fn helper(data: &Path, request: Value) -> Result<Value, String> {
+    let runtime = data.join("runtime");
+    tokio::fs::create_dir_all(&runtime)
+        .await
+        .map_err(|_| "无法创建会话适配器目录。")?;
+    let helper_path = runtime.join("session-catalog.mjs");
+    // Searching and opening may run together. Never truncate a script being started.
+    static INSTALL: Mutex<()> = Mutex::const_new(());
+    {
+        let _install = INSTALL.lock().await;
+        let source = include_str!("../../../runtime/session-catalog.mjs");
+        if tokio::fs::read_to_string(&helper_path)
+            .await
+            .ok()
+            .as_deref()
+            != Some(source)
+        {
+            tokio::fs::write(&helper_path, source)
+                .await
+                .map_err(|_| "无法准备 Pi 会话适配器。")?;
+        }
+    }
+    let sdk = dunce::canonicalize(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js"),
+    )
+    .map_err(|_| "缺少 Pi 运行时，请运行 pnpm install。")?;
+    let mut command = Command::new("node");
+    command
+        .arg(helper_path)
+        .arg(sdk)
+        .env("PI_CODING_AGENT_DIR", local_agent_directory()?)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    let mut child = command
+        .spawn()
+        .map_err(|_| "无法启动会话适配器，请检查 Node.js。")?;
+    let mut stdin = child.stdin.take().ok_or("无法访问会话适配器。")?;
+    stdin
+        .write_all(&serde_json::to_vec(&request).unwrap())
+        .await
+        .map_err(|_| "无法发送会话请求。")?;
+    drop(stdin);
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let result = timeout(Duration::from_secs(30), async {
+        let read = async {
+            let mut bytes = vec![];
+            stdout
+                .take(64 * 1024 * 1024)
+                .read_to_end(&mut bytes)
+                .await?;
+            Ok::<_, std::io::Error>(bytes)
+        };
+        let errors = async {
+            let mut bytes = vec![];
+            stderr.take(8192).read_to_end(&mut bytes).await?;
+            Ok::<_, std::io::Error>(bytes)
+        };
+        let (bytes, diagnostic) = tokio::try_join!(read, errors)?;
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((status, bytes, diagnostic))
+    })
+    .await;
+    let (status, bytes, diagnostic) = result
+        .map_err(|_| "读取 Pi 会话超时。")?
+        .map_err(|_| "无法读取 Pi 会话。")?;
+    if !status.success() {
+        return Err(format!(
+            "无法读取 Pi 会话：{}",
+            String::from_utf8_lossy(&diagnostic)
+        ));
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "Pi 会话适配器返回了无效数据。".into())
+}
+
+async fn list(data: &Path, prefs: &Preferences) -> Result<Vec<SessionInfo>, String> {
+    let value = helper(data, json!({"action":"list","legacyDir":data.join("sessions"),"projects":prefs.projects.iter().map(|project| &project.path).collect::<Vec<_>>()})).await?;
+    serde_json::from_value(value).map_err(|_| "无法解析 Pi 会话列表。".into())
+}
+
+fn project(path: &Path) -> ProjectInfo {
+    ProjectInfo {
+        path: path.to_string_lossy().into(),
+        name: path
+            .file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy()
+            .into(),
+    }
+}
+
+pub async fn load_catalog(data: &Path) -> Result<WorkspaceCatalog, String> {
+    let prefs = preferences(data).await?;
+    let general = data.join("workspace");
+    tokio::fs::create_dir_all(&general)
+        .await
+        .map_err(|_| "无法创建普通对话工作目录。")?;
+    let general = dunce::canonicalize(general).map_err(|_| "无法访问普通对话目录。")?;
+    let sessions = list(data, &prefs).await?;
+    let mut projects = prefs.projects;
+    for session in &sessions {
+        let path = Path::new(&session.cwd);
+        if path.is_dir()
+            && path != general
+            && !projects
+                .iter()
+                .any(|project| same_path(&project.path, &session.cwd))
+        {
+            projects.push(project(path));
+        }
+    }
+    Ok(WorkspaceCatalog {
+        projects,
+        sessions,
+        general_cwd: general.to_string_lossy().into(),
+        selection: prefs.selection,
+    })
+}
+
+pub fn same_path(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.replace('/', "\\")
+            .eq_ignore_ascii_case(&b.replace('/', "\\"))
+    } else {
+        a == b
+    }
+}
+
+#[tauri::command]
+pub async fn workspace_catalog(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<WorkspaceCatalog, String> {
+    let _lock = workspace.gate.lock().await;
+    load_catalog(&app_data(&app)?).await
+}
+
+#[tauri::command]
+pub async fn workspace_search(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    query: String,
+) -> Result<Vec<SessionSearchResult>, String> {
+    if query.len() > 2048 {
+        return Err("搜索关键词过长。".into());
+    }
+    let data = app_data(&app)?;
+    let mut index = workspace.search.lock().await;
+    if index
+        .catalog
+        .as_ref()
+        .is_none_or(|(time, _)| time.elapsed() > Duration::from_secs(15))
+    {
+        let catalog = load_catalog(&data).await?;
+        index
+            .documents
+            .retain(|file, _| catalog.sessions.iter().any(|session| &session.path == file));
+        index.catalog = Some((Instant::now(), catalog));
+    }
+    if query.trim().is_empty() {
+        return Ok(index.query(""));
+    }
+    let files: Vec<_> = index
+        .catalog
+        .as_ref()
+        .unwrap()
+        .1
+        .sessions
+        .iter()
+        .map(|session| session.path.clone())
+        .collect();
+    let mut changed = Vec::new();
+    for file in files {
+        let Ok(meta) = tokio::fs::metadata(&file).await else {
+            index.documents.remove(&file);
+            continue;
+        };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        if index
+            .documents
+            .get(&file)
+            .is_none_or(|document| document.modified != modified || document.size != meta.len())
+        {
+            changed.push((file, modified, meta.len()));
+        }
+    }
+    if !changed.is_empty() {
+        let documents: Vec<SearchDocument> = serde_json::from_value(helper(&data, json!({"action":"search_documents", "paths": changed.iter().map(|(file, _, _)| file).collect::<Vec<_>>()})).await?).map_err(|_| "无法建立会话搜索索引。")?;
+        for document in documents {
+            if let Some((_, modified, size)) =
+                changed.iter().find(|(file, _, _)| file == &document.path)
+            {
+                index.documents.insert(
+                    document.path,
+                    IndexedDocument {
+                        modified: *modified,
+                        size: *size,
+                        texts: document.texts,
+                    },
+                );
+            }
+        }
+    }
+    Ok(index.query(&query))
+}
+
+#[tauri::command]
+pub async fn workspace_select(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    selection: Selection,
+) -> Result<(), String> {
+    let _lock = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let mut prefs = preferences(&data).await?;
+    prefs.selection = selection;
+    save(&data, &prefs).await
+}
+
+fn valid_project_name(name: &str) -> bool {
+    let reserved = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    !name.trim().is_empty()
+        && name == name.trim()
+        && !name.ends_with('.')
+        && !name
+            .chars()
+            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
+        && !matches!(
+            reserved.as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        )
+}
+
+#[tauri::command]
+pub async fn workspace_add_project(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    path: String,
+    name: Option<String>,
+) -> Result<ProjectInfo, String> {
+    let _lock = workspace.gate.lock().await;
+    let mut directory = dunce::canonicalize(path).map_err(|_| "项目目录不存在或无法访问。")?;
+    if !directory.is_dir() {
+        return Err("请选择文件夹。".into());
+    }
+    if let Some(name) = name {
+        if !valid_project_name(&name) {
+            return Err("项目名称不能包含路径分隔符、保留名称或末尾空格与句点。".into());
+        }
+        directory = directory.join(name);
+        tokio::fs::create_dir(&directory)
+            .await
+            .map_err(|_| "创建失败：同名文件夹已存在或目录无法写入。")?;
+    }
+    let project = project(&directory);
+    let data = app_data(&app)?;
+    let mut prefs = preferences(&data).await?;
+    if !prefs
+        .projects
+        .iter()
+        .any(|item| same_path(&item.path, &project.path))
+    {
+        prefs.projects.push(project.clone());
+    }
+    save(&data, &prefs).await?;
+    Ok(project)
+}
+
+#[tauri::command]
+pub async fn project_instructions(
+    path: String,
+    content: Option<String>,
+    expected: Option<String>,
+) -> Result<ProjectInstructions, String> {
+    let root = dunce::canonicalize(path).map_err(|_| "项目目录不存在。")?;
+    if !root.is_dir() {
+        return Err("无效的项目目录。".into());
+    }
+    let agents = root.join("AGENTS.md");
+    let target = if !agents.exists() && root.join("CLAUDE.md").is_file() {
+        root.join("CLAUDE.md")
+    } else {
+        agents
+    };
+    let current = match tokio::fs::read_to_string(&target).await {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => return Err("无法读取项目指令文件。".into()),
+    };
+    if let Some(content) = content {
+        if content.len() > 256 * 1024 {
+            return Err("项目指令过长，请限制在 256 KiB 内。".into());
+        }
+        if expected.as_deref() != Some(&current) {
+            return Err("指令文件已被其他程序修改，请重新打开后编辑。".into());
+        }
+        tokio::fs::write(&target, &content)
+            .await
+            .map_err(|_| "无法保存项目指令。")?;
+        Ok(ProjectInstructions {
+            path: target.to_string_lossy().into(),
+            content,
+        })
+    } else {
+        Ok(ProjectInstructions {
+            path: target.to_string_lossy().into(),
+            content: current,
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn pi_open(
+    app: tauri::AppHandle,
+    manager: State<'_, PiManager>,
+    workspace: State<'_, WorkspaceManager>,
+    project_path: Option<String>,
+    session_path: Option<String>,
+    on_event: Channel<PiEvent>,
+) -> Result<RuntimeSnapshot, String> {
+    let (request, mut cancelled) = workspace.begin_open();
+    let operation = async {
+        let _open_lock = workspace.open_gate.lock().await;
+        let data = app_data(&app)?;
+        let (cwd, history, session_id) = if let Some(file) = &session_path {
+            let catalog = load_catalog(&data).await?;
+            let session = catalog
+                .sessions
+                .iter()
+                .find(|session| same_path(&session.path, file))
+                .ok_or("会话文件不存在，请刷新列表。")?;
+            (
+                session.cwd.clone(),
+                helper(&data, json!({"action":"history","path":session.path})).await?,
+                session.id.clone(),
+            )
+        } else {
+            let general = data.join("workspace");
+            tokio::fs::create_dir_all(&general)
+                .await
+                .map_err(|_| "无法创建聊天目录。")?;
+            (
+                project_path
+                    .clone()
+                    .unwrap_or_else(|| general.to_string_lossy().into()),
+                json!([]),
+                String::new(),
+            )
+        };
+        let history: Vec<Value> =
+            serde_json::from_value(history).map_err(|_| "无法加载会话消息。")?;
+        let snapshot = if !Path::new(&cwd).is_dir() {
+            manager
+                .open_read_only(
+                    cwd,
+                    session_id,
+                    session_path.clone().ok_or("工作目录不存在。")?,
+                    history,
+                    &data,
+                )
+                .await?
+        } else {
+            let session_dir: String = serde_json::from_value(
+                helper(&data, json!({"action":"directory","cwd":cwd})).await?,
+            )
+            .map_err(|_| "无法定位 Pi 会话目录。")?;
+            manager
+                .open(
+                    cwd,
+                    &data,
+                    on_event,
+                    OpenOptions {
+                        session_directory: session_dir.into(),
+                        session_file: session_path,
+                        history,
+                    },
+                )
+                .await?
+        };
+        let _lock = workspace.gate.lock().await;
+        let mut prefs = preferences(&data).await?;
+        prefs.selection = Selection {
+            project_path,
+            session_path: snapshot.session_file.clone(),
+        };
+        save(&data, &prefs).await?;
+        Ok(snapshot)
+    };
+    tokio::select! {
+        biased;
+        _ = cancelled.wait_for(|generation| *generation != request) => Err("已切换到其他会话。".into()),
+        result = timeout(Duration::from_secs(45), operation) => result.unwrap_or_else(|_| Err("连接超时，请重试；也可以从侧栏打开其他会话。".into())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn a_new_open_cancels_previous_and_queued_requests() {
+        let workspace = WorkspaceManager::default();
+        let (first, mut cancelled) = workspace.begin_open();
+        let (second, mut second_cancelled) = workspace.begin_open();
+        cancelled
+            .wait_for(|generation| *generation != first)
+            .await
+            .unwrap();
+        assert_eq!(*second_cancelled.borrow(), second);
+        workspace.begin_open();
+        second_cancelled
+            .wait_for(|generation| *generation != second)
+            .await
+            .unwrap();
+    }
+    #[test]
+    fn project_names_cannot_escape_the_parent() {
+        for name in [
+            "../x", "..", "CON", "con.txt", "a/b", "a\\b", " x", "x.", "x ", "",
+        ] {
+            assert!(!valid_project_name(name), "{name}");
+        }
+        assert!(valid_project_name("中文 project"));
+    }
+
+    #[tokio::test]
+    async fn project_instructions_preserve_existing_rules_and_reject_external_changes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let file = root.join("AGENTS.md");
+        tokio::fs::write(&file, "existing rules").await.unwrap();
+        let original = project_instructions(root.to_string_lossy().into(), None, None)
+            .await
+            .unwrap();
+        assert_eq!(original.content, "existing rules");
+        tokio::fs::write(&file, "external update").await.unwrap();
+        assert!(
+            project_instructions(
+                root.to_string_lossy().into(),
+                Some("new".into()),
+                Some(original.content)
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&file).await.unwrap(),
+            "external update"
+        );
+        project_instructions(
+            root.to_string_lossy().into(),
+            Some("confirmed rules".into()),
+            Some("external update".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&file).await.unwrap(),
+            "confirmed rules"
+        );
+    }
+}
