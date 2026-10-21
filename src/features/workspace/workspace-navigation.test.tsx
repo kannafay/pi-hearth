@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { WorkspaceNavigation } from './workspace-navigation'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const project = { path: 'D:/projects/hearth', name: 'Hearth' }
 
@@ -119,4 +120,48 @@ test('sliding filters and session navigation stay usable while a session is conn
   expect(screen.queryByRole('button', { name: /普通会话/ })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '新建聊天' }))
   expect(newConversation).toHaveBeenCalledWith(null)
+})
+
+test('session and project tooltips expose full titles and paths without native title bubbles', async () => {
+  const openSession = vi.fn()
+  const session = {
+    path: 'session.jsonl',
+    id: 'session',
+    cwd: project.path,
+    title: '讨论侧边栏被省略的完整会话标题',
+    modified: Date.now() - 19 * 60 * 60 * 1000,
+    messageCount: 2,
+  }
+  useWorkspaceStore.setState({
+    projects: [project],
+    projectPath: project.path,
+    sessions: [session],
+    openSession,
+  })
+  const user = userEvent.setup()
+  render(
+    <TooltipProvider delay={0}>
+      <WorkspaceNavigation
+        desktop
+        onAdd={vi.fn()}
+        onCreate={vi.fn()}
+        onSettings={vi.fn()}
+        onInstructions={vi.fn()}
+      />
+    </TooltipProvider>,
+  )
+  const row = screen.getByRole('button', { name: /讨论侧边栏被省略的完整会话标题/ })
+  expect(row).not.toHaveAttribute('title')
+  await user.hover(row)
+  const tooltip = await screen.findByRole('tooltip')
+  expect(within(tooltip).getByText(session.title)).toBeVisible()
+  expect(within(tooltip).getByText('19小时前')).toBeVisible()
+  expect(within(tooltip).getByText(project.path)).toBeVisible()
+  await user.click(row)
+  expect(openSession).toHaveBeenCalledExactlyOnceWith(session)
+  await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
+  const trigger = screen.getByRole('button', { name: 'Hearth' })
+  expect(trigger).not.toHaveAttribute('title')
+  await user.hover(trigger)
+  expect(within(await screen.findByRole('tooltip')).getByText(project.path)).toBeVisible()
 })

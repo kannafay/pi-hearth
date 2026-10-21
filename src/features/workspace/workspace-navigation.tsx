@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Tabs } from '@base-ui/react/tabs'
 import {
   ChevronRight,
@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/scroll-area'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,23 +53,46 @@ export function WorkspaceNavigation({
   const workspace = useWorkspaceStore()
   const { status, sessionFile } = useConversationStore()
   const [filter, setFilter] = useState('all')
+  const tooltipId = useId()
   const busy = ['running', 'stopping'].includes(status)
   const rows = (sessions: SessionInfo[]) =>
     sessions.map((session) => (
-      <Button
-        key={session.path}
-        variant="ghost"
-        className={`h-8 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal ${samePath(session.path, sessionFile) ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground/80'}`}
-        aria-current={samePath(session.path, sessionFile) ? 'page' : undefined}
-        title={`${session.title}\n${session.cwd}`}
-        disabled={!desktop || busy}
-        onClick={() => void workspace.openSession(session)}
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
-        <span className="shrink-0 text-[11px] text-muted-foreground/75">
-          {sessionTime(session.modified)}
-        </span>
-      </Button>
+      <Tooltip key={session.path}>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              className={`h-8 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal ${samePath(session.path, sessionFile) ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground/80'}`}
+              aria-current={samePath(session.path, sessionFile) ? 'page' : undefined}
+              aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
+              disabled={!desktop || busy}
+              onClick={() => void workspace.openSession(session)}
+            />
+          }
+        >
+          <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground/75">
+            {sessionTime(session.modified)}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          role="tooltip"
+          id={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="block w-80 max-w-[min(24rem,var(--available-width))] space-y-1.5 px-3 py-2.5"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <span className="min-w-0 font-medium wrap-anywhere">{session.title}</span>
+            <span className="shrink-0 text-[11px] opacity-70">{sessionTime(session.modified)}</span>
+          </div>
+          <div className="flex items-start gap-2 opacity-75">
+            <Folder className="mt-0.5 size-3.5 shrink-0 stroke-[1.5]" />
+            <span className="min-w-0 wrap-anywhere">{session.cwd}</span>
+          </div>
+        </TooltipContent>
+      </Tooltip>
     ))
   const general = workspace.sessions.filter((session) =>
     samePath(session.cwd, workspace.generalCwd),
@@ -161,70 +185,92 @@ export function WorkspaceNavigation({
                     <Collapsible
                       key={`${project.path}-${samePath(project.path, workspace.projectPath)}`}
                       defaultOpen={samePath(project.path, workspace.projectPath)}
-                      className="flex flex-col gap-1"
+                      className="flex flex-col"
                     >
-                      <div className="group/project flex h-8 items-center rounded-md hover:bg-sidebar-accent focus-within:bg-sidebar-accent">
-                        <CollapsibleTrigger
+                      <Tooltip>
+                        <TooltipTrigger
                           render={
-                            <button
-                              type="button"
-                              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              title={project.path}
-                            />
+                            <div className="group/project flex h-8 items-center rounded-md hover:bg-sidebar-accent focus-within:bg-sidebar-accent" />
                           }
                         >
-                          <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform in-data-panel-open:rotate-90" />
-                          <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
-                          <span className="truncate">{project.name}</span>
-                        </CollapsibleTrigger>
-                        <div className="mr-1 flex shrink-0 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
-                          <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            aria-label={`在 ${project.name} 中新建会话`}
-                            disabled={!desktop || busy}
-                            onClick={() => void workspace.newConversation(project.path)}
+                          <CollapsibleTrigger
+                            render={
+                              <button
+                                type="button"
+                                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                              />
+                            }
                           >
-                            <Plus className="size-3.5" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  aria-label={`${project.name} 项目菜单`}
-                                />
-                              }
+                            <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-160 ease-out in-data-panel-open:rotate-90" />
+                            <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
+                            <span className="truncate">{project.name}</span>
+                          </CollapsibleTrigger>
+                          <div className="mr-1 flex shrink-0 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              aria-label={`在 ${project.name} 中新建会话`}
+                              disabled={!desktop || busy}
+                              onClick={() => void workspace.newConversation(project.path)}
                             >
-                              <MoreHorizontal className="size-3.5" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              <DropdownMenuItem
-                                disabled={busy}
-                                onClick={() => onInstructions(project)}
+                              <Plus className="size-3.5" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    aria-label={`${project.name} 项目菜单`}
+                                  />
+                                }
                               >
-                                项目指令
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={!desktop || busy}
-                                onClick={() => void workspace.newConversation(project.path)}
-                              >
-                                新建会话
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                      <CollapsibleContent className="ml-3 flex flex-col gap-1 border-l border-border/60 pl-1.5">
-                        {rows(
-                          workspace.sessions.filter((session) =>
+                                <MoreHorizontal className="size-3.5" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem
+                                  disabled={busy}
+                                  onClick={() => onInstructions(project)}
+                                >
+                                  项目指令
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={!desktop || busy}
+                                  onClick={() => void workspace.newConversation(project.path)}
+                                >
+                                  新建会话
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          role="tooltip"
+                          id={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                          side="right"
+                          align="start"
+                          sideOffset={8}
+                          className="block max-w-sm space-y-1.5 px-3 py-2.5"
+                        >
+                          <div className="font-medium">{project.name}</div>
+                          <div className="flex items-start gap-2 opacity-75">
+                            <Folder className="mt-0.5 size-3.5 shrink-0 stroke-[1.5]" />
+                            <span className="min-w-0 wrap-anywhere">{project.path}</span>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                      <CollapsibleContent className="sidebar-project-sessions">
+                        <div className="ml-3 flex flex-col gap-1 border-l border-border/60 pt-1 pl-1.5">
+                          {rows(
+                            workspace.sessions.filter((session) =>
+                              samePath(session.cwd, project.path),
+                            ),
+                          )}
+                          {!workspace.sessions.some((session) =>
                             samePath(session.cwd, project.path),
-                          ),
-                        )}
-                        {!workspace.sessions.some((session) =>
-                          samePath(session.cwd, project.path),
-                        ) && <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>}
+                          ) && <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>}
+                        </div>
                       </CollapsibleContent>
                     </Collapsible>
                   ))}

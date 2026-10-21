@@ -244,6 +244,25 @@ select {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
+.workspace-navigation .os-scrollbar-vertical {
+  --os-size: 6px;
+  --os-padding-perpendicular: 0;
+}
+
+.sidebar-project-sessions {
+  height: var(--collapsible-panel-height);
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    height 160ms ease-out,
+    opacity 160ms ease-out;
+}
+
+.sidebar-project-sessions:is([data-starting-style], [data-ending-style]) {
+  height: 0;
+  opacity: 0;
+}
+
 .workspace-body {
   padding: 0 var(--workspace-inset) var(--workspace-inset) 0;
 }
@@ -305,7 +324,7 @@ select {
 }
 
 [data-slot='dialog-overlay'] {
-  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset) 0;
+  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
   border-radius: 8px;
 }
 
