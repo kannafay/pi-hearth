@@ -188,7 +188,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
                 void submit()
             }
           }}
-          className="max-h-48 min-h-12 rounded-none border-0 bg-transparent px-3.5 pt-3 pb-2 text-sm shadow-none focus-within:border-transparent focus-within:ring-0 dark:bg-transparent"
+          className="composer-input max-h-48 min-h-12 rounded-none border-0 bg-transparent px-3.5 pt-3 pb-2 text-sm shadow-none focus-within:border-transparent focus-within:ring-0 dark:bg-transparent"
         />
         <div className="flex h-7 items-stretch justify-between gap-2 px-2">
           <div className="flex h-full min-w-0 items-stretch gap-1">
@@ -198,7 +198,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               variant="ghost"
               size="icon-sm"
               disabled={!desktop || Boolean(readOnly) || pending > 0}
-              className="shrink-0 text-muted-foreground"
+              className="shrink-0 text-foreground/70"
               onClick={() => void receive(chooseAttachments())}
             >
               {pending ? (

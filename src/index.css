@@ -310,7 +310,11 @@ select {
 }
 
 .composer-select-trigger {
-  @apply border-0 py-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
+  @apply border-0 py-0 text-foreground/70 shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
+}
+
+.composer-select-trigger svg {
+  color: inherit;
 }
 
 .composer-select-content {
@@ -356,6 +360,10 @@ select {
 
 .textarea-scroll > textarea::placeholder {
   color: var(--muted-foreground);
+}
+
+.composer-input > textarea::placeholder {
+  color: color-mix(in oklch, var(--muted-foreground) 75%, var(--background));
 }
 
 [data-slot='dialog-overlay'] {
