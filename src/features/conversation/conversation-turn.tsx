@@ -22,14 +22,14 @@ export const ConversationTurn = memo(function ConversationTurn({
   return (
     <div className="space-y-8">
       {user && (
-        <article aria-label="你的消息">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">你</p>
-          <div className="space-y-3">
-            <AttachmentList files={user.attachments ?? []} />
-            {user.text && (
-              <p className="whitespace-pre-wrap text-[15px] leading-7 wrap-anywhere">{user.text}</p>
-            )}
-          </div>
+        <article
+          aria-label="你的消息"
+          className="ml-auto w-fit min-w-0 max-w-[85%] space-y-3 rounded-2xl bg-muted px-4 py-2.5"
+        >
+          <AttachmentList files={user.attachments ?? []} />
+          {user.text && (
+            <p className="whitespace-pre-wrap text-[15px] leading-7 wrap-anywhere">{user.text}</p>
+          )}
         </article>
       )}
       {hasAssistant && (
