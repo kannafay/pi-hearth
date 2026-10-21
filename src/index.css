@@ -324,8 +324,8 @@ select {
 }
 
 [data-slot='dialog-overlay'] {
-  inset: var(--titlebar-height) 0 0;
-  border-radius: 0;
+  inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
+  border-radius: 8px;
 }
 
 .caption-button {
