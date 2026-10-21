@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -48,6 +48,40 @@ test('header search remains available when the sidebar is collapsed', async () =
   expect(screen.getByRole('combobox', { name: '搜索项目、标题或对话内容' })).toHaveFocus()
   await user.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+test('repeated sidebar toggles preserve its filter and the mounted conversation draft', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('tab', { name: '聊天' }))
+  const draft = screen.getByRole('textbox', { name: '消息' })
+  await user.type(draft, '保留正在编辑的内容')
+
+  for (let index = 0; index < 2; index++) {
+    await user.click(screen.getByRole('button', { name: '收起侧栏' }))
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  }
+
+  expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('textbox', { name: '消息' })).toBe(draft)
+  expect(draft).toHaveValue('保留正在编辑的内容')
+})
+
+test('the docked inspector preserves its selected tab when closed and reopened', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  const inspector = screen.getByRole('complementary', { name: '项目查看面板' })
+  await user.click(within(inspector).getByRole('tab', { name: '文件' }))
+  await user.click(within(inspector).getByRole('button', { name: '关闭查看面板' }))
+  expect(screen.queryByRole('complementary', { name: '项目查看面板' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  expect(screen.getByRole('complementary', { name: '项目查看面板' })).toBe(inspector)
+  expect(within(inspector).getByRole('tab', { name: '文件' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
 })
 
 test('settings blocks the workspace while header controls remain accessible and keep it open', async () => {

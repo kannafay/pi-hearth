@@ -14,6 +14,7 @@ import { Inspector } from './inspector'
 import { WorkspaceNavigation } from './workspace-navigation'
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
+import { useAnimatedPanel } from './use-animated-panel'
 import { controlWindow, isDesktop, selectProjectDirectory } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
 
@@ -34,6 +35,9 @@ export function WorkspaceShell() {
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const compact = useMediaQuery('(max-width: 1199px)')
+  const navigationPanel = useAnimatedPanel(sidebarOpen, 260)
+  const dockedInspectorOpen = inspectorOpen && !compact
+  const inspectorPanel = useAnimatedPanel(dockedInspectorOpen, 400)
   const dialogOpen =
     settingsOpen ||
     searchOpen ||
@@ -166,23 +170,53 @@ export function WorkspaceShell() {
         data-sidebar-open={sidebarOpen}
         inert={dialogOpen}
       >
-        <ResizablePanelGroup orientation="horizontal">
-          {sidebarOpen && (
-            <>
-              <ResizablePanel id="navigation" defaultSize="260px" minSize="220px" maxSize="400px">
-                <WorkspaceNavigation
-                  desktop={desktop}
-                  onAdd={() => void addProject()}
-                  onCreate={() => setProjectDialog('create')}
-                  onSettings={() => setSettingsOpen(true)}
-                  onInstructions={setProjectDialog}
-                />
-              </ResizablePanel>
-              <ResizableHandle className="bg-transparent" />
-            </>
-          )}
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="workspace-panel-group"
+          onLayoutChanged={(layout, { isUserInteraction }) => {
+            if (!isUserInteraction) return
+            const open = layout.navigation > 0
+            if (open !== sidebarOpen) toggleSidebar()
+          }}
+        >
+          <ResizablePanel
+            id="navigation"
+            {...navigationPanel}
+            collapsible
+            minSize="220px"
+            maxSize="400px"
+            style={{ overflow: 'hidden' }}
+          >
+            <div
+              className="workspace-panel-content"
+              data-panel-open={sidebarOpen}
+              aria-hidden={!sidebarOpen}
+              inert={!sidebarOpen}
+            >
+              <WorkspaceNavigation
+                desktop={desktop}
+                onAdd={() => void addProject()}
+                onCreate={() => setProjectDialog('create')}
+                onSettings={() => setSettingsOpen(true)}
+                onInstructions={setProjectDialog}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle
+            className="workspace-panel-separator bg-transparent"
+            data-panel-open={sidebarOpen}
+            disabled={!sidebarOpen}
+          />
           <ResizablePanel id="content" minSize="400px">
-            <ResizablePanelGroup orientation="horizontal" className="workspace-surface">
+            <ResizablePanelGroup
+              orientation="horizontal"
+              className="workspace-surface workspace-panel-group"
+              onLayoutChanged={(layout, { isUserInteraction }) => {
+                if (!isUserInteraction || compact) return
+                const open = layout.inspector > 0
+                if (open !== inspectorOpen) setInspectorOpen(open)
+              }}
+            >
               <ResizablePanel id="conversation" minSize="400px">
                 <main aria-label="对话工作区" className="flex h-full min-h-0 flex-col">
                   <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
@@ -202,19 +236,29 @@ export function WorkspaceShell() {
                   <ConversationPanel />
                 </main>
               </ResizablePanel>
-              {inspectorOpen && !compact && (
-                <>
-                  <ResizableHandle />
-                  <ResizablePanel
-                    id="inspector"
-                    defaultSize="400px"
-                    minSize="300px"
-                    maxSize="560px"
-                  >
-                    <Inspector />
-                  </ResizablePanel>
-                </>
-              )}
+              <ResizableHandle
+                className="workspace-panel-separator"
+                data-panel-open={dockedInspectorOpen}
+                disabled={!dockedInspectorOpen}
+              />
+              <ResizablePanel
+                id="inspector"
+                {...inspectorPanel}
+                collapsible
+                minSize="300px"
+                maxSize="560px"
+                style={{ overflow: 'hidden' }}
+              >
+                <div
+                  className="workspace-panel-content"
+                  data-side="right"
+                  data-panel-open={dockedInspectorOpen}
+                  aria-hidden={!dockedInspectorOpen}
+                  inert={!dockedInspectorOpen}
+                >
+                  <Inspector />
+                </div>
+              </ResizablePanel>
             </ResizablePanelGroup>
           </ResizablePanel>
         </ResizablePanelGroup>
