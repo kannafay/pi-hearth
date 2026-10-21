@@ -157,6 +157,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-surface='tray-menu'] body {
+  min-width: 0;
+}
+
+.tray-menu-item {
+  @apply flex h-8.5 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] outline-none select-none hover:bg-accent data-highlighted:bg-accent disabled:pointer-events-none disabled:opacity-50;
+}
+
+.tray-menu-item[data-destructive] {
+  @apply text-destructive hover:bg-destructive/10 data-highlighted:bg-destructive/10 dark:hover:bg-destructive/20 dark:data-highlighted:bg-destructive/20;
+}
+
 button,
 input,
 textarea,

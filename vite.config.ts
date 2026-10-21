@@ -11,6 +11,14 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   clearScreen: false,
+  build: {
+    rolldownOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        tray: fileURLToPath(new URL('./tray.html', import.meta.url)),
+      },
+    },
+  },
   server: {
     host: host || '127.0.0.1',
     port: 1420,

@@ -61,41 +61,32 @@ fn toggle_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    // A native menu keeps the notification-area flyout in the system menu loop.
-    let menu = crate::tray_menu::create(app)?;
+    crate::tray_menu::create(app)?;
     let icon = app.default_window_icon().ok_or("缺少应用图标。")?.clone();
     TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .tooltip("Pi Hearth")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            if app.state::<Lifecycle>().is_shutting_down() {
-                return;
-            }
-            match event.id.as_ref() {
-                "show" => {
-                    let _ = show_window(app);
-                }
-                "restart" => shutdown(app, Shutdown::Restart),
-                "quit" => shutdown(app, Shutdown::Exit(0)),
-                _ => {}
-            }
-        })
         .on_tray_icon_event(|tray, event| {
             if tray.app_handle().state::<Lifecycle>().is_shutting_down() {
                 return;
             }
-            if matches!(
-                event,
+            match event {
                 TrayIconEvent::Click {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
+                } => {
+                    let _ = toggle_window(tray.app_handle());
                 }
-            ) && !tray.app_handle().state::<Lifecycle>().is_shutting_down()
-            {
-                let _ = toggle_window(tray.app_handle());
+                TrayIconEvent::Click {
+                    button: MouseButton::Right,
+                    button_state: MouseButtonState::Up,
+                    position,
+                    ..
+                } => {
+                    let _ = crate::tray_menu::show(tray.app_handle(), position);
+                }
+                _ => {}
             }
         })
         .build(app)?;

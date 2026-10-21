@@ -37,6 +37,7 @@ pub fn run() {
             }
         }))
         .manage(desktop::Lifecycle::default())
+        .manage(tray_menu::TrayMenuState::default())
         .manage(pi::PiManager::default())
         .manage(pi::WorkspaceManager::default())
         .manage(pi::attachments::AttachmentManager::default())
@@ -56,6 +57,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            tray_menu::tray_ready,
+            tray_menu::tray_present,
+            tray_menu::tray_dismiss,
+            tray_menu::tray_action,
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,
             pi::attachments::attachment_clipboard,
