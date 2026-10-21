@@ -137,7 +137,7 @@ export function WorkspaceNavigation({
               <Tabs.Tab
                 key={value}
                 value={value}
-                className="relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-md text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-active:text-foreground"
+                className="relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-md text-xs whitespace-nowrap text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-active:text-foreground"
               >
                 <Icon aria-hidden="true" className="size-3.5 shrink-0 stroke-[1.5]" />
                 {label}

@@ -11,6 +11,10 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useLayoutEffect(() => {
+    const element = elementRef.current
+    if (element && !element.style.getPropertyValue('--workspace-panel-width'))
+      element.style.setProperty('--workspace-panel-width', `${expandedSize}px`)
+
     if (previousOpen.current === open) return
     previousOpen.current = open
     const panel = panelRef.current
@@ -30,6 +34,8 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
     timerRef.current = setTimeout(() => {
       group.removeAttribute('data-panel-animating')
       timerRef.current = null
+      if (open && element && element.offsetWidth > 0)
+        element.style.setProperty('--workspace-panel-width', `${element.offsetWidth}px`)
     }, 220)
   }, [open, expandedSize])
 
@@ -43,8 +49,9 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
 
   function onResize({ inPixels }: PanelSize) {
     // Reveal a stable-width panel rather than wrapping its contents as it closes.
-    if (inPixels > 0)
-      elementRef.current?.style.setProperty('--workspace-panel-width', `${inPixels}px`)
+    const element = elementRef.current
+    if (inPixels > 0 && !element?.parentElement?.hasAttribute('data-panel-animating'))
+      element?.style.setProperty('--workspace-panel-width', `${inPixels}px`)
   }
 
   return { panelRef, elementRef, defaultSize, onResize }
