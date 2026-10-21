@@ -32,11 +32,16 @@ test('the picker shows four efforts, restores the active effort, and selects nat
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('max')
 })
 
-test('Max uses xhigh when available and unsupported efforts cannot be selected', async () => {
+test.each([
+  ['Low', 'low'],
+  ['Medium', 'medium'],
+  ['High', 'high'],
+  ['Max', 'max'],
+])('%s remains selectable when Pi reports a limited capability list', async (label, level) => {
   const changeThinkingLevel = vi.fn()
   useConversationStore.setState({
     status: 'ready',
-    thinkingLevel: 'high',
+    thinkingLevel: 'off',
     availableThinkingLevels: ['off', 'high', 'xhigh'],
     changeThinkingLevel,
   })
@@ -44,12 +49,16 @@ test('Max uses xhigh when available and unsupported efforts cannot be selected',
   render(<ThinkingPicker />)
   await user.tab()
   await user.keyboard(' ')
-  expect(await screen.findByRole('option', { name: 'Low' })).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  )
-  await user.click(screen.getByRole('option', { name: 'Max' }))
-  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('xhigh')
+  const option = await screen.findByRole('option', { name: label })
+  expect(option).not.toHaveAttribute('aria-disabled', 'true')
+  await user.click(option)
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith(level)
   act(() => useConversationStore.setState({ status: 'running' }))
   await waitFor(() => expect(screen.getByRole('combobox', { name: '思考强度' })).toBeDisabled())
+})
+
+test('a runtime xhigh value remains displayed as Max', () => {
+  useConversationStore.setState({ status: 'ready', thinkingLevel: 'xhigh' })
+  render(<ThinkingPicker />)
+  expect(screen.getByRole('combobox', { name: '思考强度' })).toHaveTextContent('Max')
 })

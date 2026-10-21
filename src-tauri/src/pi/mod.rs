@@ -128,14 +128,6 @@ pub async fn pi_set_thinking_level(
     level: String,
 ) -> Result<RuntimeSnapshot, String> {
     let client = manager.client(&instance_id).await?;
-    if !client
-        .snapshot()
-        .await?
-        .available_thinking_levels
-        .contains(&level)
-    {
-        return Err("当前模型不支持此思考强度。".into());
-    }
     client
         .request(json!({"type":"set_thinking_level","level":level}), None)
         .await?;

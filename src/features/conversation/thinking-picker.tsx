@@ -10,17 +10,15 @@ import {
 import { useConversationStore } from './store'
 
 export function ThinkingPicker() {
-  const { status, readOnly, thinkingLevel, availableThinkingLevels, changeThinkingLevel } =
-    useConversationStore()
-  const max = availableThinkingLevels.includes('max') ? 'max' : 'xhigh'
+  const { status, readOnly, thinkingLevel, changeThinkingLevel } = useConversationStore()
   const items = [
     { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
     { value: 'high', label: 'High' },
-    { value: max, label: 'Max' },
+    { value: 'max', label: 'Max' },
   ]
-  const supported = items.some((item) => availableThinkingLevels.includes(item.value))
-  const value = items.some((item) => item.value === thinkingLevel) ? thinkingLevel : null
+  const current = thinkingLevel === 'xhigh' ? 'max' : thinkingLevel
+  const value = items.some((item) => item.value === current) ? current : null
 
   return (
     <Select
@@ -33,7 +31,7 @@ export function ThinkingPicker() {
     >
       <SelectTrigger
         aria-label="思考强度"
-        title={supported ? '思考强度' : '当前模型不支持调节思考强度'}
+        title="思考强度"
         size="sm"
         className="composer-select-trigger shrink-0"
       >
@@ -43,11 +41,7 @@ export function ThinkingPicker() {
       <SelectContent alignItemWithTrigger={false} align="start" className="composer-select-content">
         <SelectGroup>
           {items.map((item) => (
-            <SelectItem
-              key={item.value}
-              value={item.value}
-              disabled={!availableThinkingLevels.includes(item.value)}
-            >
+            <SelectItem key={item.value} value={item.value}>
               {item.label}
             </SelectItem>
           ))}

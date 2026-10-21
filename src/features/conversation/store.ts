@@ -302,8 +302,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   changeThinkingLevel: async (level) => {
-    const { instanceId, status, availableThinkingLevels } = get()
-    if (!instanceId || status !== 'ready' || !availableThinkingLevels.includes(level)) return
+    const { instanceId, status } = get()
+    if (!instanceId || status !== 'ready') return
     const request = connection
     set({ status: 'connecting', error: null, activity: '正在切换思考强度…' })
     try {

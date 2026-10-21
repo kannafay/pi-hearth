@@ -220,21 +220,26 @@ test('a delayed run-start event cannot undo a pending stop', () => {
   expect(next.activity).toBe('正在停止…')
 })
 
-test('thinking changes use the runtime snapshot and reject unsupported or busy changes', async () => {
+test('all four thinking levels are sent regardless of advertised capabilities while busy changes remain blocked', async () => {
   useConversationStore.setState({
     instanceId: 'pi-1',
     status: 'ready',
     thinkingLevel: 'medium',
-    availableThinkingLevels: snapshot.availableThinkingLevels,
+    availableThinkingLevels: ['off', 'high'],
   })
-  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, thinkingLevel: 'max' })
-  await useConversationStore.getState().changeThinkingLevel('max')
-  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'max')
-  expect(useConversationStore.getState()).toMatchObject({ status: 'ready', thinkingLevel: 'max' })
-  await useConversationStore.getState().changeThinkingLevel('xhigh')
+  vi.mocked(setPiThinkingLevel).mockImplementation(async (_instanceId, thinkingLevel) => ({
+    ...snapshot,
+    thinkingLevel,
+    availableThinkingLevels: ['off', 'high'],
+  }))
+  for (const level of ['low', 'medium', 'high', 'max']) {
+    await useConversationStore.getState().changeThinkingLevel(level)
+    expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', level)
+    expect(useConversationStore.getState()).toMatchObject({ status: 'ready', thinkingLevel: level })
+  }
   useConversationStore.setState({ status: 'running' })
   await useConversationStore.getState().changeThinkingLevel('low')
-  expect(setPiThinkingLevel).toHaveBeenCalledOnce()
+  expect(setPiThinkingLevel).toHaveBeenCalledTimes(4)
 })
 
 test('a failed thinking change preserves the selected effort and a late result cannot replace a new session', async () => {
