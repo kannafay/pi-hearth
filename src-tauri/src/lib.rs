@@ -60,6 +60,7 @@ pub fn run() {
             tray_menu::tray_ready,
             tray_menu::tray_present,
             tray_menu::tray_dismiss,
+            tray_menu::tray_closed,
             tray_menu::tray_action,
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,

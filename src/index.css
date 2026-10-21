@@ -161,8 +161,28 @@ html[data-surface='tray-menu'] body {
   min-width: 0;
 }
 
+.tray-menu-card {
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 80ms ease-in,
+    transform 80ms ease-out;
+}
+
+.tray-menu-card[data-state='open'] {
+  opacity: 1;
+  transform: scale(1);
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.tray-menu-card[data-state='closing'] {
+  pointer-events: none;
+  transform: scale(1);
+}
+
 .tray-menu-item {
-  @apply flex h-8.5 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] outline-none select-none hover:bg-accent data-highlighted:bg-accent disabled:pointer-events-none disabled:opacity-50;
+  @apply flex h-8.5 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] outline-none select-none hover:bg-accent data-highlighted:bg-accent disabled:pointer-events-none data-pending:opacity-50;
 }
 
 .tray-menu-item[data-destructive] {
@@ -322,6 +342,11 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tray-menu-card {
+    transform: none;
+    transition: none;
+  }
+
   *,
   *::before,
   *::after {

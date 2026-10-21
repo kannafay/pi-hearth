@@ -1,11 +1,15 @@
-import { Fragment, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { AppWindow, LoaderCircle, LogOut, RotateCw } from 'lucide-react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useMediaQuery } from '@/app/use-media-query'
 
 type Action = 'show' | 'restart' | 'quit'
+type Phase = 'preparing' | 'open' | 'closing'
 type MenuSignal =
-  | { type: 'open'; epoch: number; dark: boolean }
+  | { type: 'open'; epoch: number; dark: boolean; origin: string }
+  | { type: 'shown'; epoch: number }
+  | { type: 'close'; epoch: number }
   | { type: 'key'; epoch: number; key: string; shift: boolean }
 
 const actions = [
@@ -17,17 +21,35 @@ const actions = [
 export function TrayMenu({
   onAction,
   onDismiss,
+  phase = 'open',
+  origin = 'left top',
+  onClosed,
 }: {
   onAction: (action: Action) => Promise<void>
   onDismiss: () => void
+  phase?: Phase
+  origin?: string
+  onClosed?: () => void
 }) {
   const [active, setActive] = useState(-1)
   const [pending, setPending] = useState<Action | null>(null)
   const [failed, setFailed] = useState<Action | null>(null)
   const acting = useRef(false)
+  const closed = useRef(false)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+
+  const finishClose = useCallback(() => {
+    if (phase !== 'closing' || closed.current) return
+    closed.current = true
+    onClosed?.()
+  }, [phase, onClosed])
+
+  useEffect(() => {
+    if (reduceMotion) finishClose()
+  }, [reduceMotion, finishClose])
 
   async function act(action: Action) {
-    if (acting.current) return
+    if (phase !== 'open' || acting.current) return
     acting.current = true
     setPending(action)
     setFailed(null)
@@ -43,6 +65,7 @@ export function TrayMenu({
   }
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (phase !== 'open') return
     if (event.key === 'Escape') {
       event.preventDefault()
       onDismiss()
@@ -76,8 +99,14 @@ export function TrayMenu({
         role="menu"
         aria-label="Pi Hearth"
         aria-activedescendant={active >= 0 ? `tray-${actions[active].action}` : undefined}
-        className="rounded-xl bg-popover p-1.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+        data-state={phase}
+        style={{ transformOrigin: origin }}
+        className="tray-menu-card rounded-xl bg-popover p-1.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
         onPointerLeave={() => setActive(-1)}
+        onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget && event.propertyName === 'opacity')
+            finishClose()
+        }}
       >
         {actions.map(({ action, label, icon: Icon }, index) => (
           <Fragment key={action}>
@@ -87,7 +116,8 @@ export function TrayMenu({
               role="menuitem"
               type="button"
               tabIndex={-1}
-              disabled={pending !== null}
+              disabled={phase !== 'open' || pending !== null}
+              data-pending={pending !== null || undefined}
               data-highlighted={active === index || undefined}
               data-destructive={action === 'quit' || undefined}
               className="tray-menu-item"
@@ -111,27 +141,60 @@ export function TrayMenu({
 }
 
 export function TrayMenuApp() {
-  const [session, setSession] = useState<{ epoch: number } | null>(null)
+  const [session, setSession] = useState<{ epoch: number; phase: Phase; origin: string } | null>(
+    null,
+  )
   const epoch = useRef<number | null>(null)
+  const opened = useRef(false)
 
   useEffect(() => {
     if (!isTauri()) return
     let disposed = false
+    let frame = 0
+    const cancelReveal = () => window.cancelAnimationFrame(frame)
     const stop = listen<MenuSignal>('tray-menu-signal', ({ payload }) => {
       if (disposed) return
       if (payload.type === 'open') {
+        cancelReveal()
         epoch.current = payload.epoch
+        opened.current = false
         document.documentElement.classList.toggle('dark', payload.dark)
         document.documentElement.style.colorScheme = payload.dark ? 'dark' : 'light'
-        setSession({ epoch: payload.epoch })
+        setSession({ epoch: payload.epoch, phase: 'preparing', origin: payload.origin })
       } else if (payload.epoch === epoch.current) {
-        window.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: payload.key,
-            shiftKey: payload.shift,
-            cancelable: true,
-          }),
-        )
+        if (payload.type === 'shown') {
+          cancelReveal()
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            opened.current = true
+            setSession((current) => (current ? { ...current, phase: 'open' } : current))
+            return
+          }
+          // Paint the transparent starting state after the native show, then
+          // reveal. Hidden WebViews must not finish the animation beforehand.
+          frame = window.requestAnimationFrame(() => {
+            frame = window.requestAnimationFrame(() => {
+              if (disposed || epoch.current !== payload.epoch) return
+              opened.current = true
+              setSession((current) => (current ? { ...current, phase: 'open' } : current))
+            })
+          })
+        } else if (payload.type === 'close') {
+          cancelReveal()
+          epoch.current = null
+          if (opened.current) {
+            setSession((current) => (current ? { ...current, phase: 'closing' } : current))
+          } else {
+            void invoke('tray_closed', { epoch: payload.epoch }).catch(console.warn)
+          }
+        } else {
+          window.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key: payload.key,
+              shiftKey: payload.shift,
+              cancelable: true,
+            }),
+          )
+        }
       }
     })
     void stop
@@ -141,22 +204,29 @@ export function TrayMenuApp() {
       .catch(console.warn)
     return () => {
       disposed = true
+      cancelReveal()
       void stop.then((unlisten) => unlisten()).catch(console.warn)
     }
   }, [])
 
+  const sessionEpoch = session?.epoch
   useEffect(() => {
-    if (session && isTauri())
-      void invoke('tray_present', { epoch: session.epoch }).catch(console.warn)
-  }, [session])
+    if (sessionEpoch !== undefined && isTauri())
+      void invoke('tray_present', { epoch: sessionEpoch }).catch(console.warn)
+  }, [sessionEpoch])
 
   if (!session) return null
   return (
     <TrayMenu
       key={session.epoch}
+      phase={session.phase}
+      origin={session.origin}
       onAction={(action) => invoke('tray_action', { epoch: session.epoch, action })}
       onDismiss={() => {
         void invoke('tray_dismiss', { epoch: session.epoch }).catch(console.warn)
+      }}
+      onClosed={() => {
+        void invoke('tray_closed', { epoch: session.epoch }).catch(console.warn)
       }}
     />
   )

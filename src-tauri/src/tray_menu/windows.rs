@@ -100,6 +100,13 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
     let popup = window.clone();
     window
         .run_on_main_thread(move || {
+            if !current(&popup, presentation.epoch) {
+                return;
+            }
+            if !same_foreground(presentation.foreground) {
+                let _ = dismiss(&popup, presentation.epoch);
+                return;
+            }
             // The shell flyout can become topmost after this hidden popup was
             // created. Show and reinsert it at the top on every open, keeping
             // the flyout's foreground activation and owner order intact.
@@ -121,6 +128,18 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
             }
             if let Err(error) = watch(popup.clone(), presentation) {
                 eprintln!("Cannot monitor tray menu input: {error}");
+                let _ = dismiss(&popup, presentation.epoch);
+                return;
+            }
+            if popup
+                .emit(
+                    "tray-menu-signal",
+                    MenuSignal::Shown {
+                        epoch: presentation.epoch,
+                    },
+                )
+                .is_err()
+            {
                 let _ = dismiss(&popup, presentation.epoch);
             }
         })

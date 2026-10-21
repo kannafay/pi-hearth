@@ -4,6 +4,7 @@ use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
 };
+use std::time::Duration;
 use tauri::{
     App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Theme, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
@@ -77,6 +78,18 @@ fn placement_area(cursor: PhysicalPosition<f64>, work: Bounds, screen: Bounds) -
     }
 }
 
+fn transform_origin(cursor: PhysicalPosition<f64>, content: Bounds) -> &'static str {
+    match (
+        cursor.x <= content.x as f64 + content.width as f64 / 2.0,
+        cursor.y <= content.y as f64 + content.height as f64 / 2.0,
+    ) {
+        (true, true) => "left top",
+        (false, true) => "right top",
+        (true, false) => "left bottom",
+        (false, false) => "right bottom",
+    }
+}
+
 #[derive(Clone)]
 struct Anchor {
     position: PhysicalPosition<f64>,
@@ -102,12 +115,36 @@ pub struct TrayMenuState {
     content: Mutex<ContentState>,
 }
 
+impl TrayMenuState {
+    fn begin_close(&self, epoch: u64) -> bool {
+        self.epoch
+            .compare_exchange(
+                epoch,
+                epoch.wrapping_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+    }
+
+    fn is_closing(&self, epoch: u64) -> bool {
+        self.epoch.load(Ordering::SeqCst) == epoch.wrapping_add(1)
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum MenuSignal {
     Open {
         epoch: u64,
         dark: bool,
+        origin: &'static str,
+    },
+    Shown {
+        epoch: u64,
+    },
+    Close {
+        epoch: u64,
     },
     Key {
         epoch: u64,
@@ -132,20 +169,44 @@ fn hide(window: &WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())
 }
 
+fn finish_close(window: &WebviewWindow, epoch: u64) -> Result<(), String> {
+    let popup = window.clone();
+    window
+        .run_on_main_thread(move || {
+            // Check again on the UI thread: an older fade-out or timeout must
+            // never hide a menu that has since been opened again.
+            if popup
+                .app_handle()
+                .state::<TrayMenuState>()
+                .is_closing(epoch)
+            {
+                let _ = hide(&popup);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
 fn dismiss(window: &WebviewWindow, epoch: u64) -> Result<(), String> {
-    let state = window.app_handle().state::<TrayMenuState>();
-    if state
-        .epoch
-        .compare_exchange(
-            epoch,
-            epoch.wrapping_add(1),
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        )
-        .is_ok()
+    if !window
+        .app_handle()
+        .state::<TrayMenuState>()
+        .begin_close(epoch)
     {
-        hide(window)?;
+        return Ok(());
     }
+    if window
+        .emit("tray-menu-signal", MenuSignal::Close { epoch })
+        .is_err()
+    {
+        return finish_close(window, epoch);
+    }
+    let popup = window.clone();
+    tauri::async_runtime::spawn(async move {
+        // The normal hide is acknowledged after the 80ms fade. A stalled page
+        // or missing transition event must still release the native surface.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let _ = finish_close(&popup, epoch);
+    });
     Ok(())
 }
 
@@ -270,6 +331,7 @@ pub fn show(app: &AppHandle, position: PhysicalPosition<f64>) -> Result<(), Stri
             MenuSignal::Open {
                 epoch,
                 dark: theme == Theme::Dark,
+                origin: transform_origin(position, presentation.content),
             },
         )
         .map_err(|e| e.to_string())
@@ -324,6 +386,9 @@ pub fn tray_present(window: WebviewWindow, epoch: u64) -> Result<(), String> {
     {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
+        window
+            .emit("tray-menu-signal", MenuSignal::Shown { epoch })
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -332,6 +397,12 @@ pub fn tray_present(window: WebviewWindow, epoch: u64) -> Result<(), String> {
 pub fn tray_dismiss(window: WebviewWindow, epoch: u64) -> Result<(), String> {
     require_popup(&window)?;
     dismiss(&window, epoch)
+}
+
+#[tauri::command]
+pub fn tray_closed(window: WebviewWindow, epoch: u64) -> Result<(), String> {
+    require_popup(&window)?;
+    finish_close(&window, epoch)
 }
 
 #[derive(Deserialize)]
@@ -368,6 +439,44 @@ pub fn tray_action(window: WebviewWindow, epoch: u64, action: TrayAction) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animation_origin_tracks_the_corner_nearest_the_click() {
+        let content = Bounds {
+            x: 600,
+            y: 400,
+            width: 184,
+            height: 124,
+        };
+        for (x, y, expected) in [
+            (598.0, 396.0, "left top"),
+            (788.0, 396.0, "right top"),
+            (598.0, 528.0, "left bottom"),
+            (788.0, 528.0, "right bottom"),
+        ] {
+            assert_eq!(
+                transform_origin(PhysicalPosition::new(x, y), content),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn old_close_acknowledgements_and_timeouts_cannot_hide_a_reopened_menu() {
+        let state = TrayMenuState::default();
+        state.epoch.store(7, Ordering::SeqCst);
+        assert!(!state.is_closing(7));
+        assert!(state.begin_close(7));
+        assert!(state.is_closing(7));
+        assert!(!state.begin_close(7));
+        let reopened = state.epoch.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(reopened, 9);
+        assert!(!state.is_closing(7));
+        assert!(!state.begin_close(7));
+        assert!(state.begin_close(reopened));
+        assert!(state.is_closing(reopened));
+    }
+
     #[test]
     fn popup_opens_at_the_cursor_and_flips_at_screen_edges() {
         let area = Bounds {
