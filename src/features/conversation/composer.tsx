@@ -115,7 +115,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-221 shrink-0 px-6 pt-3 pb-5">
+    <div className="mx-auto w-full max-w-221 shrink-0 px-6 pt-3 pb-2">
       {(error || attachmentError) && (
         <p role="alert" className="mb-3 text-xs leading-6 text-destructive">
           {attachmentError || error}
