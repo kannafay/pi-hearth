@@ -244,11 +244,6 @@ select {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.workspace-navigation .os-scrollbar-vertical {
-  --os-size: 6px;
-  --os-padding-perpendicular: 0;
-}
-
 .sidebar-project-sessions {
   height: var(--collapsible-panel-height);
   overflow: hidden;
