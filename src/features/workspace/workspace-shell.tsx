@@ -96,7 +96,16 @@ export function WorkspaceShell() {
         data-tauri-drag-region
         className="flex h-(--titlebar-height) shrink-0 items-center pl-4 select-none"
       >
-        <span data-tauri-drag-region className="mr-5 text-[13px] font-medium">
+        <span
+          data-tauri-drag-region
+          className="mr-5 inline-flex items-center gap-2 text-[13px] font-medium"
+        >
+          <img
+            src="/pi.svg"
+            alt=""
+            draggable={false}
+            className="pointer-events-none size-4 shrink-0"
+          />
           Pi Hearth
         </span>
         <IconButton label={sidebarOpen ? '收起侧栏' : '展开侧栏'} onClick={toggleSidebar}>
