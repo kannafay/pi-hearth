@@ -1,8 +1,9 @@
 use crate::pi::{PiManager, WorkspaceManager};
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(windows))]
+use tauri::menu::{Menu, MenuItem};
 use tauri::{
     App, AppHandle, Manager,
-    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
@@ -62,25 +63,35 @@ fn toggle_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItem::with_id(app, "show", "界面", true, None::<&str>)?;
-    let restart = MenuItem::with_id(app, "restart", "重启", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &restart, &quit])?;
+    #[cfg(windows)]
+    crate::tray_menu::create(app)?;
     let icon = app.default_window_icon().ok_or("缺少应用图标。")?.clone();
-    TrayIconBuilder::with_id("main-tray")
+    let builder = TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .tooltip("Pi Hearth")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                let _ = show_window(app);
-            }
-            "restart" => shutdown(app, Shutdown::Restart),
-            "quit" => shutdown(app, Shutdown::Exit(0)),
-            _ => {}
-        })
+        .show_menu_on_left_click(false);
+    #[cfg(not(windows))]
+    let builder = {
+        let show = MenuItem::with_id(app, "show", "界面", true, None::<&str>)?;
+        let restart = MenuItem::with_id(app, "restart", "重启", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+        let menu = Menu::with_items(app, &[&show, &restart, &quit])?;
+        builder
+            .menu(&menu)
+            .on_menu_event(|app, event| match event.id.as_ref() {
+                "show" => {
+                    let _ = show_window(app);
+                }
+                "restart" => shutdown(app, Shutdown::Restart),
+                "quit" => shutdown(app, Shutdown::Exit(0)),
+                _ => {}
+            })
+    };
+    builder
         .on_tray_icon_event(|tray, event| {
+            if tray.app_handle().state::<Lifecycle>().is_shutting_down() {
+                return;
+            }
             if matches!(
                 event,
                 TrayIconEvent::Click {
@@ -91,6 +102,18 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             ) && !tray.app_handle().state::<Lifecycle>().is_shutting_down()
             {
                 let _ = toggle_window(tray.app_handle());
+            }
+            #[cfg(windows)]
+            if let TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                position,
+                rect,
+                ..
+            } = event
+                && let Err(error) = crate::tray_menu::show(tray.app_handle(), position, rect)
+            {
+                eprintln!("Unable to open tray menu: {error}");
             }
         })
         .build(app)?;

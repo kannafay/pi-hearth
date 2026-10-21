@@ -159,6 +159,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-surface='tray'] body {
+  min-width: 0;
+}
+
 button,
 input,
 textarea,

@@ -1,5 +1,6 @@
 mod desktop;
 mod pi;
+mod tray_menu;
 
 use tauri::Manager;
 
@@ -55,6 +56,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            tray_menu::tray_action,
+            tray_menu::tray_dismiss,
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,
             pi::attachments::attachment_clipboard,

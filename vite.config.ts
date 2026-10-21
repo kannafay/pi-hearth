@@ -6,6 +6,10 @@ import { defineConfig } from 'vite'
 const host = process.env.TAURI_DEV_HOST
 
 export default defineConfig({
+  input: {
+    main: fileURLToPath(new URL('./index.html', import.meta.url)),
+    tray: fileURLToPath(new URL('./tray.html', import.meta.url)),
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
