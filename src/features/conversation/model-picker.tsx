@@ -17,7 +17,7 @@ export function ModelPicker({
   label?: string
   compact?: boolean
 }) {
-  const { models, model, status, changeModel } = useConversationStore()
+  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore()
   const groups = groupModelsByProvider(models)
   const items = models.map((item) => ({
     value: modelKey(item),
@@ -27,7 +27,9 @@ export function ModelPicker({
     <Select
       items={items}
       value={model ? modelKey(model) : null}
-      disabled={status !== 'ready' || !models.length}
+      disabled={
+        status !== 'ready' || Boolean(readOnly) || Boolean(settingsPending) || !models.length
+      }
       onValueChange={(value) => {
         const selected = models.find((item) => modelKey(item) === value)
         if (selected) void changeModel(selected)
@@ -35,6 +37,7 @@ export function ModelPicker({
     >
       <SelectTrigger
         aria-label={label}
+        data-pending={Boolean(settingsPending) || undefined}
         size="sm"
         className={compact ? 'composer-select-trigger max-w-64 min-w-0' : 'max-w-72'}
       >

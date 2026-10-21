@@ -6,7 +6,8 @@ import {
   type ConversationData,
 } from './store'
 import type { ChatMessage, EventData, PiEvent, RuntimeSnapshot, ToolCall } from '@/lib/generated/pi'
-import { connectPi, sendPiMessage, setPiThinkingLevel, stopPi } from '@/lib/pi'
+import { connectPi, sendPiMessage, setPiModel, setPiThinkingLevel, stopPi } from '@/lib/pi'
+import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 
 vi.mock('@/lib/pi', () => ({
   connectPi: vi.fn(),
@@ -51,6 +52,7 @@ function event(
 }
 
 beforeEach(() => {
+  localStorage.clear()
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   vi.clearAllMocks()
 })
@@ -235,7 +237,12 @@ test('all four thinking levels are sent regardless of advertised capabilities wh
   for (const level of ['low', 'medium', 'high', 'max']) {
     await useConversationStore.getState().changeThinkingLevel(level)
     expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', level)
-    expect(useConversationStore.getState()).toMatchObject({ status: 'ready', thinkingLevel: level })
+    expect(useConversationStore.getState()).toMatchObject({
+      status: 'ready',
+      thinkingLevel: level,
+      requestedThinkingLevel: level,
+      settingsPending: null,
+    })
   }
   useConversationStore.setState({ status: 'running' })
   await useConversationStore.getState().changeThinkingLevel('low')
@@ -257,11 +264,12 @@ test('a failed thinking change preserves the selected effort and a late result c
     error: 'Error: setting failed',
   })
   let finish!: (value: RuntimeSnapshot) => void
-  vi.mocked(setPiThinkingLevel).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      }),
+  vi.mocked(setPiThinkingLevel).mockImplementation((instanceId) =>
+    instanceId === 'pi-1'
+      ? new Promise((resolve) => {
+          finish = resolve
+        })
+      : Promise.resolve({ ...snapshot, instanceId: 'pi-2', thinkingLevel: 'high' }),
   )
   const pending = useConversationStore.getState().changeThinkingLevel('max')
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => {
@@ -272,7 +280,136 @@ test('a failed thinking change preserves the selected effort and a late result c
   await pending
   expect(useConversationStore.getState()).toMatchObject({
     instanceId: 'pi-2',
-    thinkingLevel: 'medium',
+    thinkingLevel: 'high',
+    requestedThinkingLevel: 'max',
+    settingsPending: null,
     status: 'ready',
   })
+})
+
+test('Pi normalization preserves and persists the requested effort across model changes and reconnects', async () => {
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready', model: snapshot.model })
+  vi.mocked(setPiThinkingLevel).mockImplementation(async (instanceId) => ({
+    ...snapshot,
+    instanceId,
+    thinkingLevel: 'high',
+    availableThinkingLevels: ['off', 'high'],
+  }))
+  await useConversationStore.getState().changeThinkingLevel('low')
+  expect(loadThinkingPreference()).toBe('low')
+  expect(useConversationStore.getState()).toMatchObject({
+    requestedThinkingLevel: 'low',
+    thinkingLevel: 'high',
+  })
+  const model = { provider: 'other', id: 'next', name: 'Next' }
+  vi.mocked(setPiModel).mockResolvedValue({ ...snapshot, model, thinkingLevel: 'off' })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, model, thinkingLevel: 'high' })
+  await useConversationStore.getState().changeModel(model)
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', 'low')
+  expect(useConversationStore.getState()).toMatchObject({
+    model,
+    requestedThinkingLevel: 'low',
+    thinkingLevel: 'high',
+  })
+  useConversationStore.setState(useConversationStore.getInitialState(), true)
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => {
+    hydrate({ ...snapshot, instanceId: 'pi-2' })
+  })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({
+    ...snapshot,
+    instanceId: 'pi-2',
+    thinkingLevel: 'high',
+  })
+  await useConversationStore.getState().connect('project')
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-2', 'low')
+  expect(useConversationStore.getState()).toMatchObject({
+    instanceId: 'pi-2',
+    status: 'ready',
+    requestedThinkingLevel: 'low',
+    thinkingLevel: 'high',
+    settingsPending: null,
+  })
+})
+
+test.each(['model', 'thinking'] as const)(
+  'changing %s leaves the transcript, activity and connection state untouched and blocks racing writes',
+  async (kind) => {
+    const messages = [{ ...message, text: '保留回复', status: 'complete' }]
+    const timeline = [{ kind: 'message', id: message.id }]
+    const tools: ToolCall[] = []
+    const blocks = {}
+    useConversationStore.setState({
+      instanceId: 'pi-1',
+      status: 'ready',
+      messages,
+      timeline,
+      tools,
+      blocks,
+      activity: '已停止生成',
+      sequence: 42,
+    })
+    let finish!: (value: RuntimeSnapshot) => void
+    const result = new Promise<RuntimeSnapshot>((resolve) => {
+      finish = resolve
+    })
+    vi.mocked(setPiModel).mockReturnValue(result)
+    vi.mocked(setPiThinkingLevel).mockReturnValue(result)
+    const states: string[] = []
+    const unsubscribe = useConversationStore.subscribe((state) => states.push(state.status))
+    try {
+      const pending =
+        kind === 'model'
+          ? useConversationStore.getState().changeModel(snapshot.model!)
+          : useConversationStore.getState().changeThinkingLevel('low')
+      expect(useConversationStore.getState().settingsPending).toBe(kind)
+      expect(await useConversationStore.getState().send('不能抢先发送')).toBe(false)
+      await useConversationStore.getState().changeModel(snapshot.model!)
+      await useConversationStore.getState().changeThinkingLevel('high')
+      expect(setPiModel).toHaveBeenCalledTimes(kind === 'model' ? 1 : 0)
+      expect(setPiThinkingLevel).toHaveBeenCalledTimes(kind === 'thinking' ? 1 : 0)
+      finish(snapshot)
+      await pending
+      const state = useConversationStore.getState()
+      expect(states.every((status) => status === 'ready')).toBe(true)
+      expect(state.messages).toBe(messages)
+      expect(state.timeline).toBe(timeline)
+      expect(state.tools).toBe(tools)
+      expect(state.blocks).toBe(blocks)
+      expect(state.activity).toBe('已停止生成')
+      expect(state.sequence).toBe(42)
+      expect(state.settingsPending).toBeNull()
+    } finally {
+      unsubscribe()
+    }
+  },
+)
+
+test('failed changes keep the last saved preference and disconnected results cannot revive settings', async () => {
+  saveThinkingPreference('medium')
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'ready',
+    requestedThinkingLevel: 'medium',
+  })
+  vi.mocked(setPiThinkingLevel).mockRejectedValueOnce('setting failed')
+  await useConversationStore.getState().changeThinkingLevel('low')
+  expect(useConversationStore.getState().requestedThinkingLevel).toBe('medium')
+  expect(loadThinkingPreference()).toBe('medium')
+  let finish!: (value: RuntimeSnapshot) => void
+  vi.mocked(setPiThinkingLevel).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  const pending = useConversationStore.getState().changeThinkingLevel('max')
+  useConversationStore.getState().receive([event(1, { type: 'disconnected', error: 'closed' })])
+  finish(snapshot)
+  await pending
+  expect(useConversationStore.getState()).toMatchObject({
+    instanceId: null,
+    status: 'disconnected',
+    settingsPending: null,
+    error: 'closed',
+  })
+  expect(loadThinkingPreference()).toBe('medium')
 })

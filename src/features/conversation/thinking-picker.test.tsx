@@ -62,3 +62,26 @@ test('a runtime xhigh value remains displayed as Max', () => {
   render(<ThinkingPicker />)
   expect(screen.getByRole('combobox', { name: '思考强度' })).toHaveTextContent('Max')
 })
+
+test('the chosen effort remains visible when Pi normalizes it and controls wait without reconnecting', async () => {
+  useConversationStore.setState({
+    status: 'ready',
+    requestedThinkingLevel: 'low',
+    thinkingLevel: 'high',
+  })
+  const user = userEvent.setup()
+  render(<ThinkingPicker />)
+  const picker = screen.getByRole('combobox', { name: '思考强度' })
+  expect(picker).toHaveTextContent('Low')
+  expect(picker).toHaveAttribute('title', expect.stringContaining('High'))
+  await user.tab()
+  await user.keyboard(' ')
+  expect(await screen.findByRole('option', { name: 'Low' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await user.keyboard('{Escape}')
+  act(() => useConversationStore.setState({ settingsPending: 'model' }))
+  expect(picker).toBeDisabled()
+  expect(picker).toHaveTextContent('Low')
+})

@@ -21,8 +21,18 @@ import { useConversationStore } from './store'
 
 export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const { draft, setDraft, draftAttachments, clearAttachments } = useWorkspaceStore()
-  const { status, messages, activeRunId, error, readOnly, activity, model, send, stop } =
-    useConversationStore()
+  const {
+    status,
+    messages,
+    activeRunId,
+    error,
+    readOnly,
+    settingsPending,
+    activity,
+    model,
+    send,
+    stop,
+  } = useConversationStore()
   const [attachmentError, setAttachmentError] = useState('')
   const [pending, setPending] = useState(0)
   const [dragging, setDragging] = useState(false)
@@ -169,7 +179,12 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
             }
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
-              if (status === 'ready' && !pending && (draft.trim() || draftAttachments.length))
+              if (
+                status === 'ready' &&
+                !settingsPending &&
+                !pending &&
+                (draft.trim() || draftAttachments.length)
+              )
                 void submit()
             }
           }}
@@ -216,6 +231,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               disabled={
                 status !== 'ready' ||
                 Boolean(readOnly) ||
+                Boolean(settingsPending) ||
                 pending > 0 ||
                 (!draft.trim() && !draftAttachments.length)
               }

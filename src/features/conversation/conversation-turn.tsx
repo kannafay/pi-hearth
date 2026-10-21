@@ -1,10 +1,11 @@
+import { memo } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
 import { ExecutionProcess } from './execution-process'
 
-export function ConversationTurn({
+export const ConversationTurn = memo(function ConversationTurn({
   turn,
   active,
 }: {
@@ -53,4 +54,4 @@ export function ConversationTurn({
       )}
     </div>
   )
-}
+})

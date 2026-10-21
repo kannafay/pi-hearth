@@ -15,6 +15,7 @@ import {
   setPiThinkingLevel,
   stopPi,
 } from '@/lib/pi'
+import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 
 type Status = 'disconnected' | 'connecting' | 'ready' | 'running' | 'stopping'
 type Block = { kind: string; text: string }
@@ -31,7 +32,9 @@ export interface ConversationData {
   model: ModelInfo | null
   models: ModelInfo[]
   thinkingLevel: string
+  requestedThinkingLevel: string | null
   availableThinkingLevels: string[]
+  settingsPending: 'model' | 'thinking' | null
   activeRunId: string | null
   sequence: number
   error: string | null
@@ -62,7 +65,9 @@ export const emptyConversation: ConversationData = {
   model: null,
   models: [],
   thinkingLevel: 'off',
+  requestedThinkingLevel: null,
   availableThinkingLevels: [],
+  settingsPending: null,
   activeRunId: null,
   sequence: 0,
   error: null,
@@ -90,6 +95,16 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
     thinkingLevel: snapshot.thinkingLevel ?? 'off',
     availableThinkingLevels: snapshot.availableThinkingLevels ?? [],
     status: snapshot.activeRunId ? 'running' : 'ready',
+  }
+}
+
+// Settings acknowledgements must not replace the transcript or its scroll state.
+function settingsFromSnapshot(snapshot: RuntimeSnapshot) {
+  return {
+    model: snapshot.model,
+    models: snapshot.models,
+    thinkingLevel: snapshot.thinkingLevel,
+    availableThinkingLevels: snapshot.availableThinkingLevels,
   }
 }
 
@@ -188,6 +203,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.status = 'disconnected'
       next.instanceId = null
       next.activeRunId = null
+      next.settingsPending = null
       next.error = data.error
       next.activity = ''
       next.messages = state.messages.map((m) =>
@@ -223,9 +239,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   connect: async (projectPath, sessionPath) => {
     if (['running', 'stopping'].includes(get().status)) return
     const request = ++connection
+    const requestedThinkingLevel = get().requestedThinkingLevel ?? loadThinkingPreference()
+    let restorePreference: Promise<void> | undefined
     queued = []
     set({
       ...emptyConversation,
+      requestedThinkingLevel,
       sessionFile: sessionPath ?? null,
       status: 'connecting',
       connectionStartedAt: Date.now(),
@@ -235,13 +254,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await connectPi(
         projectPath,
         (snapshot) => {
-          if (request === connection) set(fromSnapshot(snapshot))
+          if (request !== connection) return
+          set({ ...fromSnapshot(snapshot), requestedThinkingLevel })
+          if (requestedThinkingLevel) {
+            restorePreference = get().changeThinkingLevel(requestedThinkingLevel)
+          }
         },
         (event) => {
           if (request === connection) enqueue(event)
         },
         sessionPath,
       )
+      await restorePreference
     } catch (reason) {
       if (request === connection)
         set({
@@ -250,6 +274,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           error: String(reason),
           activity: '',
           connectionStartedAt: null,
+          settingsPending: null,
         })
     }
   },
@@ -264,8 +289,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   send: async (message, attachmentIds = []) => {
-    const { instanceId, status, readOnly } = get()
-    if (!instanceId || status !== 'ready' || readOnly || (!message.trim() && !attachmentIds.length))
+    const { instanceId, status, readOnly, settingsPending } = get()
+    if (
+      !instanceId ||
+      status !== 'ready' ||
+      readOnly ||
+      settingsPending ||
+      (!message.trim() && !attachmentIds.length)
+    )
       return false
     const runId = crypto.randomUUID()
     set({ status: 'running', activeRunId: runId, error: null, activity: '正在发送…' })
@@ -290,27 +321,38 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   changeModel: async (model) => {
-    const { instanceId, status } = get()
-    if (!instanceId || status !== 'ready') return
+    const { instanceId, status, readOnly, settingsPending, requestedThinkingLevel } = get()
+    if (!instanceId || status !== 'ready' || readOnly || settingsPending) return
     const request = connection
-    set({ status: 'connecting', error: null, activity: '正在切换模型…' })
+    const current = () => request === connection && get().instanceId === instanceId
+    set({ settingsPending: 'model', error: null })
     try {
       const snapshot = await setPiModel(instanceId, model.provider, model.id)
-      if (request === connection) set(fromSnapshot(snapshot))
+      if (!current()) return
+      set(settingsFromSnapshot(snapshot))
+      if (requestedThinkingLevel) {
+        const thinking = await setPiThinkingLevel(instanceId, requestedThinkingLevel)
+        if (!current()) return
+        set(settingsFromSnapshot(thinking))
+      }
+      set({ settingsPending: null })
     } catch (reason) {
-      if (request === connection) set({ status: 'ready', error: String(reason) })
+      if (current()) set({ settingsPending: null, error: String(reason) })
     }
   },
   changeThinkingLevel: async (level) => {
-    const { instanceId, status } = get()
-    if (!instanceId || status !== 'ready') return
+    const { instanceId, status, readOnly, settingsPending, requestedThinkingLevel } = get()
+    if (!instanceId || status !== 'ready' || readOnly || settingsPending) return
     const request = connection
-    set({ status: 'connecting', error: null, activity: '正在切换思考强度…' })
+    const current = () => request === connection && get().instanceId === instanceId
+    set({ settingsPending: 'thinking', requestedThinkingLevel: level, error: null })
     try {
       const snapshot = await setPiThinkingLevel(instanceId, level)
-      if (request === connection) set(fromSnapshot(snapshot))
+      if (!current()) return
+      saveThinkingPreference(level)
+      set({ ...settingsFromSnapshot(snapshot), settingsPending: null })
     } catch (reason) {
-      if (request === connection) set({ status: 'ready', error: String(reason), activity: '' })
+      if (current()) set({ settingsPending: null, requestedThinkingLevel, error: String(reason) })
     }
   },
 }))

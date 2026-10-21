@@ -110,10 +110,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   refresh: async () => {
-    if (get().loading || !get().initialized) return
+    if (get().loading || !get().initialized || useConversationStore.getState().settingsPending)
+      return
     set({ loading: true })
     try {
       const catalog = await loadCatalog()
+      if (useConversationStore.getState().settingsPending) return
       const path = useConversationStore.getState().sessionFile
       const previous = get().sessions.find((session) => samePath(session.path, path))
       const next = catalog.sessions.find((session) => samePath(session.path, path))

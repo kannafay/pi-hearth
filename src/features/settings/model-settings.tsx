@@ -5,8 +5,9 @@ import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
 
 export function ModelSettings() {
-  const { models, model, status, changeModel } = useConversationStore()
+  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore()
   const groups = groupModelsByProvider(models)
+  const disabled = status !== 'ready' || Boolean(readOnly) || Boolean(settingsPending)
 
   return (
     <div>
@@ -25,7 +26,7 @@ export function ModelSettings() {
       <RadioGroup
         aria-label="可用模型"
         value={model ? modelKey(model) : null}
-        disabled={status !== 'ready'}
+        disabled={disabled}
         className="mt-5 gap-2"
         onValueChange={(value) => {
           const selected = models.find((item) => modelKey(item) === value)
@@ -45,7 +46,7 @@ export function ModelSettings() {
               {group.models.map((item) => (
                 <label
                   key={modelKey(item)}
-                  data-disabled={status !== 'ready' || undefined}
+                  data-disabled={disabled || undefined}
                   className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2 hover:bg-accent data-disabled:cursor-not-allowed data-disabled:opacity-50"
                 >
                   <RadioGroupItem

@@ -70,6 +70,14 @@ test('external CLI changes refresh idle history and never reopen a running task'
   expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
 })
 
+test('a catalog refresh cannot reconnect the conversation during a settings change', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({ sessionFile: session.path, settingsPending: 'model' })
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 2 }] })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
 test('creating a project uses the returned canonical folder and starts its own session', async () => {
   vi.mocked(addProject).mockResolvedValue({ path: 'D:\\新项目', name: '新项目' })
   await useWorkspaceStore.getState().addProject('D:\\', '新项目')
