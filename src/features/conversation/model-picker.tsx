@@ -36,7 +36,11 @@ export function ModelPicker({
       <SelectTrigger
         aria-label={label}
         size="sm"
-        className={compact ? 'max-w-64 py-0' : 'max-w-72'}
+        className={
+          compact
+            ? 'max-w-64 min-w-0 border-0 py-0 shadow-none hover:bg-accent dark:bg-transparent dark:hover:bg-accent'
+            : 'max-w-72'
+        }
       >
         <SelectValue placeholder="选择模型" />
       </SelectTrigger>

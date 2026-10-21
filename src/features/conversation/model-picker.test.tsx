@@ -23,10 +23,12 @@ test('the composer model picker switches directly to a configured provider/model
     changeModel,
   })
   const user = userEvent.setup()
-  render(<ModelPicker />)
+  render(<ModelPicker compact />)
   expect(screen.getByRole('combobox', { name: '切换模型' })).toHaveTextContent('Alpha · first')
-  await user.click(screen.getByRole('combobox', { name: '切换模型' }))
-  await user.click(screen.getByRole('option', { name: /Beta/ }))
+  // jsdom has no popup geometry for a pointer release over the opening trigger.
+  await user.tab()
+  await user.keyboard(' ')
+  await user.click(await screen.findByRole('option', { name: /Beta/ }))
   expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
 })
 

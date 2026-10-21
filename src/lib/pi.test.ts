@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { Channel, invoke } from '@tauri-apps/api/core'
-import { connectPi, disconnectPi, sendPiMessage, setPiModel } from './pi'
+import { connectPi, disconnectPi, sendPiMessage, setPiModel, setPiThinkingLevel } from './pi'
 import type { PiEvent, RuntimeSnapshot } from './generated/pi'
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
@@ -19,6 +19,8 @@ const snapshot: RuntimeSnapshot = {
   readOnly: null,
   model: null,
   models: [],
+  thinkingLevel: 'medium',
+  availableThinkingLevels: ['off', 'low', 'medium', 'high', 'max'],
   messages: [],
   tools: [],
   timeline: [],
@@ -58,29 +60,39 @@ beforeEach(async () => {
   })
 })
 
-test('model changes keep the original Tauri stream alive', async () => {
-  let channel: Channel<PiEvent>
-  vi.mocked(invoke).mockImplementation(async (command, args) => {
-    const input = args as Record<string, unknown>
-    if (command === 'pi_open') {
-      channel = input.onEvent as Channel<PiEvent>
-      return snapshot
+test.each(['model', 'thinking'])(
+  '%s changes keep the original Tauri stream alive',
+  async (setting) => {
+    let channel: Channel<PiEvent>
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      const input = args as Record<string, unknown>
+      if (command === 'pi_open') {
+        channel = input.onEvent as Channel<PiEvent>
+        return snapshot
+      }
+      if (command === 'pi_set_model' || command === 'pi_set_thinking_level') {
+        // Tauri drops the old Rust channel if a command replaces its subscription.
+        // Its end marker unregisters this JS callback, even if its ID is reused.
+        if (input.onEvent) callbacks.get(channel.id)?.({ end: true, index: 0 })
+        return { ...snapshot, model: { provider: 'test', id: 'other', name: 'Other' } }
+      }
+      if (command === 'pi_send') callbacks.get(channel.id)?.({ index: 0, message: event })
+      return undefined
+    })
+    const received = vi.fn()
+    await connectPi('project', () => {}, received)
+    if (setting === 'model') await setPiModel('pi-1', 'test', 'other')
+    else {
+      await setPiThinkingLevel('pi-1', 'max')
+      expect(invoke).toHaveBeenLastCalledWith('pi_set_thinking_level', {
+        instanceId: 'pi-1',
+        level: 'max',
+      })
     }
-    if (command === 'pi_set_model') {
-      // Tauri drops the old Rust channel if a command replaces its subscription.
-      // Its end marker unregisters this JS callback, even if its ID is reused.
-      if (input.onEvent) callbacks.get(channel.id)?.({ end: true, index: 0 })
-      return { ...snapshot, model: { provider: 'test', id: 'other', name: 'Other' } }
-    }
-    if (command === 'pi_send') callbacks.get(channel.id)?.({ index: 0, message: event })
-    return undefined
-  })
-  const received = vi.fn()
-  await connectPi('project', () => {}, received)
-  await setPiModel('pi-1', 'test', 'other')
-  await sendPiMessage('pi-1', 'run-1', 'hello')
-  expect(received).toHaveBeenCalledWith(event)
-})
+    await sendPiMessage('pi-1', 'run-1', 'hello')
+    expect(received).toHaveBeenCalledWith(event)
+  },
+)
 
 test('events arriving before the snapshot are replayed once, after hydration', async () => {
   vi.mocked(invoke).mockImplementation(async (_command, args) => {

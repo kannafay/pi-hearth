@@ -7,7 +7,14 @@ import type {
   ToolCall,
   TimelineEntry,
 } from '@/lib/generated/pi'
-import { connectPi, disconnectPi, sendPiMessage, setPiModel, stopPi } from '@/lib/pi'
+import {
+  connectPi,
+  disconnectPi,
+  sendPiMessage,
+  setPiModel,
+  setPiThinkingLevel,
+  stopPi,
+} from '@/lib/pi'
 
 type Status = 'disconnected' | 'connecting' | 'ready' | 'running' | 'stopping'
 type Block = { kind: string; text: string }
@@ -23,6 +30,8 @@ export interface ConversationData {
   timeline: TimelineEntry[]
   model: ModelInfo | null
   models: ModelInfo[]
+  thinkingLevel: string
+  availableThinkingLevels: string[]
   activeRunId: string | null
   sequence: number
   error: string | null
@@ -37,6 +46,7 @@ interface ConversationState extends ConversationData {
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
   stop: () => Promise<void>
   changeModel: (model: ModelInfo) => Promise<void>
+  changeThinkingLevel: (level: string) => Promise<void>
   receive: (events: PiEvent[]) => void
 }
 
@@ -51,6 +61,8 @@ export const emptyConversation: ConversationData = {
   timeline: [],
   model: null,
   models: [],
+  thinkingLevel: 'off',
+  availableThinkingLevels: [],
   activeRunId: null,
   sequence: 0,
   error: null,
@@ -75,6 +87,8 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
       snapshot.messages.map((message) => ({ kind: 'message', id: message.id })),
     model: snapshot.model,
     models: snapshot.models,
+    thinkingLevel: snapshot.thinkingLevel ?? 'off',
+    availableThinkingLevels: snapshot.availableThinkingLevels ?? [],
     status: snapshot.activeRunId ? 'running' : 'ready',
   }
 }
@@ -285,6 +299,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       if (request === connection) set(fromSnapshot(snapshot))
     } catch (reason) {
       if (request === connection) set({ status: 'ready', error: String(reason) })
+    }
+  },
+  changeThinkingLevel: async (level) => {
+    const { instanceId, status, availableThinkingLevels } = get()
+    if (!instanceId || status !== 'ready' || !availableThinkingLevels.includes(level)) return
+    const request = connection
+    set({ status: 'connecting', error: null, activity: '正在切换思考强度…' })
+    try {
+      const snapshot = await setPiThinkingLevel(instanceId, level)
+      if (request === connection) set(fromSnapshot(snapshot))
+    } catch (reason) {
+      if (request === connection) set({ status: 'ready', error: String(reason), activity: '' })
     }
   },
 }))

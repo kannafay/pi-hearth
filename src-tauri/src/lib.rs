@@ -56,8 +56,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
-            tray_menu::tray_action,
-            tray_menu::tray_dismiss,
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,
             pi::attachments::attachment_clipboard,
@@ -73,6 +71,7 @@ pub fn run() {
             pi::pi_send,
             pi::pi_stop,
             pi::pi_set_model,
+            pi::pi_set_thinking_level,
             pi::pi_tool_decide,
             pi::pi_tool_output,
             pi::pi_disconnect

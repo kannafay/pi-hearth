@@ -67,6 +67,11 @@ export function setPiModel(instanceId: string, provider: string, modelId: string
   })
 }
 
+export function setPiThinkingLevel(instanceId: string, level: string) {
+  if (!activeChannel) throw new Error('请先连接 Pi。')
+  return invoke<RuntimeSnapshot>('pi_set_thinking_level', { instanceId, level })
+}
+
 export async function disconnectPi() {
   connection++
   activeChannel = null

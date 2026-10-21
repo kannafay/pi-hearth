@@ -114,6 +114,32 @@ pub async fn pi_set_model(
             None,
         )
         .await?;
+    client.request(json!({"type":"get_state"}), None).await?;
+    client
+        .request(json!({"type":"get_available_thinking_levels"}), None)
+        .await?;
+    client.snapshot().await
+}
+
+#[tauri::command]
+pub async fn pi_set_thinking_level(
+    manager: State<'_, PiManager>,
+    instance_id: String,
+    level: String,
+) -> Result<RuntimeSnapshot, String> {
+    let client = manager.client(&instance_id).await?;
+    if !client
+        .snapshot()
+        .await?
+        .available_thinking_levels
+        .contains(&level)
+    {
+        return Err("当前模型不支持此思考强度。".into());
+    }
+    client
+        .request(json!({"type":"set_thinking_level","level":level}), None)
+        .await?;
+    client.request(json!({"type":"get_state"}), None).await?;
     client.snapshot().await
 }
 

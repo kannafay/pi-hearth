@@ -212,8 +212,8 @@ impl PiClient {
                                 let _ = reply.send(result.map(|_| conversation.snapshot.clone()));
                             }
                             Some(Control::Request { mut body, run_id, reply }) => {
-                                if body["type"] == "set_model" && conversation.snapshot.active_run_id.is_some() {
-                                    let _ = reply.send(Err("请先等待回复结束再切换模型。".into())); continue;
+                                if matches!(body["type"].as_str(), Some("set_model" | "set_thinking_level")) && conversation.snapshot.active_run_id.is_some() {
+                                    let _ = reply.send(Err("请先等待回复结束再修改模型设置。".into())); continue;
                                 }
                                 if let Some(run) = &run_id {
                                     let display = body.as_object_mut().and_then(|body| body.remove("__hearthMessage")).and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_else(|| body["message"].as_str().unwrap_or_default().into());
@@ -726,6 +726,10 @@ impl PiManager {
             if let Some(options) = options {
                 client.restore(options.history).await?;
             }
+            client.request(json!({"type":"get_state"}), None).await?;
+            client
+                .request(json!({"type":"get_available_thinking_levels"}), None)
+                .await?;
             client.subscribe(channel).await
         }
         .await;

@@ -138,6 +138,8 @@ pub struct RuntimeSnapshot {
     pub read_only: Option<String>,
     pub model: Option<ModelInfo>,
     pub models: Vec<ModelInfo>,
+    pub thinking_level: String,
+    pub available_thinking_levels: Vec<String>,
     pub messages: Vec<ChatMessage>,
     pub tools: Vec<ToolCall>,
     pub timeline: Vec<TimelineEntry>,

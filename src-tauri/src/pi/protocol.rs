@@ -52,6 +52,8 @@ impl Conversation {
                 read_only: None,
                 model: None,
                 models: vec![],
+                thinking_level: "off".into(),
+                available_thinking_levels: vec![],
                 messages: vec![],
                 tools: vec![],
                 timeline: vec![],
@@ -347,6 +349,8 @@ impl Conversation {
                 self.snapshot.session_id = data["sessionId"].as_str().unwrap_or_default().into();
                 self.snapshot.session_file = data["sessionFile"].as_str().map(str::to_owned);
                 self.snapshot.model = model_info(&data["model"]);
+                self.snapshot.thinking_level =
+                    data["thinkingLevel"].as_str().unwrap_or("off").into();
             }
             Some("get_available_models") => {
                 self.snapshot.models = data["models"]
@@ -355,6 +359,18 @@ impl Conversation {
                     .unwrap_or_default();
             }
             Some("set_model") => self.snapshot.model = model_info(data),
+            Some("get_available_thinking_levels") => {
+                self.snapshot.available_thinking_levels = data["levels"]
+                    .as_array()
+                    .map(|levels| {
+                        levels
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+            }
             _ => {}
         }
     }
@@ -512,6 +528,30 @@ fn model_info(value: &Value) -> Option<ModelInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn thinking_settings_follow_the_runtime_and_model_capabilities() {
+        let mut conversation = Conversation::new("process-1".into(), "project".into());
+        conversation.response(
+            &json!({"command":"get_state","success":true,"data":{"thinkingLevel":"medium"}}),
+        );
+        conversation.response(&json!({"command":"get_available_thinking_levels","success":true,"data":{"levels":["off","low","medium","high","max"]}}));
+        assert_eq!(conversation.snapshot.thinking_level, "medium");
+        assert_eq!(
+            conversation.snapshot.available_thinking_levels,
+            ["off", "low", "medium", "high", "max"]
+        );
+        conversation.response(
+            &json!({"command":"get_state","success":true,"data":{"thinkingLevel":"max"}}),
+        );
+        assert_eq!(conversation.snapshot.thinking_level, "max");
+        conversation.response(&json!({"command":"get_available_thinking_levels","success":true,"data":{"levels":["off"]}}));
+        assert_eq!(conversation.snapshot.available_thinking_levels, ["off"]);
+        conversation.response(
+            &json!({"command":"get_state","success":false,"data":{"thinkingLevel":"high"}}),
+        );
+        assert_eq!(conversation.snapshot.thinking_level, "max");
+    }
     use serde_json::json;
 
     #[test]

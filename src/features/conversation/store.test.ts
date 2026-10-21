@@ -6,7 +6,7 @@ import {
   type ConversationData,
 } from './store'
 import type { ChatMessage, EventData, PiEvent, RuntimeSnapshot, ToolCall } from '@/lib/generated/pi'
-import { connectPi, sendPiMessage, stopPi } from '@/lib/pi'
+import { connectPi, sendPiMessage, setPiThinkingLevel, stopPi } from '@/lib/pi'
 
 vi.mock('@/lib/pi', () => ({
   connectPi: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock('@/lib/pi', () => ({
   sendPiMessage: vi.fn(),
   stopPi: vi.fn(),
   setPiModel: vi.fn(),
+  setPiThinkingLevel: vi.fn(),
 }))
 
 const message: ChatMessage = {
@@ -32,6 +33,8 @@ const snapshot: RuntimeSnapshot = {
   readOnly: null,
   model: { provider: 'test', id: 'chat', name: 'Chat' },
   models: [],
+  thinkingLevel: 'medium',
+  availableThinkingLevels: ['off', 'low', 'medium', 'high', 'max'],
   messages: [],
   tools: [],
   timeline: [],
@@ -215,4 +218,56 @@ test('a delayed run-start event cannot undo a pending stop', () => {
   )
   expect(next.status).toBe('stopping')
   expect(next.activity).toBe('正在停止…')
+})
+
+test('thinking changes use the runtime snapshot and reject unsupported or busy changes', async () => {
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'ready',
+    thinkingLevel: 'medium',
+    availableThinkingLevels: snapshot.availableThinkingLevels,
+  })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, thinkingLevel: 'max' })
+  await useConversationStore.getState().changeThinkingLevel('max')
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'max')
+  expect(useConversationStore.getState()).toMatchObject({ status: 'ready', thinkingLevel: 'max' })
+  await useConversationStore.getState().changeThinkingLevel('xhigh')
+  useConversationStore.setState({ status: 'running' })
+  await useConversationStore.getState().changeThinkingLevel('low')
+  expect(setPiThinkingLevel).toHaveBeenCalledOnce()
+})
+
+test('a failed thinking change preserves the selected effort and a late result cannot replace a new session', async () => {
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'ready',
+    thinkingLevel: 'medium',
+    availableThinkingLevels: snapshot.availableThinkingLevels,
+  })
+  vi.mocked(setPiThinkingLevel).mockRejectedValueOnce(new Error('setting failed'))
+  await useConversationStore.getState().changeThinkingLevel('high')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    thinkingLevel: 'medium',
+    error: 'Error: setting failed',
+  })
+  let finish!: (value: RuntimeSnapshot) => void
+  vi.mocked(setPiThinkingLevel).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useConversationStore.getState().changeThinkingLevel('max')
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => {
+    hydrate({ ...snapshot, instanceId: 'pi-2' })
+  })
+  await useConversationStore.getState().connect('other')
+  finish({ ...snapshot, thinkingLevel: 'max' })
+  await pending
+  expect(useConversationStore.getState()).toMatchObject({
+    instanceId: 'pi-2',
+    thinkingLevel: 'medium',
+    status: 'ready',
+  })
 })

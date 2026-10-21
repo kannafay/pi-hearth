@@ -15,6 +15,7 @@ import {
 } from '@/lib/attachments'
 import type { Attachment } from '@/lib/generated/pi'
 import { ModelPicker } from './model-picker'
+import { ThinkingPicker } from './thinking-picker'
 import { AttachmentList } from './attachment-list'
 import { useConversationStore } from './store'
 
@@ -192,6 +193,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               )}
             </Button>
             <ModelPicker compact />
+            <ThinkingPicker />
           </div>
           {busy ? (
             <Button
