@@ -68,14 +68,15 @@ export function WorkspaceNavigation({
       return (
         <div
           key={session.path}
-          className={`group/session flex h-8 min-w-0 items-center rounded-md hover:bg-sidebar-accent focus-within:bg-sidebar-accent ${selected ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground/80'}`}
+          data-selected={selected}
+          className="sidebar-session-row group/session flex h-8 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
-                  className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-inherit"
+                  className="sidebar-session-link h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-inherit"
                   aria-current={selected ? 'page' : undefined}
                   aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
                   disabled={!desktop || busy}
@@ -114,7 +115,7 @@ export function WorkspaceNavigation({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className={`size-6 ${pinned ? 'text-sidebar-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}
+                    className={`sidebar-session-action size-6 ${pinned ? 'text-sidebar-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}
                     aria-label={`${pinned ? '取消置顶' : '置顶'} ${session.title}`}
                     aria-pressed={pinned}
                     disabled={!desktop || Boolean(workspace.sessionActionPending)}
@@ -132,7 +133,7 @@ export function WorkspaceNavigation({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="size-6 text-muted-foreground/60 hover:text-foreground"
+                    className="sidebar-session-action size-6 text-muted-foreground/60 hover:text-foreground"
                     aria-label={`归档 ${session.title}`}
                     disabled={
                       !desktop || Boolean(workspace.sessionActionPending) || (busy && selected)

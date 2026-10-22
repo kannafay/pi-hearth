@@ -242,6 +242,31 @@ select {
   background: var(--sidebar-accent);
 }
 
+.sidebar-session-row {
+  background-color: transparent;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.sidebar-session-row:is(:hover, :has(:focus-visible)) {
+  background-color: color-mix(in oklch, var(--sidebar-accent) 55%, transparent);
+}
+
+.sidebar-session-row[data-selected='true'] {
+  background-color: var(--sidebar-accent);
+  color: var(--foreground);
+}
+
+/* Only the row paints the session highlight, including the action area. */
+.workspace-navigation .sidebar-session-row :is(.sidebar-session-link, .sidebar-session-action) {
+  background: transparent;
+}
+
+.workspace-navigation .sidebar-session-action:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
 .workspace-navigation .os-scrollbar-vertical {
   --os-size: 4px;
   --os-padding-perpendicular: 0;
