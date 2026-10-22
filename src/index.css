@@ -387,6 +387,11 @@ select {
     opacity 160ms ease-out;
 }
 
+.sidebar-project-sessions .sidebar-session-link {
+  border-width: 0;
+  padding-left: calc(var(--spacing) * 7);
+}
+
 .sidebar-project-sessions:is([data-starting-style], [data-ending-style]) {
   height: 0;
   opacity: 0;
