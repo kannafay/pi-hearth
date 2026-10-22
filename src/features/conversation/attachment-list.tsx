@@ -65,10 +65,10 @@ export function AttachmentList({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={`移除 ${file.name}`}
-                className="absolute top-1 right-1 z-10 size-5 rounded-sm bg-background/90 text-muted-foreground backdrop-blur-md hover:bg-background/90 hover:text-destructive focus-visible:bg-background/90 focus-visible:text-destructive dark:hover:bg-background/90 dark:focus-visible:bg-background/90"
+                className="absolute top-1 right-1 z-10 size-4 rounded-sm border-0 bg-background/90 bg-clip-border text-muted-foreground backdrop-blur-md hover:bg-background/90 hover:text-destructive focus-visible:bg-background/90 focus-visible:text-destructive dark:hover:bg-background/90 dark:focus-visible:bg-background/90"
                 onClick={() => onRemove(file.id)}
               >
-                <X className="size-3" />
+                <X className="size-2.5" />
               </Button>
             )}
           </div>
