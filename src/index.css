@@ -249,7 +249,7 @@ select {
 }
 
 :is(.sidebar-session-row, .sidebar-project-row) {
-  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 18%, transparent);
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 50%, transparent);
   --sidebar-row-actions-width: 3.625rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
@@ -283,7 +283,7 @@ select {
 }
 
 .sidebar-session-row[data-selected='true'] {
-  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 55%, transparent);
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 80%, transparent);
   color: var(--foreground);
 }
 
