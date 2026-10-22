@@ -279,12 +279,12 @@ export function WorkspaceNavigation({
                             side="right"
                             align="start"
                             sideOffset={8}
-                            className="block max-w-sm space-y-1.5 px-3 py-2.5"
+                            className="block w-max max-w-[min(20rem,var(--available-width))] space-y-1.5 px-3 py-2.5"
                           >
-                            <div className="font-medium">{project.name}</div>
+                            <div className="font-medium wrap-anywhere">{project.name}</div>
                             <div className="flex items-start gap-2 opacity-75">
                               <Folder className="mt-0.5 size-3.5 shrink-0 stroke-[1.5]" />
-                              <span className="min-w-0 wrap-anywhere">{project.path}</span>
+                              <span className="min-w-0 break-all">{project.path}</span>
                             </div>
                           </TooltipContent>
                         </Tooltip>
