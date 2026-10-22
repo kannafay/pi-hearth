@@ -48,7 +48,6 @@ function AttachmentPreviewContent({ file, onClose }: { file: Attachment; onClose
         : kind === 'audio'
           ? '音频预览'
           : file.name
-  const media = kind === 'image' || kind === 'video'
 
   useEffect(() => {
     let disposed = false
@@ -67,7 +66,7 @@ function AttachmentPreviewContent({ file, onClose }: { file: Attachment; onClose
 
   return (
     <DialogContent
-      className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] min-w-64 overflow-hidden sm:max-w-[calc(100vw-3rem)] ${media ? 'w-fit max-w-[calc(100vw-3rem)]' : kind === 'audio' ? 'w-[min(420px,calc(100vw-3rem))]' : 'w-[min(720px,calc(100vw-3rem))]'}`}
+      className="top-[calc((100dvh+var(--titlebar-height))/2)] h-[min(620px,calc(100dvh-var(--titlebar-height)-3rem))] w-[min(900px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-none"
       onKeyDownCapture={(event) => {
         if (event.key === 'Escape' && !document.fullscreenElement) {
           event.preventDefault()
@@ -80,49 +79,52 @@ function AttachmentPreviewContent({ file, onClose }: { file: Attachment; onClose
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription className="sr-only">查看附件内容。</DialogDescription>
       </DialogHeader>
-      {error ? (
-        <p role="alert" className="py-8 text-sm text-muted-foreground">
-          {error}
-        </p>
-      ) : !preview ? (
-        <p role="status" className="py-8 text-sm text-muted-foreground">
-          正在读取附件…
-        </p>
-      ) : preview.kind === 'image' && preview.source ? (
-        <div className="flex min-h-0 items-center justify-center">
+      <div className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
+        {error ? (
+          <p role="alert" className="py-8 text-sm text-muted-foreground">
+            {error}
+          </p>
+        ) : !preview ? (
+          <p role="status" className="py-8 text-sm text-muted-foreground">
+            正在读取附件…
+          </p>
+        ) : preview.kind === 'image' && preview.source ? (
           <img
             src={preview.source}
             alt="图片预览"
-            className="block h-auto w-auto max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-11rem)] rounded-sm object-contain"
+            className="block h-auto max-h-full w-auto max-w-full rounded-sm object-contain"
             onError={() => setError('图片无法显示。')}
           />
-        </div>
-      ) : preview.kind === 'video' && preview.source ? (
-        <video
-          src={preview.source}
-          controls
-          playsInline
-          preload="metadata"
-          aria-label="视频预览"
-          className="h-auto w-auto min-w-64 max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-11rem)] rounded-md bg-black"
-          onError={() => setError('视频无法播放，文件可能损坏或编码不受支持。')}
-        />
-      ) : preview.kind === 'audio' && preview.source ? (
-        <audio
-          src={preview.source}
-          controls
-          preload="metadata"
-          aria-label="音频预览"
-          className="my-4 w-full"
-          onError={() => setError('音频无法播放，文件可能损坏或编码不受支持。')}
-        />
-      ) : (
-        <ScrollArea viewportClassName="max-h-[min(65dvh,calc(100dvh-var(--titlebar-height)-11rem))] rounded-md border bg-muted/25 p-4">
-          <pre className="font-mono text-xs leading-6 whitespace-pre-wrap wrap-anywhere">
-            {preview.text}
-          </pre>
-        </ScrollArea>
-      )}
+        ) : preview.kind === 'video' && preview.source ? (
+          <video
+            src={preview.source}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label="视频预览"
+            className="h-full w-full rounded-md bg-black object-contain"
+            onError={() => setError('视频无法播放，文件可能损坏或编码不受支持。')}
+          />
+        ) : preview.kind === 'audio' && preview.source ? (
+          <audio
+            src={preview.source}
+            controls
+            preload="metadata"
+            aria-label="音频预览"
+            className="w-full max-w-105"
+            onError={() => setError('音频无法播放，文件可能损坏或编码不受支持。')}
+          />
+        ) : (
+          <ScrollArea
+            className="h-full w-full"
+            viewportClassName="h-full rounded-md border bg-muted/25 p-4"
+          >
+            <pre className="font-mono text-xs leading-6 whitespace-pre-wrap wrap-anywhere">
+              {preview.text}
+            </pre>
+          </ScrollArea>
+        )}
+      </div>
     </DialogContent>
   )
 }
