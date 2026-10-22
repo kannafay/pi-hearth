@@ -28,8 +28,8 @@ export function AttachmentList({
               onClick={() => showPreview(file)}
               className={`relative flex overflow-hidden rounded-md border bg-muted/25 text-left outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring ${
                 media
-                  ? `aspect-square ${onRemove ? 'w-16' : 'w-24'} max-w-full items-center justify-center`
-                  : 'max-w-[min(15rem,100%)] items-center gap-2 p-2 pr-9'
+                  ? `aspect-square ${onRemove ? 'w-14' : 'w-24'} max-w-full items-center justify-center`
+                  : `max-w-[min(15rem,100%)] items-center gap-2 p-2 pr-9 ${onRemove ? 'h-14' : ''}`
               }`}
             >
               {media ? (
