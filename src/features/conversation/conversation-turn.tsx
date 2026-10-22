@@ -66,7 +66,7 @@ export const ConversationTurn = memo(function ConversationTurn({
                 disabled={submitting}
                 onChange={(event) => setDraft(event.target.value)}
                 rows={3}
-                className="max-h-64 border-0 bg-transparent px-0 py-0 text-[14px] leading-6 shadow-none focus-within:ring-0"
+                className="max-h-64 rounded-none border-0 bg-transparent px-0 py-0 text-[14px] leading-6 shadow-none focus-within:ring-0 dark:bg-transparent [&_textarea]:rounded-none"
                 onKeyDown={(event) => {
                   if (event.nativeEvent.isComposing) return
                   if (event.key === 'Escape' && !submitting) {
