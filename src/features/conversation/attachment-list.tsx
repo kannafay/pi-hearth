@@ -21,7 +21,7 @@ export function AttachmentList({
         const media = ['image', 'video', 'audio'].includes(file.kind)
         const label = file.kind === 'image' ? '图片' : file.kind === 'video' ? '视频' : '音频'
         return (
-          <div key={file.id} className="relative min-w-0 max-w-full">
+          <div key={file.id} className="attachment-item relative min-w-0 max-w-full">
             <button
               type="button"
               aria-label={media ? `查看${label}` : `查看 ${file.name}`}
@@ -65,7 +65,7 @@ export function AttachmentList({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={`移除 ${file.name}`}
-                className="absolute top-1 right-1 z-10 size-4 rounded-sm border-0 bg-background/90 bg-clip-border text-muted-foreground backdrop-blur-md hover:bg-background/90 hover:text-destructive focus-visible:bg-background/90 focus-visible:text-destructive dark:hover:bg-background/90 dark:focus-visible:bg-background/90"
+                className="attachment-remove absolute top-1 right-1 z-10 size-4 rounded-sm border-0 bg-background/90 bg-clip-border text-muted-foreground backdrop-blur-md hover:bg-background/90 hover:text-destructive focus-visible:bg-background/90 focus-visible:text-destructive dark:hover:bg-background/90 dark:focus-visible:bg-background/90"
                 onClick={() => onRemove(file.id)}
               >
                 <X className="size-2.5" />

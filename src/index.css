@@ -438,10 +438,15 @@ select {
   opacity: 0;
 }
 
-.message-actions {
+.message-actions,
+.attachment-remove {
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease-out;
+}
+
+.attachment-remove {
+  transition-property: opacity, color, background-color;
 }
 
 .conversation-markdown [data-streamdown='code-block'] {
@@ -516,13 +521,15 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-[data-conversation-message]:is(:hover, :focus-within) .message-actions {
+[data-conversation-message]:is(:hover, :focus-within) .message-actions,
+.attachment-item:is(:hover, :focus-within) > .attachment-remove {
   opacity: 1;
   pointer-events: auto;
 }
 
 @media (hover: none) {
-  .message-actions {
+  .message-actions,
+  .attachment-remove {
     opacity: 1;
     pointer-events: auto;
   }
