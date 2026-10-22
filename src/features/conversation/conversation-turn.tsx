@@ -49,7 +49,7 @@ export const ConversationTurn = memo(function ConversationTurn({
               plugins={{ code }}
               isAnimating={reply.status === 'streaming'}
               mode={reply.status === 'streaming' ? 'streaming' : 'static'}
-              className="text-[14px] leading-7 wrap-anywhere"
+              className="space-y-3 text-[14px] leading-6 wrap-anywhere"
             >
               {reply.text}
             </Streamdown>
