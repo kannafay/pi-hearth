@@ -108,7 +108,7 @@ export function ExecutionProcess({
                 <ToolRecord key={item.id} tool={item.tool} compact />
               ) : item.kind === 'thinking' ? (
                 <div key={item.id} className="space-y-2 pr-1">
-                  <p className="flex items-center gap-1.5 text-xs font-medium text-foreground/65">
+                  <p className="flex items-center gap-1.5 text-[14px] font-medium text-foreground/65">
                     <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
                     思考
                   </p>
