@@ -78,6 +78,19 @@ impl Conversation {
         }
     }
 
+    pub fn renew(&mut self, instance_id: String) {
+        let previous = &mut self.snapshot;
+        let mut next = Self::new(instance_id, previous.project_path.clone());
+        next.snapshot.session_id = std::mem::take(&mut previous.session_id);
+        next.snapshot.session_file = previous.session_file.take();
+        next.snapshot.model = previous.model.take();
+        next.snapshot.models = std::mem::take(&mut previous.models);
+        next.snapshot.thinking_level = std::mem::take(&mut previous.thinking_level);
+        next.snapshot.available_thinking_levels =
+            std::mem::take(&mut previous.available_thinking_levels);
+        *self = next;
+    }
+
     pub fn event(&mut self, data: EventData) -> PiEvent {
         self.snapshot.sequence += 1;
         PiEvent {

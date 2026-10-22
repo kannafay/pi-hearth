@@ -7,7 +7,8 @@ use super::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     process::Stdio,
     sync::Arc,
@@ -25,6 +26,11 @@ use uuid::Uuid;
 type Reply = oneshot::Sender<Result<Value, String>>;
 
 enum Control {
+    Renew {
+        instance_id: String,
+        channel: Channel<PiEvent>,
+        reply: oneshot::Sender<Result<RuntimeSnapshot, String>>,
+    },
     Rewind {
         message_id: String,
         reply: Reply,
@@ -61,12 +67,35 @@ enum Control {
     },
 }
 
+struct ScopedControl {
+    instance_id: String,
+    control: Control,
+}
+
+struct SessionRenewal(Option<Arc<tauri::async_runtime::JoinHandle<()>>>);
+
+impl Drop for SessionRenewal {
+    fn drop(&mut self) {
+        // A cancelled transition may have already replaced Pi's native context.
+        // Reconnect on the next open rather than exposing a half-switched session.
+        if let Some(runtime) = self.0.take() {
+            runtime.abort();
+        }
+    }
+}
+
 pub struct PiClient {
     pub instance_id: String,
     pub project_path: String,
-    commands: mpsc::Sender<Control>,
+    commands: mpsc::Sender<ScopedControl>,
     pub(super) actions: Mutex<()>,
     action_token: String,
+    session_directory: PathBuf,
+    source_directory: PathBuf,
+    config_revision: u64,
+    runtime: Arc<tauri::async_runtime::JoinHandle<()>>,
+    #[cfg(test)]
+    process_id: u32,
 }
 
 #[derive(Clone)]
@@ -96,6 +125,24 @@ impl PiClient {
         channel: Channel<PiEvent>,
         options: Option<&OpenOptions>,
     ) -> Result<Arc<Self>, String> {
+        Self::spawn_with_source(
+            project_path,
+            data_dir,
+            channel,
+            options,
+            &local_agent_directory()?,
+        )
+        .await
+    }
+
+    async fn spawn_with_source(
+        project_path: String,
+        data_dir: &Path,
+        channel: Channel<PiEvent>,
+        options: Option<&OpenOptions>,
+        source_agent_dir: &Path,
+    ) -> Result<Arc<Self>, String> {
+        let config_revision = configuration_revision(source_agent_dir, Path::new(&project_path))?;
         let cli = pi_cli_path()?;
         let instance_id = Uuid::new_v4().to_string();
         let action_token = Uuid::new_v4().to_string();
@@ -106,8 +153,7 @@ impl PiClient {
         std::fs::write(&guard, include_str!("../../../runtime/tool-guard.mjs"))
             .map_err(|_| "无法安装工具审批模块。")?;
         let agent_dir = data_dir.join("pi");
-        let config = prepare_config(&local_agent_directory()?, &agent_dir)?;
-        let source_agent_dir = local_agent_directory()?;
+        let config = prepare_config(source_agent_dir, &agent_dir)?;
         let global_instructions = ["AGENTS.md", "CLAUDE.md"]
             .iter()
             .map(|name| source_agent_dir.join(name))
@@ -145,7 +191,7 @@ impl PiClient {
             .arg("--extension")
             .arg(&guard)
             .arg("--session-dir")
-            .arg(sessions)
+            .arg(&sessions)
             .env("PI_CODING_AGENT_DIR", &agent_dir)
             .env("PI_TELEMETRY", "0")
             .env("HEARTH_MESSAGE_ACTION_TOKEN", &action_token)
@@ -165,7 +211,8 @@ impl PiClient {
         let mut child = command
             .spawn()
             .map_err(|_| "无法启动 Pi：请确认 Node.js 22.19 或以上版本已加入 PATH。")?;
-        let tree = match ProcessTree::attach(child.id().ok_or("Pi 进程未启动。")?) {
+        let process_id = child.id().ok_or("Pi 进程未启动。")?;
+        let tree = match ProcessTree::attach(process_id) {
             Ok(tree) => tree,
             Err(error) => {
                 let _ = child.kill().await;
@@ -175,17 +222,12 @@ impl PiClient {
         let mut stdin = child.stdin.take();
         let mut stdout = child.stdout.take().ok_or("无法读取 Pi 标准输出。")?;
         let mut stderr = child.stderr.take().ok_or("无法读取 Pi 诊断输出。")?;
-        let (sender, mut receiver) = mpsc::channel::<Control>(32);
-        let client = Arc::new(Self {
-            instance_id: instance_id.clone(),
-            project_path: project_path.clone(),
-            commands: sender,
-            actions: Mutex::new(()),
-            action_token,
-        });
-        tauri::async_runtime::spawn(async move {
+        let (sender, mut receiver) = mpsc::channel::<ScopedControl>(32);
+        let runtime_instance_id = instance_id.clone();
+        let runtime_project_path = project_path.clone();
+        let runtime = tauri::async_runtime::spawn(async move {
             let _tree = tree;
-            let mut conversation = Conversation::new(instance_id, project_path);
+            let mut conversation = Conversation::new(runtime_instance_id, runtime_project_path);
             let mut channel = channel;
             let mut pending = HashMap::<String, Pending>::new();
             let mut approvals = HashMap::<String, Approval>::new();
@@ -207,7 +249,28 @@ impl PiClient {
                         break;
                     }
                     control = receiver.recv() => {
+                        let control = match control {
+                            Some(scoped) if scoped.instance_id == conversation.snapshot.instance_id => Some(scoped.control),
+                            // An old session's queued actions must never reach the reused process.
+                            Some(_) => continue,
+                            None => None,
+                        };
                         match control {
+                            Some(Control::Renew { instance_id, channel: next, reply }) => {
+                                if conversation.snapshot.active_run_id.is_some() {
+                                    let _ = reply.send(Err("请先停止当前回复再新建聊天。".into())); continue;
+                                }
+                                if deny_approvals(&mut approvals, &mut stdin, &mut conversation, &channel).await.is_err() {
+                                    let _ = reply.send(Err("无法清理旧会话的工具确认。".into()));
+                                    exit_error = Some("Pi 输入管道已中断，请重新连接。".into()); break;
+                                }
+                                for (_, request) in pending.drain() {
+                                    let _ = request.reply.send(Err("已切换到新的会话。".into()));
+                                }
+                                conversation.renew(instance_id);
+                                channel = next;
+                                let _ = reply.send(Ok(conversation.snapshot.clone()));
+                            }
                             Some(Control::Rewind { message_id, reply }) => {
                                 let result = conversation.rewind(&message_id).map(|events| {
                                     emit(&channel, events);
@@ -311,8 +374,8 @@ impl PiClient {
                                         *error = redact(error.as_str().unwrap().into(), &config.secrets).into();
                                     }
                                     if record["type"] == "response" {
-                                        conversation.response(&record);
                                         if let Some(request) = record["id"].as_str().and_then(|id| pending.remove(id)) {
+                                            conversation.response(&record);
                                             let result: Result<Value, String> = if record["success"] == true { Ok(record["data"].clone()) } else { Err(record["error"].as_str().unwrap_or("Pi 拒绝了命令。").into()) };
                                             if request.prompt_run.as_ref() == conversation.snapshot.active_run_id.as_ref() && request.prompt_run.is_some() {
                                                 match &result {
@@ -425,19 +488,119 @@ impl PiClient {
                 let _ = reply.send(());
             }
         });
-        Ok(client)
+        Ok(Arc::new(Self {
+            instance_id,
+            project_path,
+            commands: sender,
+            actions: Mutex::new(()),
+            action_token,
+            session_directory: sessions,
+            source_directory: source_agent_dir.to_owned(),
+            config_revision,
+            runtime: Arc::new(runtime),
+            #[cfg(test)]
+            process_id,
+        }))
+    }
+
+    async fn control(&self, control: Control) -> Result<(), String> {
+        self.commands
+            .send(ScopedControl {
+                instance_id: self.instance_id.clone(),
+                control,
+            })
+            .await
+            .map_err(|_| "Pi 连接已关闭，请重新连接。".into())
+    }
+
+    async fn new_session(
+        &self,
+        channel: Channel<PiEvent>,
+    ) -> Result<(Arc<Self>, RuntimeSnapshot), String> {
+        let previous = self.snapshot().await?;
+        let mut renewal = SessionRenewal(Some(self.runtime.clone()));
+        let result = self.request(json!({"type":"new_session"}), None).await?;
+        if result["cancelled"] == true {
+            return Err("新建会话已取消。".into());
+        }
+        self.check_guard().await?;
+        self.request(json!({"type":"get_state"}), None).await?;
+        let snapshot = self.snapshot().await?;
+        if let Some(model) = previous.model.as_ref()
+            && !snapshot
+                .model
+                .as_ref()
+                .is_some_and(|current| current.provider == model.provider && current.id == model.id)
+        {
+            self.request(
+                json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
+                None,
+            )
+            .await?;
+        }
+        self.request(json!({"type":"get_available_thinking_levels"}), None)
+            .await?;
+        let levels = self.snapshot().await?.available_thinking_levels;
+        if levels.contains(&previous.thinking_level) {
+            self.request(
+                json!({"type":"set_thinking_level","level":previous.thinking_level}),
+                None,
+            )
+            .await?;
+        }
+        self.request(json!({"type":"get_state"}), None).await?;
+        let instance_id = Uuid::new_v4().to_string();
+        let (reply, receive) = oneshot::channel();
+        self.control(Control::Renew {
+            instance_id: instance_id.clone(),
+            channel,
+            reply,
+        })
+        .await?;
+        let snapshot = receive.await.map_err(|_| "Pi 连接已关闭。")??;
+        let client = Arc::new(Self {
+            instance_id,
+            project_path: self.project_path.clone(),
+            commands: self.commands.clone(),
+            actions: Mutex::new(()),
+            action_token: self.action_token.clone(),
+            session_directory: self.session_directory.clone(),
+            source_directory: self.source_directory.clone(),
+            config_revision: self.config_revision,
+            runtime: self.runtime.clone(),
+            #[cfg(test)]
+            process_id: self.process_id,
+        });
+        renewal.0 = None;
+        Ok((client, snapshot))
+    }
+
+    fn configuration_unchanged(&self) -> bool {
+        configuration_revision(&self.source_directory, Path::new(&self.project_path))
+            .is_ok_and(|revision| revision == self.config_revision)
+    }
+
+    async fn check_guard(&self) -> Result<(), String> {
+        let commands = self.request(json!({"type":"get_commands"}), None).await?;
+        if !commands["commands"].as_array().is_some_and(|commands| {
+            commands.iter().any(|command| {
+                command["name"] == "hearth-guard-ready" && command["source"] == "extension"
+            })
+        }) {
+            return Err("工具审批模块未加载，已关闭 Pi 连接。请重新构建客户端。".into());
+        }
+        Ok(())
     }
 
     pub async fn request(&self, body: Value, run_id: Option<String>) -> Result<Value, String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Request {
-                body,
-                run_id,
-                reply,
-            })
-            .await
-            .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
+        self.control(Control::Request {
+            body,
+            run_id,
+            reply,
+        })
+        .await
+        .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
         timeout(Duration::from_secs(25), receive)
             .await
             .map_err(|_| "Pi 命令响应超时。")?
@@ -459,13 +622,12 @@ impl PiClient {
             return Err("无法切换到这条消息，请重新打开会话后重试。".into());
         }
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Rewind {
-                message_id: message_id.into(),
-                reply,
-            })
-            .await
-            .map_err(|_| "Pi 连接已关闭。")?;
+        self.control(Control::Rewind {
+            message_id: message_id.into(),
+            reply,
+        })
+        .await
+        .map_err(|_| "Pi 连接已关闭。")?;
         receive.await.map_err(|_| "Pi 连接已关闭。")??;
         self.request(rewrite.prompt, Some(run_id)).await?;
         Ok(())
@@ -473,8 +635,7 @@ impl PiClient {
 
     pub async fn restore(&self, messages: Vec<Value>) -> Result<RuntimeSnapshot, String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Restore { messages, reply })
+        self.control(Control::Restore { messages, reply })
             .await
             .map_err(|_| "Pi 连接已关闭。")?;
         timeout(Duration::from_secs(30), receive)
@@ -485,14 +646,13 @@ impl PiClient {
 
     pub async fn decide(&self, approval_id: String, allow: bool) -> Result<(), String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Decide {
-                approval_id,
-                allow,
-                reply,
-            })
-            .await
-            .map_err(|_| "Pi 连接已关闭。")?;
+        self.control(Control::Decide {
+            approval_id,
+            allow,
+            reply,
+        })
+        .await
+        .map_err(|_| "Pi 连接已关闭。")?;
         timeout(Duration::from_secs(7), receive)
             .await
             .map_err(|_| "工具确认响应超时。")?
@@ -507,15 +667,14 @@ impl PiClient {
         offset: u32,
     ) -> Result<ToolLogPage, String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Output {
-                tool_id,
-                section,
-                offset,
-                reply,
-            })
-            .await
-            .map_err(|_| "Pi 连接已关闭。")?;
+        self.control(Control::Output {
+            tool_id,
+            section,
+            offset,
+            reply,
+        })
+        .await
+        .map_err(|_| "Pi 连接已关闭。")?;
         timeout(Duration::from_secs(7), receive)
             .await
             .map_err(|_| "加载工具输出超时。")?
@@ -524,8 +683,7 @@ impl PiClient {
 
     pub async fn subscribe(&self, channel: Channel<PiEvent>) -> Result<RuntimeSnapshot, String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Subscribe { channel, reply })
+        self.control(Control::Subscribe { channel, reply })
             .await
             .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
         timeout(Duration::from_secs(5), receive)
@@ -536,20 +694,14 @@ impl PiClient {
 
     pub async fn shutdown(&self) {
         let (reply, receive) = oneshot::channel();
-        if self
-            .commands
-            .send(Control::Shutdown { reply })
-            .await
-            .is_ok()
-        {
+        if self.control(Control::Shutdown { reply }).await.is_ok() {
             let _ = timeout(Duration::from_secs(5), receive).await;
         }
     }
 
     pub async fn snapshot(&self) -> Result<RuntimeSnapshot, String> {
         let (reply, receive) = oneshot::channel();
-        self.commands
-            .send(Control::Snapshot { reply })
+        self.control(Control::Snapshot { reply })
             .await
             .map_err(|_| "Pi 连接已关闭。")?;
         timeout(Duration::from_secs(5), receive)
@@ -676,6 +828,29 @@ fn pi_cli_path() -> Result<PathBuf, String> {
     dunce::canonicalize(path).map_err(|_| "无法定位 Pi 运行时。".into())
 }
 
+fn configuration_revision(source: &Path, project: &Path) -> Result<u64, String> {
+    let mut revision = DefaultHasher::new();
+    for file in [
+        "models.json",
+        "auth.json",
+        "settings.json",
+        "AGENTS.md",
+        "CLAUDE.md",
+    ]
+    .map(|name| source.join(name))
+    .into_iter()
+    .chain([project.join(".pi/settings.json")])
+    {
+        let content = match std::fs::read(&file) {
+            Ok(content) => Some(content),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => return Err("无法读取 Pi 配置，请检查文件访问权限。".into()),
+        };
+        content.hash(&mut revision);
+    }
+    Ok(revision.finish())
+}
+
 #[derive(Default)]
 pub struct PiManager {
     runtime: Mutex<Option<Arc<PiClient>>>,
@@ -717,32 +892,63 @@ impl PiManager {
         }
         let project_path = path.to_str().ok_or("项目路径不是有效 UTF-8。")?.to_owned();
         let mut runtime = self.runtime.lock().await;
-        if let Some(current) = runtime.as_ref() {
+        let source_directory = runtime
+            .as_ref()
+            .map(|client| client.source_directory.clone());
+        if let Some(current) = runtime.clone() {
+            let _actions = current.actions.lock().await;
             if current.project_path == project_path && options.is_none() {
                 if let Ok(snapshot) = current.subscribe(channel.clone()).await {
                     return Ok(snapshot);
                 }
             } else {
                 let snapshot = current.snapshot().await;
-                if snapshot.is_ok_and(|snapshot| snapshot.active_run_id.is_some()) {
+                if snapshot
+                    .as_ref()
+                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+                {
                     return Err("请先停止当前回复再切换项目。".into());
+                }
+                if current.project_path == project_path
+                    && options.as_ref().is_some_and(|options| {
+                        options.session_file.is_none()
+                            && options.session_directory == current.session_directory
+                    })
+                    && snapshot.is_ok()
+                    && current.configuration_unchanged()
+                {
+                    let result = current.new_session(channel.clone()).await;
+                    match result {
+                        Ok((client, snapshot)) => {
+                            *runtime = Some(client);
+                            return Ok(snapshot);
+                        }
+                        Err(error) => {
+                            current.shutdown().await;
+                            *runtime = None;
+                            return Err(error);
+                        }
+                    }
                 }
             }
             current.shutdown().await;
         }
         *runtime = None;
         *self.read_only.lock().await = None;
-        let client =
-            PiClient::spawn(project_path, data_dir, channel.clone(), options.as_ref()).await?;
+        let client = if let Some(source) = source_directory {
+            PiClient::spawn_with_source(
+                project_path,
+                data_dir,
+                channel.clone(),
+                options.as_ref(),
+                &source,
+            )
+            .await?
+        } else {
+            PiClient::spawn(project_path, data_dir, channel.clone(), options.as_ref()).await?
+        };
         let initialize = async {
-            let commands = client.request(json!({"type":"get_commands"}), None).await?;
-            if !commands["commands"].as_array().is_some_and(|commands| {
-                commands.iter().any(|command| {
-                    command["name"] == "hearth-guard-ready" && command["source"] == "extension"
-                })
-            }) {
-                return Err("工具审批模块未加载，已关闭 Pi 连接。请重新构建客户端。".into());
-            }
+            client.check_guard().await?;
             client.request(json!({"type":"get_state"}), None).await?;
             client
                 .request(json!({"type":"get_available_models"}), None)
@@ -794,6 +1000,18 @@ impl PiManager {
                 Err(error)
             }
         }
+    }
+
+    pub async fn session_directory(&self, project_path: &str) -> Option<PathBuf> {
+        self.runtime
+            .lock()
+            .await
+            .as_ref()
+            .filter(|client| {
+                super::catalog::same_path(&client.project_path, project_path)
+                    && client.configuration_unchanged()
+            })
+            .map(|client| client.session_directory.clone())
     }
 
     pub async fn client(&self, instance_id: &str) -> Result<Arc<PiClient>, String> {
@@ -881,6 +1099,276 @@ impl PiManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn new_chats_reuse_the_native_process_and_isolate_session_state() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/process-reuse-test")
+            .join(Uuid::new_v4().to_string());
+        let source = root.join("source");
+        let project = root.join("project");
+        let sessions = root.join("sessions");
+        for directory in [&source, &project, &sessions] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        let project = dunce::canonicalize(project).unwrap();
+        let project_path = project.to_string_lossy().into_owned();
+        std::fs::write(source.join("models.json"), json!({"providers":{"reuse-test":{
+            "api":"openai-completions", "baseUrl":"http://127.0.0.1:9/v1", "apiKey":"offline-test-key",
+            "models":[
+                {"id":"first","name":"Offline First","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096},
+                {"id":"second","name":"Offline Second","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}
+            ]
+        }}}).to_string()).unwrap();
+        let history = vec![
+            json!({"role":"user","content":"Only the old chat knows OLD-SESSION-731", "timestamp":1000}),
+            json!({"role":"assistant","content":[{"type":"thinking","thinking":"old reasoning"},{"type":"toolCall","id":"old-read","name":"read","arguments":{"path":"old.txt"}}],"stopReason":"toolUse","timestamp":1100}),
+            json!({"role":"toolResult","toolCallId":"old-read","toolName":"read","content":[{"type":"text","text":"old output"}],"isError":false,"timestamp":1200}),
+            json!({"role":"assistant","content":[{"type":"text","text":"old reply"}],"stopReason":"stop","timestamp":1300}),
+        ];
+        let file = sessions.join("old.jsonl");
+        let mut entries = vec![
+            json!({"type":"session","version":3,"id":Uuid::new_v4().to_string(),"timestamp":"2026-10-22T00:00:00.000Z","cwd":project_path}),
+        ];
+        for (index, message) in history.iter().enumerate() {
+            entries.push(json!({"type":"message","id":format!("entry-{index}"),"parentId":if index == 0 {None} else {Some(format!("entry-{}",index-1))},"timestamp":"2026-10-22T00:00:01.000Z","message":message}));
+        }
+        let original = entries
+            .iter()
+            .map(|entry| format!("{entry}\n"))
+            .collect::<String>();
+        std::fs::write(&file, &original).unwrap();
+        let (old_events, mut old_received) = mpsc::unbounded_channel::<Value>();
+        let old_channel = Channel::new(move |body| {
+            let _ = old_events.send(body.deserialize::<Value>().unwrap());
+            Ok(())
+        });
+        let started = Instant::now();
+        let initial = PiClient::spawn_with_source(
+            project_path.clone(),
+            &root.join("data"),
+            old_channel,
+            Some(&OpenOptions {
+                session_directory: sessions.clone(),
+                session_file: Some(file.to_string_lossy().into_owned()),
+                history: history.clone(),
+            }),
+            &source,
+        )
+        .await
+        .unwrap();
+        initial.check_guard().await.unwrap();
+        initial
+            .request(json!({"type":"get_available_models"}), None)
+            .await
+            .unwrap();
+        initial
+            .request(
+                json!({"type":"set_model","provider":"reuse-test","modelId":"second"}),
+                None,
+            )
+            .await
+            .unwrap();
+        initial
+            .request(json!({"type":"get_available_thinking_levels"}), None)
+            .await
+            .unwrap();
+        initial
+            .request(json!({"type":"set_thinking_level","level":"high"}), None)
+            .await
+            .unwrap();
+        initial
+            .request(json!({"type":"get_state"}), None)
+            .await
+            .unwrap();
+        let before = initial.restore(history).await.unwrap();
+        let original = std::fs::read_to_string(&file).unwrap();
+        let cold = started.elapsed();
+        assert_eq!(before.messages.len(), 3);
+        assert_eq!(before.tools.len(), 1);
+        let tool_id = before.tools[0].id.clone();
+        let native = initial
+            .request(json!({"type":"get_messages"}), None)
+            .await
+            .unwrap();
+        assert!(native.to_string().contains("OLD-SESSION-731"));
+        let manager = PiManager {
+            runtime: Mutex::new(Some(initial.clone())),
+            read_only: Mutex::new(None),
+        };
+        assert_eq!(
+            manager.session_directory(&project_path).await.as_ref(),
+            Some(&sessions)
+        );
+        assert!(
+            manager
+                .session_directory("different-project")
+                .await
+                .is_none()
+        );
+        let mut previous = before;
+        let mut timings = Vec::new();
+        for _ in 0..3 {
+            let started = Instant::now();
+            let next = manager
+                .open(
+                    project_path.clone(),
+                    &root.join("data"),
+                    Channel::new(|_| Ok(())),
+                    OpenOptions {
+                        session_directory: sessions.clone(),
+                        session_file: None,
+                        history: vec![],
+                    },
+                )
+                .await
+                .unwrap();
+            timings.push(started.elapsed().as_millis());
+            let client = manager.client(&next.instance_id).await.unwrap();
+            assert_eq!(client.process_id, initial.process_id);
+            assert!(client.commands.same_channel(&initial.commands));
+            assert_ne!(next.instance_id, previous.instance_id);
+            assert_ne!(next.session_id, previous.session_id);
+            assert_ne!(next.session_file, previous.session_file);
+            assert!(next.messages.is_empty() && next.tools.is_empty() && next.timeline.is_empty());
+            assert!(next.active_run_id.is_none());
+            assert_eq!(next.sequence, 0);
+            assert_eq!(next.model.as_ref().unwrap().id, "second");
+            assert_eq!(next.thinking_level, "high");
+            assert_eq!(next.models.len(), previous.models.len());
+            let native = client
+                .request(json!({"type":"get_messages"}), None)
+                .await
+                .unwrap();
+            assert!(native["messages"].as_array().unwrap().is_empty());
+            assert!(manager.client(&previous.instance_id).await.is_err());
+            previous = next;
+        }
+        let client = manager.client(&previous.instance_id).await.unwrap();
+        assert!(
+            initial
+                .request(json!({"type":"set_thinking_level","level":"off"}), None)
+                .await
+                .is_err()
+        );
+        assert!(initial.decide("old-approval".into(), true).await.is_err());
+        assert!(
+            client
+                .tool_output(tool_id, "output".into(), 0)
+                .await
+                .is_err()
+        );
+        initial.shutdown().await;
+        assert_eq!(client.snapshot().await.unwrap().thinking_level, "high");
+        assert!(old_received.try_recv().is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        println!(
+            "Native Pi PID {} retained; cold {} ms; new sessions {:?} ms",
+            initial.process_id,
+            cold.as_millis(),
+            timings
+        );
+        std::fs::write(
+            source.join("settings.json"),
+            r#"{"defaultThinkingLevel":"low"}"#,
+        )
+        .unwrap();
+        assert!(manager.session_directory(&project_path).await.is_none());
+        let refreshed = manager
+            .open(
+                project_path.clone(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: sessions.clone(),
+                    session_file: None,
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let refreshed_client = manager.client(&refreshed.instance_id).await.unwrap();
+        assert_ne!(refreshed_client.process_id, initial.process_id);
+        assert!(!refreshed_client.commands.same_channel(&initial.commands));
+        assert_eq!(refreshed.thinking_level, "low");
+        let other = root.join("other-project");
+        std::fs::create_dir_all(&other).unwrap();
+        let other = dunce::canonicalize(other).unwrap();
+        let switched = manager
+            .open(
+                other.to_string_lossy().into_owned(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: sessions.clone(),
+                    session_file: None,
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let switched_client = manager.client(&switched.instance_id).await.unwrap();
+        assert_ne!(switched_client.process_id, refreshed_client.process_id);
+        assert_eq!(switched.project_path, other.to_string_lossy());
+        manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_dispatched_new_session_invalidates_the_unfinished_runtime() {
+        let instance_id = Uuid::new_v4().to_string();
+        let runtime_id = instance_id.clone();
+        let (commands, mut receiver) = mpsc::channel::<ScopedControl>(8);
+        let (started, received) = oneshot::channel();
+        let runtime = tauri::async_runtime::spawn(async move {
+            let mut started = Some(started);
+            while let Some(scoped) = receiver.recv().await {
+                match scoped.control {
+                    Control::Snapshot { reply } => {
+                        let _ = reply
+                            .send(Conversation::new(runtime_id.clone(), "project".into()).snapshot);
+                    }
+                    Control::Request { body, reply, .. } if body["type"] == "new_session" => {
+                        let _ = started.take().unwrap().send(());
+                        // Simulate Pi still replacing the native session after dispatch.
+                        let _reply = reply;
+                        std::future::pending::<()>().await;
+                    }
+                    _ => panic!("unexpected command"),
+                }
+            }
+        });
+        let client = Arc::new(PiClient {
+            instance_id,
+            project_path: "project".into(),
+            commands,
+            actions: Mutex::new(()),
+            action_token: "test".into(),
+            session_directory: "sessions".into(),
+            source_directory: "source".into(),
+            config_revision: 0,
+            runtime: Arc::new(runtime),
+            process_id: 0,
+        });
+        let opening = {
+            let client = client.clone();
+            tokio::spawn(async move { client.new_session(Channel::new(|_| Ok(()))).await })
+        };
+        timeout(Duration::from_secs(2), received)
+            .await
+            .unwrap()
+            .unwrap();
+        opening.abort();
+        assert!(matches!(opening.await, Err(error) if error.is_cancelled()));
+        timeout(Duration::from_secs(2), client.commands.closed())
+            .await
+            .unwrap();
+        assert!(
+            client
+                .request(json!({"type":"get_state"}), None)
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn missing_working_directory_history_is_read_only_with_tool_results() {

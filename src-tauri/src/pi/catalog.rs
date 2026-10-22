@@ -596,17 +596,28 @@ pub async fn pi_open(
                 )
                 .await?
         } else {
-            let session_dir: String = serde_json::from_value(
-                helper(&data, json!({"action":"directory","cwd":cwd})).await?,
-            )
-            .map_err(|_| "无法定位 Pi 会话目录。")?;
+            let existing_directory = if session_path.is_none() {
+                manager.session_directory(&cwd).await
+            } else {
+                None
+            };
+            let session_dir = match existing_directory {
+                Some(directory) => directory,
+                None => {
+                    let directory: String = serde_json::from_value(
+                        helper(&data, json!({"action":"directory","cwd":cwd})).await?,
+                    )
+                    .map_err(|_| "无法定位 Pi 会话目录。")?;
+                    directory.into()
+                }
+            };
             manager
                 .open(
                     cwd,
                     &data,
                     on_event,
                     OpenOptions {
-                        session_directory: session_dir.into(),
+                        session_directory: session_dir,
                         session_file: session_path,
                         history,
                     },
