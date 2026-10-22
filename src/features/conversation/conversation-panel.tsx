@@ -7,7 +7,8 @@ import { ConversationTurn } from './conversation-turn'
 import { ConversationWelcome } from './conversation-welcome'
 
 export function ConversationPanel() {
-  const { status, messages, tools, timeline, activity, activeRunId } = useConversationStore()
+  const { status, sessionFile, messages, tools, timeline, activity, activeRunId } =
+    useConversationStore()
   const viewport = useRef<HTMLDivElement>(null)
   const followOutput = useRef(true)
   const turns = useMemo(
@@ -43,7 +44,7 @@ export function ConversationPanel() {
           <div className="mx-auto max-w-209 space-y-8">
             {turns.map((turn, index) => (
               <ConversationTurn
-                key={turn.id}
+                key={`${sessionFile}:${turn.id}`}
                 turn={turn}
                 active={
                   busy &&

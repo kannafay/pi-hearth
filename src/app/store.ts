@@ -144,7 +144,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         conversation.status === 'ready' &&
         !localUpdate
       ) {
-        await conversation.connect(get().projectPath, next.path)
+        await conversation.connect(get().projectPath, next.path, { force: true })
       }
     } catch (reason) {
       set({ error: String(reason) })
@@ -154,6 +154,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   openSession: async (session) => {
     if (busy()) return
+    const conversation = useConversationStore.getState()
+    if (
+      samePath(conversation.sessionFile, session.path) &&
+      ['ready', 'connecting'].includes(conversation.status)
+    )
+      return
     navigation++
     get().clearAttachments()
     const projectPath = samePath(session.cwd, get().generalCwd) ? null : session.cwd
@@ -185,6 +191,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       .connect(
         get().projectPath,
         get().sessions.some((session) => samePath(session.path, path)) ? path : null,
+        { force: true },
       )
   },
 }))

@@ -62,7 +62,9 @@ test('external CLI changes refresh idle history and never reopen a running task'
   useConversationStore.setState({ sessionFile: session.path })
   vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 2 }] })
   await useWorkspaceStore.getState().refresh()
-  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path, {
+    force: true,
+  })
   vi.mocked(useConversationStore.getState().connect).mockClear()
   useConversationStore.setState({ status: 'running' })
   vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 3 }] })
@@ -123,6 +125,44 @@ test('refresh after a local reply updates the sidebar without reconnecting or cl
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     session.path,
+    { force: true },
+  )
+})
+
+test.each(['ready', 'connecting'] as const)(
+  'clicking the current %s session preserves the draft and attachments without reconnecting',
+  async (status) => {
+    const file = {
+      id: 'draft-file',
+      name: 'notes.txt',
+      kind: 'text',
+      mimeType: 'text/plain',
+      size: 12,
+      preview: null,
+    }
+    useWorkspaceStore.setState({
+      ...catalog,
+      selectedSessionPath: session.path,
+      projectPath: session.cwd,
+      draft: '尚未发送',
+      draftAttachments: [file],
+    })
+    useConversationStore.setState({ sessionFile: session.path.toUpperCase(), status })
+    await useWorkspaceStore.getState().openSession(session)
+    expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+    expect(useWorkspaceStore.getState().draft).toBe('尚未发送')
+    expect(useWorkspaceStore.getState().draftAttachments).toEqual([file])
+  },
+)
+
+test('an explicit reload still reconnects the current session', async () => {
+  useWorkspaceStore.setState({ ...catalog, projectPath: session.cwd })
+  useConversationStore.setState({ sessionFile: session.path })
+  await useWorkspaceStore.getState().reloadCurrent()
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    session.path,
+    { force: true },
   )
 })
 

@@ -19,6 +19,7 @@ import { ModelPicker } from './model-picker'
 import { ThinkingPicker } from './thinking-picker'
 import { AttachmentList } from './attachment-list'
 import { useConversationStore } from './store'
+import { ConnectionNotice } from './connection-notice'
 
 export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const { draft, setDraft, draftAttachments, clearAttachments } = useWorkspaceStore()
@@ -41,8 +42,8 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const busy = status === 'running' || status === 'stopping'
   const runStarted = messages.some((message) => message.id === `${activeRunId}-user`)
   const desktop = isDesktop()
-  const statusText =
-    activity || (status === 'disconnected' ? 'Pi 尚未就绪' : !model ? '请配置模型' : '')
+  const connecting = status === 'connecting' || status === 'disconnected'
+  const statusText = connecting ? '' : activity || (!model ? '请配置模型' : '')
 
   async function receive(request: Promise<Attachment[]>) {
     const instanceId = useConversationStore.getState().instanceId
@@ -248,11 +249,13 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
           )}
         </div>
       </div>
-      {statusText && (
+      {connecting && messages.length > 0 ? (
+        <ConnectionNotice className="mt-2 px-1" />
+      ) : statusText ? (
         <p role="status" className="mt-2 truncate px-1 text-[11px] text-muted-foreground/80">
           {statusText}
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

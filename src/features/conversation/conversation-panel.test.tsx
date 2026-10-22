@@ -323,3 +323,46 @@ test('starting the next request does not re-expand the previous turn before its 
   expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'false')
   expect(screen.getByText(answer.text)).toBeVisible()
 })
+
+test('an uncached conversation uses a compact loading notice and a skeleton while drafts remain editable', async () => {
+  const disconnect = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    status: 'connecting',
+    sessionFile: 'history.jsonl',
+    connectionStartedAt: Date.now(),
+    disconnect,
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  expect(screen.getByRole('status')).toHaveTextContent('正在载入会话…')
+  expect(screen.queryByRole('heading', { name: '正在打开会话' })).not.toBeInTheDocument()
+  await user.type(screen.getByRole('textbox', { name: '消息草稿' }), '先写草稿')
+  expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: '取消连接' }))
+  expect(disconnect).toHaveBeenCalledOnce()
+  expect(useWorkspaceStore.getState().draft).toBe('先写草稿')
+})
+
+test('cached history stays visible during connection and failures have an inline retry action', async () => {
+  const { answer } = processFixture()
+  const connect = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    status: 'connecting',
+    sessionFile: 'history.jsonl',
+    messages: [answer],
+    connect,
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  expect(screen.getByText(answer.text)).toBeVisible()
+  expect(screen.queryByLabelText('正在载入会话')).not.toBeInTheDocument()
+  const notice = screen.getByRole('status')
+  expect(notice).toHaveTextContent('正在连接助手…')
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  act(() => useConversationStore.setState({ status: 'disconnected', error: '助手启动失败' }))
+  expect(screen.getByText(answer.text)).toBeVisible()
+  expect(screen.getByRole('alert')).toHaveTextContent('助手启动失败')
+  await user.click(screen.getByRole('button', { name: '重新连接' }))
+  expect(connect).toHaveBeenCalledWith('D:\\项目', 'history.jsonl')
+})

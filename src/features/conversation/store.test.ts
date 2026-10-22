@@ -81,6 +81,240 @@ test('switching during connection ignores the old failure and hydrates the lates
   })
 })
 
+function sessionSnapshot(file: string, text = `回复 ${file}`): RuntimeSnapshot {
+  return {
+    ...snapshot,
+    instanceId: `pi-${file}`,
+    sessionId: file,
+    sessionFile: file,
+    messages: [{ ...message, id: `${file}-answer`, text, status: 'complete' }],
+    timeline: [{ kind: 'message', id: `${file}-answer` }],
+    sequence: 42,
+  }
+}
+
+test('returning to a cached session displays the latest reply immediately and waits for a fresh runtime before sending', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file!))
+  })
+  await useConversationStore.getState().connect('project', 'D:\\history\\A.jsonl')
+  useConversationStore.setState({
+    messages: [{ ...message, text: '刚完成的新回复', status: 'complete' }],
+    lastLocalActivityAt: 3000,
+  })
+  await useConversationStore.getState().connect('project', 'B')
+  let hydrate!: (snapshot: RuntimeSnapshot) => void
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementation((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  })
+  const pending = useConversationStore.getState().connect('project', 'd:/history/a.jsonl')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'connecting',
+    instanceId: null,
+    activeRunId: null,
+    sequence: 0,
+    blocks: {},
+    lastLocalActivityAt: 3000,
+    model: snapshot.model,
+    messages: [{ text: '刚完成的新回复' }],
+  })
+  expect(await useConversationStore.getState().send('暂时不能发送')).toBe(false)
+  expect(sendPiMessage).not.toHaveBeenCalled()
+  hydrate(sessionSnapshot('d:/history/a.jsonl', '后台同步后的最新内容'))
+  finish()
+  await pending
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    instanceId: 'pi-d:/history/a.jsonl',
+    lastLocalActivityAt: 3000,
+    messages: [{ text: '后台同步后的最新内容' }],
+  })
+})
+
+test('failed reconnects and cancellation preserve cached history and stale hydrations cannot replace another session', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file!))
+  })
+  await useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().connect('project', 'B')
+  vi.mocked(connectPi).mockRejectedValueOnce(new Error('助手启动失败'))
+  await useConversationStore.getState().connect('project', 'A')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'disconnected',
+    instanceId: null,
+    messages: [{ text: '回复 A' }],
+    error: 'Error: 助手启动失败',
+  })
+  let staleHydrate!: (value: RuntimeSnapshot) => void
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementationOnce((_project, hydrate) => {
+    staleHydrate = hydrate
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  })
+  const pending = useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().disconnect()
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'disconnected',
+    messages: [{ text: '回复 A' }],
+    error: null,
+  })
+  await useConversationStore.getState().connect('project', 'B')
+  staleHydrate(sessionSnapshot('A', '不能覆盖当前会话'))
+  finish()
+  await pending
+  expect(useConversationStore.getState()).toMatchObject({
+    sessionFile: 'B',
+    status: 'ready',
+    messages: [{ text: '回复 B' }],
+  })
+})
+
+test('opening the current session is a no-op while forced refreshes and new chats still connect', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file ?? 'new'))
+  })
+  await useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().connect('project', 'a')
+  expect(connectPi).toHaveBeenCalledTimes(1)
+  await useConversationStore.getState().connect('project', 'A', { force: true })
+  expect(connectPi).toHaveBeenCalledTimes(2)
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useConversationStore.getState().connect('project', 'B')
+  await useConversationStore.getState().connect('project', 'b')
+  expect(connectPi).toHaveBeenCalledTimes(3)
+  finish()
+  await pending
+  await useConversationStore.getState().connect('project')
+  await useConversationStore.getState().connect('project')
+  expect(connectPi).toHaveBeenCalledTimes(5)
+})
+
+test('navigating away during a forced refresh keeps the latest local transcript in cache', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file!))
+  })
+  await useConversationStore.getState().connect('project', 'A')
+  useConversationStore.setState({
+    messages: [{ ...message, text: '最新本地回复', status: 'complete' }],
+  })
+  let finishRefresh!: () => void
+  vi.mocked(connectPi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRefresh = resolve
+      }),
+  )
+  const refresh = useConversationStore.getState().connect('project', 'A', { force: true })
+  await useConversationStore.getState().connect('project', 'B')
+  let finishReturn!: () => void
+  vi.mocked(connectPi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishReturn = resolve
+      }),
+  )
+  const returning = useConversationStore.getState().connect('project', 'A')
+  expect(useConversationStore.getState().messages[0].text).toBe('最新本地回复')
+  finishRefresh()
+  finishReturn()
+  await Promise.all([refresh, returning])
+})
+
+test('cached process records cannot restore a tool approval or a running state', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file!))
+  })
+  await useConversationStore.getState().connect('project', 'A')
+  useConversationStore.setState({
+    tools: [
+      {
+        id: 'old-tool',
+        toolCallId: 'old-tool',
+        runId: 'old-run',
+        name: 'write',
+        summary: 'notes.txt',
+        arguments: '{}',
+        argumentsTruncated: false,
+        output: '',
+        outputTruncated: false,
+        status: 'awaiting_approval',
+        approvalId: 'expired-approval',
+        durationMs: null,
+      },
+    ],
+  })
+  await useConversationStore.getState().connect('project', 'B')
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useConversationStore.getState().connect('project', 'A')
+  expect(useConversationStore.getState()).toMatchObject({
+    instanceId: null,
+    activeRunId: null,
+    status: 'connecting',
+    tools: [{ status: 'interrupted', approvalId: null }],
+  })
+  finish()
+  await pending
+})
+
+test('the recent-session cache evicts old and oversized histories', async () => {
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate(sessionSnapshot(file!))
+  })
+  for (let index = 0; index < 9; index++) {
+    await useConversationStore.getState().connect('project', `${index}`)
+  }
+  expect(useConversationStore.getState().sessionCache.size).toBe(8)
+  // Touch the oldest remaining entry before adding another conversation.
+  await useConversationStore.getState().connect('project', '1')
+  await useConversationStore.getState().connect('project', '9')
+  expect(useConversationStore.getState().sessionCache.has('1')).toBe(true)
+  expect(useConversationStore.getState().sessionCache.has('2')).toBe(false)
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) => {
+    hydrate(sessionSnapshot('huge', 'x'.repeat(16_000_001)))
+  })
+  await useConversationStore.getState().connect('project', 'huge')
+  expect(useConversationStore.getState().messages[0].text.length).toBe(16_000_001)
+  expect(useConversationStore.getState().sessionCache.has('huge')).toBe(false)
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  const pending = useConversationStore.getState().connect('project', '0')
+  expect(useConversationStore.getState().messages).toEqual([])
+  expect(useConversationStore.getState().model).toBeNull()
+  finish()
+  await pending
+  for (const file of ['large-A', 'large-B']) {
+    vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) => {
+      hydrate(sessionSnapshot(file, 'x'.repeat(8_000_000)))
+    })
+    await useConversationStore.getState().connect('project', file)
+  }
+  expect(useConversationStore.getState().sessionCache.has('large-a')).toBe(false)
+  expect(useConversationStore.getState().sessionCache.has('large-b')).toBe(true)
+})
+
 test('tools interleave with messages and cumulative output replaces the previous preview', () => {
   let state: ConversationData = { ...emptyConversation, instanceId: 'pi-1', activeRunId: 'run-1' }
   const tool: ToolCall = {

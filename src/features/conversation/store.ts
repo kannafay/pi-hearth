@@ -16,6 +16,13 @@ import {
   stopPi,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
+import {
+  rememberSession,
+  sessionDisplay,
+  sessionKey,
+  touchSession,
+  type SessionCache,
+} from './session-cache'
 
 type Status = 'disconnected' | 'connecting' | 'ready' | 'running' | 'stopping'
 type Block = { kind: string; text: string }
@@ -45,7 +52,12 @@ export interface ConversationData {
 }
 
 interface ConversationState extends ConversationData {
-  connect: (projectPath: string | null, sessionPath?: string | null) => Promise<void>
+  sessionCache: SessionCache
+  connect: (
+    projectPath: string | null,
+    sessionPath?: string | null,
+    options?: { force?: boolean },
+  ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
   stop: () => Promise<void>
@@ -253,15 +265,36 @@ function enqueue(event: PiEvent) {
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
+  sessionCache: new Map(),
   receive: (events) => set((state) => events.reduce(reducePiEvent, state)),
-  connect: async (projectPath, sessionPath) => {
-    if (['running', 'stopping'].includes(get().status)) return
+  connect: async (projectPath, sessionPath, options) => {
+    const current = get()
+    if (['running', 'stopping'].includes(current.status)) return
+    const key = sessionKey(sessionPath)
+    if (
+      !options?.force &&
+      key &&
+      key === sessionKey(current.sessionFile) &&
+      ['ready', 'connecting'].includes(current.status)
+    )
+      return
     const request = ++connection
-    const requestedThinkingLevel = get().requestedThinkingLevel ?? loadThinkingPreference()
+    const requestedThinkingLevel = current.requestedThinkingLevel ?? loadThinkingPreference()
+    // Only restore display data. A cached transcript never revives a runtime or approval.
+    const previousCache = key ? current.sessionCache.get(key) : undefined
+    let sessionCache = rememberSession(current.sessionCache, current)
+    const cached = key ? (sessionCache.get(key) ?? previousCache) : undefined
+    const display =
+      key && key === sessionKey(current.sessionFile) && current.messages.length
+        ? sessionDisplay(current)
+        : cached?.display
+    if (key && cached) sessionCache = touchSession(sessionCache, key, cached)
     let restorePreference: Promise<void> | undefined
     queued = []
     set({
       ...emptyConversation,
+      ...display,
+      sessionCache,
       requestedThinkingLevel,
       sessionFile: sessionPath ?? null,
       status: 'connecting',
@@ -273,7 +306,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         projectPath,
         (snapshot) => {
           if (request !== connection) return
-          set({ ...fromSnapshot(snapshot), requestedThinkingLevel })
+          const data = {
+            ...fromSnapshot(snapshot),
+            requestedThinkingLevel,
+            lastLocalActivityAt: get().lastLocalActivityAt,
+          }
+          set({ ...data, sessionCache: rememberSession(get().sessionCache, data) })
           if (!snapshot.readOnly && !snapshot.activeRunId) {
             const level =
               requestedThinkingLevel === 'default' ||
@@ -303,8 +341,19 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
   disconnect: async () => {
     const request = ++connection
-    const sessionFile = get().sessionFile
-    set({ ...emptyConversation, sessionFile })
+    queued = []
+    set({
+      ...sessionDisplay(get()),
+      instanceId: null,
+      status: 'disconnected',
+      activeRunId: null,
+      sequence: 0,
+      blocks: {},
+      settingsPending: null,
+      activity: '',
+      error: null,
+      connectionStartedAt: null,
+    })
     try {
       await disconnectPi()
     } catch (reason) {
