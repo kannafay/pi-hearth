@@ -242,30 +242,44 @@ select {
   background: var(--sidebar-accent);
 }
 
-.sidebar-session-row {
-  --sidebar-session-surface: color-mix(
-    in oklch,
-    var(--sidebar-accent) 55%,
-    oklch(from var(--shell-tint) l c h / 1)
-  );
+:is(.sidebar-session-row, .sidebar-project-row) {
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 30%, transparent);
   position: relative;
+  isolation: isolate;
   background-color: transparent;
-  transition:
-    background-color 160ms ease-out,
-    color 160ms ease-out;
+  transition: color 160ms ease-out;
 }
 
-.sidebar-session-row:is(:hover, :has(:focus-visible)) {
-  background-color: var(--sidebar-session-surface);
+:is(.sidebar-session-row, .sidebar-project-row)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--sidebar-row-surface);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    background-color 160ms ease-out,
+    opacity 160ms ease-out;
+}
+
+:is(.sidebar-session-row, .sidebar-project-row):is(
+    :hover,
+    :has(:focus-visible),
+    :has([data-slot='dropdown-menu-trigger'][aria-expanded='true']),
+    [data-selected='true']
+  )::before {
+  opacity: 1;
 }
 
 .sidebar-session-row[data-selected='true'] {
-  --sidebar-session-surface: var(--sidebar-accent);
-  background-color: var(--sidebar-session-surface);
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 55%, transparent);
   color: var(--foreground);
 }
 
-.sidebar-session-actions {
+:is(.sidebar-session-actions, .sidebar-project-actions) {
   position: absolute;
   inset: 0 0 0 auto;
   z-index: 1;
@@ -275,36 +289,45 @@ select {
   transition: opacity 160ms ease-out;
 }
 
-.sidebar-session-actions::before {
+:is(.sidebar-session-actions, .sidebar-project-actions)::before {
   content: '';
   position: absolute;
   inset: 0 0 0 -1.5rem;
   z-index: -1;
   border-radius: inherit;
-  background-color: var(--sidebar-session-surface);
+  background-color: var(--sidebar-row-surface);
+  backdrop-filter: blur(8px);
   mask-image: linear-gradient(to left, #000 0%, #000 calc(100% - 1.5rem), transparent 100%);
   pointer-events: none;
   transition: background-color 160ms ease-out;
 }
 
-.sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-actions {
+:is(.sidebar-session-row, .sidebar-project-row):is(
+    :hover,
+    :has(:focus-visible),
+    :has([data-slot='dropdown-menu-trigger'][aria-expanded='true'])
+  )
+  :is(.sidebar-session-actions, .sidebar-project-actions) {
   opacity: 1;
   pointer-events: auto;
 }
 
 @media (hover: none) and (pointer: coarse) {
-  .sidebar-session-actions {
+  :is(.sidebar-session-actions, .sidebar-project-actions) {
     opacity: 1;
     pointer-events: auto;
   }
 }
 
-/* Only the row paints the session highlight, including the action area. */
-.workspace-navigation .sidebar-session-row :is(.sidebar-session-link, .sidebar-session-action) {
+/* The row paints the glass highlight; triggers keep a transparent background. */
+.workspace-navigation
+  :is(.sidebar-session-row, .sidebar-project-row)
+  :is(.sidebar-session-link, .sidebar-session-action, .sidebar-project-action) {
   background: transparent;
 }
 
-.workspace-navigation .sidebar-session-action:hover {
+.workspace-navigation
+  :is(.sidebar-session-action, .sidebar-project-action):is(:hover, [aria-expanded='true']) {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 

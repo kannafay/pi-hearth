@@ -248,81 +248,83 @@ export function WorkspaceNavigation({
                       onOpenChange={(open) => workspace.setProjectExpanded(project.path, open)}
                       className="flex flex-col"
                     >
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <div className="group/project flex h-8 items-center rounded-md hover:bg-sidebar-accent focus-within:bg-sidebar-accent" />
-                          }
-                        >
-                          <CollapsibleTrigger
+                      <div className="sidebar-project-row flex h-8 min-w-0 items-center rounded-md">
+                        <Tooltip>
+                          <TooltipTrigger
                             render={
-                              <button
-                                type="button"
-                                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                              <CollapsibleTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                                  />
+                                }
                               />
                             }
                           >
                             <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-160 ease-out in-data-panel-open:rotate-90" />
                             <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
                             <span className="truncate">{project.name}</span>
-                          </CollapsibleTrigger>
-                          <div className="mr-1 flex shrink-0 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              aria-label={`在 ${project.name} 中新建会话`}
-                              disabled={!desktop || busy}
-                              onClick={() => void workspace.newConversation(project.path)}
+                          </TooltipTrigger>
+                          <TooltipContent
+                            variant="card"
+                            showArrow={false}
+                            role="tooltip"
+                            id={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                            side="right"
+                            align="start"
+                            sideOffset={8}
+                            className="block max-w-sm space-y-1.5 px-3 py-2.5"
+                          >
+                            <div className="font-medium">{project.name}</div>
+                            <div className="flex items-start gap-2 opacity-75">
+                              <Folder className="mt-0.5 size-3.5 shrink-0 stroke-[1.5]" />
+                              <span className="min-w-0 wrap-anywhere">{project.path}</span>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                        <div className="sidebar-project-actions flex items-center gap-0.5 px-1">
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
+                            aria-label={`在 ${project.name} 中新建会话`}
+                            disabled={!desktop || busy}
+                            onClick={() => void workspace.newConversation(project.path)}
+                          >
+                            <Plus className="size-3.5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
+                                  aria-label={`${project.name} 项目菜单`}
+                                />
+                              }
                             >
-                              <Plus className="size-3.5" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <Button
-                                    size="icon-xs"
-                                    variant="ghost"
-                                    aria-label={`${project.name} 项目菜单`}
-                                  />
-                                }
+                              <MoreHorizontal className="size-3.5" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem
+                                disabled={busy}
+                                onClick={() => onInstructions(project)}
                               >
-                                <MoreHorizontal className="size-3.5" />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start">
-                                <DropdownMenuItem
-                                  disabled={busy}
-                                  onClick={() => onInstructions(project)}
-                                >
-                                  项目指令
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  disabled={!desktop || busy}
-                                  onClick={() => void workspace.newConversation(project.path)}
-                                >
-                                  新建会话
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent
-                          variant="card"
-                          showArrow={false}
-                          role="tooltip"
-                          id={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
-                          side="right"
-                          align="start"
-                          sideOffset={8}
-                          className="block max-w-sm space-y-1.5 px-3 py-2.5"
-                        >
-                          <div className="font-medium">{project.name}</div>
-                          <div className="flex items-start gap-2 opacity-75">
-                            <Folder className="mt-0.5 size-3.5 shrink-0 stroke-[1.5]" />
-                            <span className="min-w-0 wrap-anywhere">{project.path}</span>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
+                                项目指令
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!desktop || busy}
+                                onClick={() => void workspace.newConversation(project.path)}
+                              >
+                                新建会话
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
                       <CollapsibleContent className="sidebar-project-sessions">
                         <div className="ml-3 flex flex-col gap-1 border-l border-border/60 pt-1 pl-1.5">
                           {rows(sessions.filter((session) => samePath(session.cwd, project.path)))}
