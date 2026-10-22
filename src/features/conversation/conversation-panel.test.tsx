@@ -18,6 +18,70 @@ beforeEach(() => {
   useWorkspaceStore.setState({ projectPath: 'D:\\项目', draft: '' })
 })
 
+test('sent attachments sit outside and before the text bubble and still open previews', async () => {
+  const image = {
+    id: 'image',
+    name: 'picture.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    size: 1024,
+    preview: 'data:image/png;base64,AAAA',
+  }
+  useConversationStore.setState({
+    messages: [
+      {
+        id: 'user',
+        role: 'user',
+        text: '请查看附件。',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        attachments: [image],
+      },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  const message = screen.getByRole('article', { name: '你的消息' })
+  const preview = within(message).getByRole('button', { name: '查看图片' })
+  const bubble = within(message).getByText('请查看附件。').closest('.user-message-bubble')!
+  expect(bubble).not.toContainElement(preview)
+  expect(preview.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  await user.click(preview)
+  expect(useWorkspaceStore.getState().attachmentPreview).toEqual(image)
+})
+
+test('an attachment-only message has a clickable file without an empty text bubble', async () => {
+  const file = {
+    id: 'file',
+    name: 'notes.txt',
+    kind: 'text',
+    mimeType: 'text/plain',
+    size: 48,
+    preview: null,
+    text: '附件内容',
+  }
+  useConversationStore.setState({
+    messages: [
+      {
+        id: 'user',
+        role: 'user',
+        text: '',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        attachments: [file],
+      },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  const message = screen.getByRole('article', { name: '你的消息' })
+  expect(message.querySelector('.user-message-bubble')).toBeNull()
+  await user.click(within(message).getByRole('button', { name: '查看 notes.txt' }))
+  expect(useWorkspaceStore.getState().attachmentPreview).toEqual(file)
+})
+
 test('Enter sends, Shift+Enter adds a line, and the draft clears only after acceptance', async () => {
   const send = vi.fn().mockResolvedValue(true)
   useConversationStore.setState({ status: 'ready', send })

@@ -7,6 +7,7 @@ import { isDesktop } from '@/lib/desktop'
 import {
   chooseAttachments,
   clipboardAttachments,
+  hasClipboardAttachments,
   listenForAttachmentDrop,
   MAX_ATTACHMENTS,
   releaseAttachments,
@@ -105,8 +106,10 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   }
 
   async function submit() {
-    const text = draft.trim()
-    const ids = draftAttachments.map((file) => file.id)
+    if (nativePaste.current) await nativePaste.current
+    const latest = useWorkspaceStore.getState()
+    const text = latest.draft.trim()
+    const ids = latest.draftAttachments.map((file) => file.id)
     onSendStart()
     if (await send(text, ids)) {
       if (useWorkspaceStore.getState().draft.trim() === text) setDraft('')
@@ -169,7 +172,10 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               desktop &&
               !readOnly
             ) {
-              const request = receive(clipboardAttachments())
+              // Inspect formats without entering the attachment loading state for text.
+              const request = hasClipboardAttachments()
+                .then((available) => (available ? receive(clipboardAttachments()) : []))
+                .catch(() => [])
               nativePaste.current = request
               void request.finally(() =>
                 setTimeout(() => {

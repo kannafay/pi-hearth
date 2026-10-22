@@ -54,6 +54,10 @@ export function clipboardAttachments() {
   return invoke<Attachment[]>('attachment_clipboard')
 }
 
+export function hasClipboardAttachments() {
+  return invoke<boolean>('attachment_clipboard_available')
+}
+
 export function releaseAttachments(ids: string[]) {
   if (ids.length) void invoke('attachment_release', { ids }).catch(() => {})
 }

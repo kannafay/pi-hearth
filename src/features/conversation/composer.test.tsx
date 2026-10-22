@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -7,6 +7,7 @@ import { Composer } from './composer'
 import {
   chooseAttachments,
   clipboardAttachments,
+  hasClipboardAttachments,
   releaseAttachments,
   stageFiles,
 } from '@/lib/attachments'
@@ -16,6 +17,7 @@ vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 vi.mock('@/lib/attachments', () => ({
   chooseAttachments: vi.fn(),
   clipboardAttachments: vi.fn(),
+  hasClipboardAttachments: vi.fn(),
   releaseAttachments: vi.fn(),
   stageFiles: vi.fn(),
   stagePaths: vi.fn(),
@@ -41,6 +43,7 @@ beforeEach(() => {
   })
   vi.mocked(chooseAttachments).mockResolvedValue([file])
   vi.mocked(clipboardAttachments).mockResolvedValue([])
+  vi.mocked(hasClipboardAttachments).mockResolvedValue(false)
   vi.mocked(stageFiles).mockResolvedValue([file])
 })
 
@@ -83,6 +86,7 @@ test('pasted browser files can be removed before sending', async () => {
 })
 
 test('native file paste and the DOM paste event add one attachment and support files-only messages', async () => {
+  vi.mocked(hasClipboardAttachments).mockResolvedValue(true)
   vi.mocked(clipboardAttachments).mockResolvedValue([file])
   render(<Composer onSendStart={() => {}} />)
   const input = screen.getByRole('textbox', { name: '消息草稿' })
@@ -101,11 +105,62 @@ test('native file paste and the DOM paste event add one attachment and support f
 test('ordinary pasted text remains text and does not create attachments', async () => {
   const user = userEvent.setup()
   render(<Composer onSendStart={() => {}} />)
-  await user.click(screen.getByRole('textbox', { name: '消息草稿' }))
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.click(input)
+  fireEvent.keyDown(input, { ctrlKey: true, key: 'v' })
+  const attachmentButton = screen.getByRole('button', { name: '添加附件' })
+  expect(attachmentButton).toBeEnabled()
+  expect(attachmentButton.querySelector('.animate-spin')).toBeNull()
   await user.paste('粘贴一段普通文本')
   expect(useWorkspaceStore.getState().draft).toBe('粘贴一段普通文本')
   expect(clipboardAttachments).not.toHaveBeenCalled()
   expect(stageFiles).not.toHaveBeenCalled()
+})
+
+test('native image or file import shows loading only after clipboard formats confirm an attachment', async () => {
+  let finishProbe!: (available: boolean) => void
+  let finishImport!: (files: Attachment[]) => void
+  vi.mocked(hasClipboardAttachments).mockReturnValue(
+    new Promise((resolve) => {
+      finishProbe = resolve
+    }),
+  )
+  vi.mocked(clipboardAttachments).mockReturnValue(
+    new Promise((resolve) => {
+      finishImport = resolve
+    }),
+  )
+  render(<Composer onSendStart={() => {}} />)
+  fireEvent.keyDown(screen.getByRole('textbox', { name: '消息草稿' }), { ctrlKey: true, key: 'v' })
+  const button = screen.getByRole('button', { name: '添加附件' })
+  expect(button).toBeEnabled()
+  expect(button.querySelector('.animate-spin')).toBeNull()
+  await act(async () => finishProbe(true))
+  expect(button).toBeDisabled()
+  expect(button.querySelector('.animate-spin')).not.toBeNull()
+  await act(async () => finishImport([file]))
+  expect(screen.getByText(file.name)).toBeVisible()
+  expect(button).toBeEnabled()
+  expect(button.querySelector('.animate-spin')).toBeNull()
+})
+
+test('sending during the format check waits for the attachment and uses the latest draft', async () => {
+  let finishProbe!: (available: boolean) => void
+  vi.mocked(hasClipboardAttachments).mockReturnValue(
+    new Promise((resolve) => {
+      finishProbe = resolve
+    }),
+  )
+  vi.mocked(clipboardAttachments).mockResolvedValue([file])
+  useWorkspaceStore.setState({ draft: '总结附件' })
+  render(<Composer onSendStart={() => {}} />)
+  fireEvent.keyDown(screen.getByRole('textbox', { name: '消息草稿' }), { ctrlKey: true, key: 'v' })
+  fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
+  expect(useConversationStore.getState().send).not.toHaveBeenCalled()
+  await act(async () => finishProbe(true))
+  expect(useConversationStore.getState().send).toHaveBeenCalledExactlyOnceWith('总结附件', [
+    file.id,
+  ])
 })
 
 test('rejected messages retain attachments for retry', async () => {

@@ -361,6 +361,38 @@ pub async fn attachment_bytes(
 }
 
 #[tauri::command]
+pub async fn attachment_clipboard_available() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(|| -> Result<bool, String> {
+        #[cfg(windows)]
+        {
+            use clipboard_win::formats;
+            let png_available = clipboard_win::register_format("PNG")
+                .is_some_and(|format| clipboard_win::is_format_avail(format.into()));
+            Ok(png_available
+                || [
+                    formats::CF_HDROP,
+                    formats::CF_BITMAP,
+                    formats::CF_DIB,
+                    formats::CF_DIBV5,
+                ]
+                .into_iter()
+                .any(clipboard_win::is_format_avail))
+        }
+        #[cfg(not(windows))]
+        {
+            let mut clipboard = arboard::Clipboard::new().map_err(|_| "无法访问剪贴板。")?;
+            match clipboard.get_image() {
+                Ok(_) => Ok(true),
+                Err(arboard::Error::ContentNotAvailable) => Ok(false),
+                Err(_) => Err("无法读取剪贴板。".into()),
+            }
+        }
+    })
+    .await
+    .map_err(|_| "无法读取剪贴板。")?
+}
+
+#[tauri::command]
 pub async fn attachment_clipboard(
     app: tauri::AppHandle,
     manager: State<'_, AttachmentManager>,

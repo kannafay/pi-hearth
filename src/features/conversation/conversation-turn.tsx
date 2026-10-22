@@ -24,11 +24,13 @@ export const ConversationTurn = memo(function ConversationTurn({
       {user && (
         <article
           aria-label="你的消息"
-          className="user-message-bubble ml-auto w-fit min-w-0 max-w-[85%] space-y-3 rounded-2xl px-4 py-2.5"
+          className="ml-auto flex w-fit min-w-0 max-w-[85%] flex-col items-end gap-3"
         >
-          <AttachmentList files={user.attachments ?? []} />
+          <AttachmentList files={user.attachments ?? []} className="justify-end" />
           {user.text && (
-            <p className="whitespace-pre-wrap text-[15px] leading-7 wrap-anywhere">{user.text}</p>
+            <div className="user-message-bubble min-w-0 max-w-full rounded-2xl px-4 py-2.5">
+              <p className="whitespace-pre-wrap text-[15px] leading-7 wrap-anywhere">{user.text}</p>
+            </div>
           )}
         </article>
       )}

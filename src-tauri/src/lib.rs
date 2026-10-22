@@ -65,6 +65,7 @@ pub fn run() {
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,
             pi::attachments::attachment_clipboard,
+            pi::attachments::attachment_clipboard_available,
             pi::attachments::attachment_release,
             pi::attachments::attachment_preview,
             pi::catalog::workspace_catalog,
