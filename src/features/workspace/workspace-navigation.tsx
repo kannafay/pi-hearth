@@ -2,7 +2,6 @@ import { useId, useState } from 'react'
 import { Tabs } from '@base-ui/react/tabs'
 import {
   Archive,
-  ChevronRight,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -265,7 +264,6 @@ export function WorkspaceNavigation({
                               />
                             }
                           >
-                            <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-160 ease-out in-data-panel-open:rotate-90" />
                             <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
                             <span className="sidebar-row-title min-w-0 flex-1 truncate">
                               {project.name}
