@@ -112,21 +112,39 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   refresh: async () => {
     if (get().loading || !get().initialized || useConversationStore.getState().settingsPending)
       return
+    const request = navigation
+    const before = useConversationStore.getState()
     set({ loading: true })
     try {
       const catalog = await loadCatalog()
-      if (useConversationStore.getState().settingsPending) return
-      const path = useConversationStore.getState().sessionFile
+      const conversation = useConversationStore.getState()
+      if (conversation.settingsPending) return
+      const path = conversation.sessionFile
       const previous = get().sessions.find((session) => samePath(session.path, path))
       const next = catalog.sessions.find((session) => samePath(session.path, path))
-      const connecting = useConversationStore.getState().status === 'connecting'
+      const connecting = conversation.status === 'connecting'
       set({
         ...catalogState(catalog),
         ...(connecting ? {} : { selectedSessionPath: path }),
         error: null,
       })
-      if (previous && next && previous.modified !== next.modified && !busy() && !connecting) {
-        await useConversationStore.getState().connect(get().projectPath, next.path)
+      // Catalog activity uses message timestamps. Local run completion already covers
+      // those writes; only later activity needs to be read back from another client.
+      const localUpdate =
+        conversation.lastLocalActivityAt !== null &&
+        next &&
+        next.modified <= conversation.lastLocalActivityAt
+      if (
+        request === navigation &&
+        before.instanceId === conversation.instanceId &&
+        samePath(before.sessionFile, path) &&
+        previous &&
+        next &&
+        previous.modified !== next.modified &&
+        conversation.status === 'ready' &&
+        !localUpdate
+      ) {
+        await conversation.connect(get().projectPath, next.path)
       }
     } catch (reason) {
       set({ error: String(reason) })

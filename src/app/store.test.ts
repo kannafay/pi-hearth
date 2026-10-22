@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from './store'
 import { useConversationStore } from '@/features/conversation/store'
 import { loadCatalog, addProject } from '@/lib/workspace'
-import type { SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
+import type { PiEvent, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 
 vi.mock('@/lib/workspace', () => ({ loadCatalog: vi.fn(), addProject: vi.fn() }))
 const session: SessionInfo = {
@@ -70,12 +70,122 @@ test('external CLI changes refresh idle history and never reopen a running task'
   expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
 })
 
+function finishLocalReply() {
+  const message = {
+    id: 'local-run-user',
+    role: 'user',
+    text: '你好',
+    thinking: '',
+    status: 'complete',
+    error: null,
+    startedAt: 2000,
+  }
+  const data: PiEvent['data'][] = [
+    { type: 'run_started', message },
+    {
+      type: 'message_started',
+      message: { ...message, id: 'local-reply', role: 'assistant', text: '你好。' },
+    },
+    { type: 'run_finished', status: 'complete', error: null, finishedAt: 3000 },
+  ]
+  useConversationStore.getState().receive(
+    data.map((data, index) => ({
+      data,
+      sequence: index + 1,
+      instanceId: 'pi-1',
+      projectPath: session.cwd,
+      sessionId: session.id,
+      runId: 'local-run',
+    })),
+  )
+}
+
+test('refresh after a local reply updates the sidebar without reconnecting or clearing the transcript', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({ instanceId: 'pi-1', sessionFile: session.path })
+  finishLocalReply()
+  const messages = useConversationStore.getState().messages
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    sessions: [{ ...session, modified: 2800 }],
+  })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useConversationStore.getState().messages).toBe(messages)
+  expect(useConversationStore.getState().status).toBe('ready')
+  expect(useWorkspaceStore.getState().sessions[0].modified).toBe(2800)
+
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    sessions: [{ ...session, modified: 4000 }],
+  })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    session.path,
+  )
+})
+
+test('a refresh started before a fast reply finishes uses the latest local completion marker', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({ instanceId: 'pi-1', sessionFile: session.path })
+  let finishCatalog!: (catalog: WorkspaceCatalog) => void
+  vi.mocked(loadCatalog).mockReturnValue(
+    new Promise((resolve) => {
+      finishCatalog = resolve
+    }),
+  )
+  const pending = useWorkspaceStore.getState().refresh()
+  finishLocalReply()
+  finishCatalog({ ...catalog, sessions: [{ ...session, modified: 2800 }] })
+  await pending
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('an in-flight catalog refresh cannot reopen a conversation after the user navigates elsewhere', async () => {
+  const other = { ...session, id: 'other', path: 'other.jsonl', modified: 10 }
+  useWorkspaceStore.setState({
+    ...catalog,
+    sessions: [session, other],
+    initialized: true,
+    projectPath: session.cwd,
+  })
+  useConversationStore.setState({ instanceId: 'pi-1', sessionFile: session.path })
+  let finishCatalog!: (catalog: WorkspaceCatalog) => void
+  vi.mocked(loadCatalog).mockReturnValue(
+    new Promise((resolve) => {
+      finishCatalog = resolve
+    }),
+  )
+  const pending = useWorkspaceStore.getState().refresh()
+  await useWorkspaceStore.getState().openSession(other)
+  useConversationStore.setState({ instanceId: 'pi-2', sessionFile: other.path })
+  vi.mocked(useConversationStore.getState().connect).mockClear()
+  finishCatalog({ ...catalog, sessions: [session, { ...other, modified: 20 }] })
+  await pending
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe(other.path)
+})
+
 test('a catalog refresh cannot reconnect the conversation during a settings change', async () => {
   useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
   useConversationStore.setState({ sessionFile: session.path, settingsPending: 'model' })
   vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 2 }] })
   await useWorkspaceStore.getState().refresh()
   expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('a changed session cannot hide a disconnected assistant behind an automatic reconnect', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({
+    sessionFile: session.path,
+    status: 'disconnected',
+    error: 'Pi 已断开',
+  })
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 2 }] })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useConversationStore.getState().error).toBe('Pi 已断开')
 })
 
 test('creating a project uses the returned canonical folder and starts its own session', async () => {

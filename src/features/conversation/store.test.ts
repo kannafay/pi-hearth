@@ -277,6 +277,7 @@ test('turn timing uses native start and finish events rather than the time the U
     event(2, { type: 'run_finished', status: 'complete', error: null, finishedAt: 121_000 }),
   )
   expect(finished.messages[0]).toMatchObject({ startedAt: 100_000, finishedAt: 121_000 })
+  expect(finished.lastLocalActivityAt).toBe(121_000)
   expect(finished.activeRunId).toBeNull()
 })
 

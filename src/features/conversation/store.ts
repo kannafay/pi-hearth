@@ -40,6 +40,7 @@ export interface ConversationData {
   error: string | null
   activity: string
   connectionStartedAt: number | null
+  lastLocalActivityAt: number | null
   blocks: Record<string, Record<number, Block>>
 }
 
@@ -73,6 +74,7 @@ export const emptyConversation: ConversationData = {
   error: null,
   activity: '',
   connectionStartedAt: null,
+  lastLocalActivityAt: null,
   blocks: {},
 }
 
@@ -185,6 +187,11 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.activeRunId = null
       next.activity = data.status === 'cancelled' ? '已停止生成' : ''
       next.error = data.error
+      // Pi persists this run's messages before it emits the terminal event.
+      next.lastLocalActivityAt = Math.max(
+        state.lastLocalActivityAt ?? 0,
+        data.finishedAt ?? Date.now(),
+      )
       next.messages = state.messages.map((m) =>
         m.id === `${event.runId}-user`
           ? { ...m, finishedAt: data.finishedAt ?? Date.now() }
@@ -321,7 +328,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       return true
     } catch (reason) {
       if (get().instanceId === instanceId && get().activeRunId === runId) {
-        set({ status: 'ready', activeRunId: null, error: String(reason), activity: '' })
+        set({
+          status: 'ready',
+          activeRunId: null,
+          error: String(reason),
+          activity: '',
+          lastLocalActivityAt: Date.now(),
+        })
       }
       return false
     }
