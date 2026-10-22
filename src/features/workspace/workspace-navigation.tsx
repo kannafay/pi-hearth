@@ -84,7 +84,9 @@ export function WorkspaceNavigation({
                 />
               }
             >
-              <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
+              <span className="sidebar-row-title min-w-0 flex-1 truncate text-left">
+                {session.title}
+              </span>
             </TooltipTrigger>
             <TooltipContent
               variant="card"
@@ -265,7 +267,9 @@ export function WorkspaceNavigation({
                           >
                             <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform duration-160 ease-out in-data-panel-open:rotate-90" />
                             <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
-                            <span className="truncate">{project.name}</span>
+                            <span className="sidebar-row-title min-w-0 flex-1 truncate">
+                              {project.name}
+                            </span>
                           </TooltipTrigger>
                           <TooltipContent
                             variant="card"

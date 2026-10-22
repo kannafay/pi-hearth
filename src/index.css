@@ -244,6 +244,8 @@ select {
 
 :is(.sidebar-session-row, .sidebar-project-row) {
   --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 30%, transparent);
+  --sidebar-row-actions-width: 3.625rem;
+  --sidebar-row-title-inset: 0.5rem;
   position: relative;
   isolation: isolate;
   background-color: transparent;
@@ -279,10 +281,22 @@ select {
   color: var(--foreground);
 }
 
+.sidebar-project-row {
+  --sidebar-row-title-inset: 0.25rem;
+}
+
+.sidebar-row-title {
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
+  mask-size: calc(100% + 1.5rem) 100%;
+  mask-repeat: no-repeat;
+  transition: mask-size 160ms ease-out;
+}
+
 :is(.sidebar-session-actions, .sidebar-project-actions) {
   position: absolute;
   inset: 0 0 0 auto;
   z-index: 1;
+  width: var(--sidebar-row-actions-width);
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
@@ -296,7 +310,6 @@ select {
   z-index: -1;
   border-radius: inherit;
   background-color: var(--sidebar-row-surface);
-  backdrop-filter: blur(8px);
   mask-image: linear-gradient(to left, #000 0%, #000 calc(100% - 1.5rem), transparent 100%);
   pointer-events: none;
   transition: background-color 160ms ease-out;
@@ -312,10 +325,23 @@ select {
   pointer-events: auto;
 }
 
+:is(.sidebar-session-row, .sidebar-project-row):is(
+    :hover,
+    :has(:focus-visible),
+    :has([data-slot='dropdown-menu-trigger'][aria-expanded='true'])
+  )
+  .sidebar-row-title {
+  mask-size: calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset)) 100%;
+}
+
 @media (hover: none) and (pointer: coarse) {
   :is(.sidebar-session-actions, .sidebar-project-actions) {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .sidebar-row-title {
+    mask-size: calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset)) 100%;
   }
 }
 
