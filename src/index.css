@@ -311,7 +311,7 @@ select {
   transition: opacity 160ms ease-out;
 }
 
-:is(.sidebar-session-actions, .sidebar-project-actions)::before {
+:is(.sidebar-session-actions, .sidebar-project-actions, .sidebar-session-progress)::before {
   content: '';
   position: absolute;
   inset: 0 0 0 -1.5rem;
@@ -323,11 +323,8 @@ select {
   transition: background-color 160ms ease-out;
 }
 
-.sidebar-session-row[data-responding] .sidebar-row-title {
-  padding-right: calc(var(--spacing) * 6);
-}
-
 .sidebar-session-progress {
+  border-radius: inherit;
   opacity: 1;
   transition: opacity 160ms ease-out;
 }

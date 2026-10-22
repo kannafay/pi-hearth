@@ -115,7 +115,7 @@ export function WorkspaceNavigation({
             <span
               role="status"
               aria-label="正在回复"
-              className="sidebar-session-progress pointer-events-none absolute inset-y-0 right-1 z-1 flex w-6 items-center justify-center text-muted-foreground"
+              className="sidebar-session-progress pointer-events-none absolute inset-y-0 right-0 z-1 flex w-8 items-center justify-center text-muted-foreground"
             >
               <LoaderCircle
                 aria-hidden="true"
