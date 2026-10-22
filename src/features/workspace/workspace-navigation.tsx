@@ -69,14 +69,14 @@ export function WorkspaceNavigation({
         <div
           key={session.path}
           data-selected={selected}
-          className="sidebar-session-row group/session flex h-8 min-w-0 items-center rounded-md text-sidebar-foreground/80"
+          className="sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
-                  className="sidebar-session-link h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-inherit"
+                  className="sidebar-session-link h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-inherit"
                   aria-current={selected ? 'page' : undefined}
                   aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
                   disabled={!desktop || busy}
@@ -250,7 +250,7 @@ export function WorkspaceNavigation({
                       onOpenChange={(open) => workspace.setProjectExpanded(project.path, open)}
                       className="flex flex-col"
                     >
-                      <div className="sidebar-project-row flex h-8 min-w-0 items-center rounded-md">
+                      <div className="sidebar-project-row flex h-7.5 min-w-0 items-center rounded-md">
                         <Tooltip>
                           <TooltipTrigger
                             render={
