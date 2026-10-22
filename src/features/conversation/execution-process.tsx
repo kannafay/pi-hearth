@@ -112,7 +112,7 @@ export function ExecutionProcess({
                     <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
                     思考
                   </p>
-                  <div className="space-y-2 text-[13px] leading-[1.65] text-muted-foreground wrap-anywhere">
+                  <div className="space-y-2 text-[14px] leading-[1.65] text-muted-foreground wrap-anywhere">
                     {item.text.split(/\n\s*\n/).map((paragraph, index) => (
                       <p key={index} className="whitespace-pre-wrap">
                         {paragraph}
