@@ -5,6 +5,7 @@ import { useMediaQuery } from '@/app/use-media-query'
 import { IconButton } from '@/components/icon-button'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
+import { useDialogPresence } from '@/components/use-dialog-presence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ConversationPanel } from '@/features/conversation/conversation-panel'
 import { AttachmentPreviewDialog } from '@/features/conversation/attachment-preview-dialog'
@@ -34,6 +35,9 @@ export function WorkspaceShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const searchPresence = useDialogPresence(searchOpen ? true : null)
+  const projectPresence = useDialogPresence(projectDialog)
+  const attachmentPresence = useDialogPresence(attachmentPreview)
   const compact = useMediaQuery('(max-width: 1199px)')
   const navigationPanel = useAnimatedPanel(sidebarOpen, 260)
   const dockedInspectorOpen = inspectorOpen && !compact
@@ -266,7 +270,8 @@ export function WorkspaceShell() {
       <WorkspaceDialog open={inspectorOpen && compact} onOpenChange={setInspectorOpen}>
         <DialogContent
           showCloseButton={false}
-          className="top-(--titlebar-height) right-(--workspace-inset) left-auto h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 rounded-md p-0 sm:max-w-100"
+          data-dialog-layout="drawer"
+          className="top-(--titlebar-height) right-(--workspace-inset) left-auto h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 p-0 sm:max-w-100"
         >
           <DialogTitle className="sr-only">项目文件与变更</DialogTitle>
           <DialogDescription className="sr-only">查看当前项目的文件和 Git 差异。</DialogDescription>
@@ -274,19 +279,33 @@ export function WorkspaceShell() {
         </DialogContent>
       </WorkspaceDialog>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {searchOpen && <SessionSearchDialog onClose={() => setSearchOpen(false)} />}
-      {attachmentPreview && (
-        <AttachmentPreviewDialog
-          key={attachmentPreview.id}
-          file={attachmentPreview}
-          onClose={() => setAttachmentPreview(null)}
+      {searchPresence.value && (
+        <SessionSearchDialog
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onOpenChangeComplete={searchPresence.onOpenChangeComplete}
         />
       )}
-      {projectDialog && (
+      {attachmentPresence.value && (
+        <AttachmentPreviewDialog
+          key={attachmentPresence.value.id}
+          file={attachmentPresence.value}
+          open={attachmentPreview !== null}
+          onClose={() => setAttachmentPreview(null)}
+          onOpenChangeComplete={attachmentPresence.onOpenChangeComplete}
+        />
+      )}
+      {projectPresence.value && (
         <ProjectDialog
-          key={typeof projectDialog === 'string' ? projectDialog : projectDialog.path}
-          project={typeof projectDialog === 'string' ? undefined : projectDialog}
+          key={
+            typeof projectPresence.value === 'string'
+              ? projectPresence.value
+              : projectPresence.value.path
+          }
+          project={typeof projectPresence.value === 'string' ? undefined : projectPresence.value}
+          open={projectDialog !== null}
           onClose={() => setProjectDialog(null)}
+          onOpenChangeComplete={projectPresence.onOpenChangeComplete}
         />
       )}
     </div>

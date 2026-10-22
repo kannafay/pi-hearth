@@ -48,6 +48,7 @@ test('header search remains available when the sidebar is collapsed', async () =
   expect(screen.getByRole('combobox', { name: '搜索项目、标题或对话内容' })).toHaveFocus()
   await user.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await waitFor(() => expect(search).toHaveFocus())
 })
 
 test('repeated sidebar toggles preserve its filter and the mounted conversation draft', async () => {

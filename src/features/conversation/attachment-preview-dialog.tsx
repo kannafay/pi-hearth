@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { ScrollArea } from '@/components/scroll-area'
 import { getAttachmentPreview } from '@/lib/attachments'
@@ -7,10 +7,14 @@ import type { Attachment, AttachmentPreview } from '@/lib/generated/pi'
 
 export function AttachmentPreviewDialog({
   file,
+  open = true,
   onClose,
+  onOpenChangeComplete,
 }: {
   file: Attachment
+  open?: boolean
   onClose: () => void
+  onOpenChangeComplete?: (open: boolean) => void
 }) {
   const [preview, setPreview] = useState<AttachmentPreview | null>(null)
   const [error, setError] = useState('')
@@ -42,13 +46,14 @@ export function AttachmentPreviewDialog({
 
   return (
     <WorkspaceDialog
-      open
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
     >
       <DialogContent
-        className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] min-w-64 gap-4 overflow-hidden rounded-lg sm:max-w-[calc(100vw-3rem)] ${media ? 'w-fit max-w-[calc(100vw-3rem)]' : kind === 'audio' ? 'w-[min(420px,calc(100vw-3rem))]' : 'w-[min(720px,calc(100vw-3rem))]'}`}
+        className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] min-w-64 overflow-hidden sm:max-w-[calc(100vw-3rem)] ${media ? 'w-fit max-w-[calc(100vw-3rem)]' : kind === 'audio' ? 'w-[min(420px,calc(100vw-3rem))]' : 'w-[min(720px,calc(100vw-3rem))]'}`}
         onKeyDownCapture={(event) => {
           if (event.key === 'Escape' && !document.fullscreenElement) {
             event.preventDefault()
@@ -57,8 +62,10 @@ export function AttachmentPreviewDialog({
           }
         }}
       >
-        <DialogTitle className="pr-8 text-sm">{title}</DialogTitle>
-        <DialogDescription className="sr-only">查看附件内容。</DialogDescription>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription className="sr-only">查看附件内容。</DialogDescription>
+        </DialogHeader>
         {error ? (
           <p role="alert" className="py-8 text-sm text-muted-foreground">
             {error}
@@ -72,7 +79,7 @@ export function AttachmentPreviewDialog({
             <img
               src={preview.source}
               alt="图片预览"
-              className="block h-auto w-auto max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-9rem)] rounded-sm object-contain"
+              className="block h-auto w-auto max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-11rem)] rounded-sm object-contain"
               onError={() => setError('图片无法显示。')}
             />
           </div>
@@ -83,7 +90,7 @@ export function AttachmentPreviewDialog({
             playsInline
             preload="metadata"
             aria-label="视频预览"
-            className="h-auto w-auto min-w-64 max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-9rem)] rounded-md bg-black"
+            className="h-auto w-auto min-w-64 max-w-[min(80vw,960px)] max-h-[calc(100dvh-var(--titlebar-height)-11rem)] rounded-md bg-black"
             onError={() => setError('视频无法播放，文件可能损坏或编码不受支持。')}
           />
         ) : preview.kind === 'audio' && preview.source ? (
@@ -96,7 +103,7 @@ export function AttachmentPreviewDialog({
             onError={() => setError('音频无法播放，文件可能损坏或编码不受支持。')}
           />
         ) : (
-          <ScrollArea viewportClassName="max-h-[65dvh] rounded-md border bg-muted/25 p-4">
+          <ScrollArea viewportClassName="max-h-[min(65dvh,calc(100dvh-var(--titlebar-height)-11rem))] rounded-md border bg-muted/25 p-4">
             <pre className="font-mono text-xs leading-6 whitespace-pre-wrap wrap-anywhere">
               {preview.text}
             </pre>

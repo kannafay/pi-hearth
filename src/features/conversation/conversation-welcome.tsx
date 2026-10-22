@@ -1,4 +1,4 @@
-import { MessageSquare } from 'lucide-react'
+import { CircleAlert, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
 import { ConnectionNotice } from './connection-notice'
@@ -32,22 +32,33 @@ export function ConversationWelcome() {
   }
 
   return (
-    <div className="flex h-full min-h-55 items-center justify-center">
-      <div className="w-full max-w-100 py-8">
-        <div className="mb-5 flex size-11 items-center justify-center rounded-2xl bg-muted/70">
-          <MessageSquare aria-hidden className="size-5 stroke-[1.5]" />
+    <div className="conversation-welcome flex h-full min-h-60 items-center justify-center px-2">
+      <div className="w-full max-w-112 py-8 text-center">
+        <div className="mb-6 flex justify-center" aria-hidden>
+          {error ? (
+            <CircleAlert className="size-9 stroke-[1.3] text-muted-foreground" />
+          ) : (
+            <img src="/pi.svg" alt="" draggable={false} className="size-9" />
+          )}
         </div>
-        <p className="mb-2 truncate text-xs text-muted-foreground">{projectName ?? '普通聊天'}</p>
-        <h1 className="text-xl font-medium tracking-tight">
-          {error ? '连接未完成' : (projectName ?? '开始一段新聊天')}
+        {projectName && (
+          <p className="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <FolderOpen aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate" title={projectPath ?? undefined}>
+              {projectName}
+            </span>
+          </p>
+        )}
+        <h1 className="text-2xl leading-9 font-medium tracking-tight">
+          {error ? '连接未完成' : '开始一段新聊天'}
         </h1>
-        <div className="mt-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {error
             ? '请重试连接，也可以从侧栏打开其他会话。'
             : projectPath
-              ? '围绕当前项目提问，或添加文件开始处理任务。'
-              : '写下你的问题，或添加图片与文件。'}
-        </div>
+              ? '围绕当前项目提问，或添加文件一起处理。'
+              : '从一个问题开始，也可以粘贴图片或添加文件。'}
+        </p>
         <ConnectionNotice className="mt-5" />
         {!desktop && (
           <p className="mt-4 text-xs text-muted-foreground">浏览器预览 · 对话需在桌面应用中使用</p>

@@ -26,7 +26,15 @@ function Highlight({ text, query }: { text: string; query: string }) {
   )
 }
 
-export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
+export function SessionSearchDialog({
+  open = true,
+  onClose,
+  onOpenChangeComplete,
+}: {
+  open?: boolean
+  onClose: () => void
+  onOpenChangeComplete?: (open: boolean) => void
+}) {
   const workspace = useWorkspaceStore()
   const { status } = useConversationStore()
   const [query, setQuery] = useState('')
@@ -93,7 +101,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
   }, [active])
 
-  function open(session: SessionInfo) {
+  function openSession(session: SessionInfo) {
     if (busy || !desktop) return
     onClose()
     void workspace.openSession(session)
@@ -101,7 +109,8 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <WorkspaceDialog
-      open
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
@@ -117,7 +126,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
             setActive((index) => (index + offset + shown.length) % shown.length)
           } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
             event.preventDefault()
-            if (shown[active]) open(shown[active].session)
+            if (shown[active]) openSession(shown[active].session)
           }
         }}
       >
@@ -125,7 +134,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
         <DialogDescription className="sr-only">
           搜索项目名称、会话标题与对话内容，使用上下方向键选择，回车打开。
         </DialogDescription>
-        <div className="flex h-15 shrink-0 items-center gap-3 border-b px-5 pr-13">
+        <div className="flex h-15 shrink-0 items-center gap-3 border-b px-6 pr-13">
           <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={input}
@@ -151,7 +160,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
             />
           )}
         </div>
-        <div role="status" className="shrink-0 px-5 pt-4 pb-2 text-xs text-muted-foreground">
+        <div role="status" className="shrink-0 px-6 pt-4 pb-2 text-xs text-muted-foreground">
           {loading
             ? '正在搜索本地会话…'
             : term
@@ -179,7 +188,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
                   aria-selected={active === index}
                   disabled={busy || !desktop}
                   onPointerMove={() => setActive(index)}
-                  onClick={() => open(result.session)}
+                  onClick={() => openSession(result.session)}
                   className="group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-muted disabled:opacity-60"
                 >
                   <MessageSquare
@@ -247,7 +256,7 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
             )
           )}
         </ScrollArea>
-        <div className="flex shrink-0 justify-between border-t px-5 py-3 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 justify-between border-t px-6 py-3 text-[11px] text-muted-foreground">
           <span>{busy ? '当前任务结束后可以切换会话' : '↑ ↓ 选择 · Enter 打开'}</span>
           <span>Esc 关闭</span>
         </div>

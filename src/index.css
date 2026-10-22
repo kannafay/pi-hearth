@@ -54,6 +54,8 @@
 :root {
   --titlebar-height: 40px;
   --workspace-inset: 4px;
+  --dialog-duration: 240ms;
+  --dialog-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --shell-tint: oklch(0.967 0.008 300 / 82%);
   --workspace-border: oklch(0.94 0.002 300);
   --caption-hover: oklch(0.9 0.006 300);
@@ -264,6 +266,7 @@ select {
 }
 
 .workspace-body {
+  overflow: clip;
   padding: 0 var(--workspace-inset) var(--workspace-inset) 0;
   transition: padding-left 180ms cubic-bezier(0.2, 0, 0.2, 1);
 }
@@ -272,8 +275,8 @@ select {
   padding-left: var(--workspace-inset);
 }
 
-.workspace-body[inert] {
-  overflow: clip;
+.workspace-body > .workspace-panel-group {
+  transition: filter var(--dialog-duration) var(--dialog-ease);
 }
 
 /* Composite the whole workspace to include every sidebar layer in WebView2. */
@@ -383,6 +386,72 @@ select {
 [data-slot='dialog-overlay'] {
   inset: var(--titlebar-height) var(--workspace-inset) var(--workspace-inset);
   border-radius: 8px;
+  background: oklch(0.18 0.006 300 / 9%);
+  opacity: 1;
+  transition: opacity var(--dialog-duration) var(--dialog-ease);
+}
+
+.dark [data-slot='dialog-overlay'] {
+  background: oklch(0.08 0 0 / 38%);
+}
+
+[data-slot='dialog-content'] {
+  --dialog-shadow:
+    0 24px 72px -24px oklch(0.12 0.01 300 / 22%), 0 4px 16px -6px oklch(0.12 0.01 300 / 10%);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--dialog-duration) var(--dialog-ease),
+    transform var(--dialog-duration) var(--dialog-ease);
+}
+
+.dark [data-slot='dialog-content'] {
+  --dialog-shadow: 0 24px 72px -24px oklch(0 0 0 / 65%), 0 4px 16px -6px oklch(0 0 0 / 35%);
+}
+
+[data-slot='dialog-content'] > :not(.sr-only, [data-slot='dialog-close']) {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--dialog-duration) var(--dialog-ease),
+    transform var(--dialog-duration) var(--dialog-ease);
+}
+
+[data-slot='dialog-overlay']:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+}
+
+[data-slot='dialog-content']:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+
+[data-slot='dialog-content']:is([data-starting-style], [data-ending-style])
+  > :not(.sr-only, [data-slot='dialog-close']) {
+  opacity: 0;
+  transform: translateY(3px);
+}
+
+[data-slot='dialog-content'][data-dialog-layout='drawer']:is(
+    [data-starting-style],
+    [data-ending-style]
+  ) {
+  transform: translateX(12px);
+}
+
+.conversation-welcome {
+  animation: welcome-in 320ms var(--dialog-ease) both;
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .caption-button {
