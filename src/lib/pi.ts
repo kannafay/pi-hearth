@@ -45,6 +45,15 @@ export function stopPi(instanceId: string) {
   return invoke<void>('pi_stop', { instanceId })
 }
 
+export function rewritePiMessage(
+  instanceId: string,
+  runId: string,
+  messageId: string,
+  message?: string,
+) {
+  return invoke<void>('pi_rewrite', { instanceId, runId, messageId, message: message ?? null })
+}
+
 export function decidePiTool(instanceId: string, approvalId: string, allow: boolean) {
   return invoke<void>('pi_tool_decide', { instanceId, approvalId, allow })
 }

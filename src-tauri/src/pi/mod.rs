@@ -4,6 +4,7 @@ mod client;
 mod config;
 mod process_tree;
 mod protocol;
+mod rewrite;
 mod search;
 mod tool_output;
 mod types;
@@ -75,13 +76,29 @@ pub async fn pi_send(
         return Err("无效的运行标识。".into());
     }
     let body = attachments.prompt(&message, &attachment_ids)?;
-    manager
-        .client(&instance_id)
-        .await?
-        .request(body, Some(run_id))
-        .await?;
+    let client = manager.client(&instance_id).await?;
+    let _action = client.actions.lock().await;
+    client.request(body, Some(run_id)).await?;
     attachments.release(&attachment_ids);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn pi_rewrite(
+    manager: State<'_, PiManager>,
+    instance_id: String,
+    run_id: String,
+    message_id: String,
+    message: Option<String>,
+) -> Result<(), String> {
+    if uuid::Uuid::parse_str(&run_id).is_err() {
+        return Err("无效的运行标识。".into());
+    }
+    let client = manager.client(&instance_id).await?;
+    let _action = client.actions.lock().await;
+    client
+        .rewrite(&message_id, message.as_deref(), run_id)
+        .await
 }
 
 #[tauri::command]
@@ -108,6 +125,7 @@ pub async fn pi_set_model(
     model_id: String,
 ) -> Result<RuntimeSnapshot, String> {
     let client = manager.client(&instance_id).await?;
+    let _action = client.actions.lock().await;
     client
         .request(
             json!({"type":"set_model","provider":provider,"modelId":model_id}),
@@ -128,6 +146,7 @@ pub async fn pi_set_thinking_level(
     level: String,
 ) -> Result<RuntimeSnapshot, String> {
     let client = manager.client(&instance_id).await?;
+    let _action = client.actions.lock().await;
     let snapshot = client.snapshot().await?;
     let level = if level == "default" {
         let model = snapshot.model.as_ref().ok_or("请先选择模型。")?;

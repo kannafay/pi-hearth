@@ -46,6 +46,9 @@ export function ConversationPanel() {
               <ConversationTurn
                 key={`${sessionFile}:${turn.id}`}
                 turn={turn}
+                onActionStart={() => {
+                  followOutput.current = true
+                }}
                 active={
                   busy &&
                   (turn.user?.id === `${activeRunId}-user` ||

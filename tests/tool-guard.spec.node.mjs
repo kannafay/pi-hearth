@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, writeFile, symlink } from 'node:fs/promises'
 import path from 'node:path'
-import { guardTool, isProjectRead, resolveToolPath } from '../runtime/tool-guard.mjs'
+import { guardTool, isProjectRead, resolveToolPath, rewindMessage } from '../runtime/tool-guard.mjs'
 
 await mkdir('work', { recursive: true })
 const root = await mkdtemp(path.resolve('work', 'guard-test-'))
@@ -12,6 +12,34 @@ await mkdir(project)
 await mkdir(outside)
 await writeFile(path.join(project, 'a.txt'), 'ok')
 await writeFile(path.join(outside, 'secret.txt'), 'outside')
+
+test('message rewind requires its runtime token and a user message on the active branch', async () => {
+  const entries = [{ type: 'message', id: 'user-1', message: { role: 'user' } }]
+  let target
+  let markers = 0
+  const pi = {
+    appendEntry: () => {
+      markers++
+    },
+  }
+  const ctx = {
+    isIdle: () => true,
+    sessionManager: { getBranch: () => entries, getLeafId: () => 'user-1' },
+    navigateTree: async (id, options) => {
+      target = [id, options]
+      return { cancelled: false }
+    },
+  }
+  await assert.rejects(() => rewindMessage(pi, 'wrong user-1', ctx, 'token'))
+  await assert.rejects(() => rewindMessage(pi, 'token outside', ctx, 'token'))
+  await assert.rejects(() =>
+    rewindMessage(pi, 'token user-1', { ...ctx, isIdle: () => false }, 'token'),
+  )
+  assert.equal(markers, 0)
+  await rewindMessage(pi, 'token user-1', ctx, 'token')
+  assert.equal(markers, 1)
+  assert.deepEqual(target, ['user-1', { summarize: false }])
+})
 
 test('only real project reads bypass confirmation', async () => {
   assert.equal(await isProjectRead(path.join(project, 'a.txt'), project), true)

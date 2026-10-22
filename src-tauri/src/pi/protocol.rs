@@ -20,9 +20,13 @@ pub struct JsonLines {
 
 impl JsonLines {
     pub fn push(&mut self, bytes: &[u8]) -> Result<Vec<Value>, String> {
+        self.push_bounded(bytes, MAX_RECORD_BYTES)
+    }
+
+    pub fn push_bounded(&mut self, bytes: &[u8], limit: usize) -> Result<Vec<Value>, String> {
         let mut records = Vec::new();
         for part in bytes.split_inclusive(|byte| *byte == b'\n') {
-            if self.pending.len() + part.len() > MAX_RECORD_BYTES {
+            if self.pending.len() + part.len() > limit {
                 return Err("Pi 返回的单条记录过大，连接已关闭。".into());
             }
             self.pending.extend_from_slice(part);
@@ -112,6 +116,7 @@ impl Conversation {
             thinking: String::new(),
             status: "complete".into(),
             error: None,
+            timestamp: Some(now_ms()),
             attachments,
             started_at: Some(now_ms()),
             finished_at: None,
@@ -160,6 +165,7 @@ impl Conversation {
                     thinking: String::new(),
                     status: "complete".into(),
                     error: None,
+                    timestamp: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
                     attachments,
                     started_at: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
                     finished_at: None,
@@ -171,12 +177,18 @@ impl Conversation {
                 self.snapshot.messages.push(message);
             }
             Some("assistant") => {
-                self.record(&json!({"type":"message_start","message":{"role":"assistant"}}));
+                self.record(&json!({"type":"message_start","message":raw}));
                 let mut message = raw.clone();
                 if message["content"].is_string() {
                     message["content"] = json!([{"type":"text","text":message["content"]}]);
                 }
                 self.record(&json!({"type":"message_end","message":message}));
+                if let Some(message) = self.snapshot.messages.last_mut() {
+                    message.timestamp = raw["timestamp"]
+                        .as_f64()
+                        .filter(|time| *time > 0.0)
+                        .or_else(|| raw["__hearthFinishedAt"].as_f64());
+                }
                 if let Some(blocks) = raw["content"].as_array() {
                     for block in blocks.iter().filter(|block| block["type"] == "toolCall") {
                         let record = json!({"type":"tool_execution_start","toolCallId":block["id"],"toolName":block["name"],"args":block["arguments"]});
@@ -214,6 +226,40 @@ impl Conversation {
                 tool.approval_id = None;
             }
         }
+    }
+
+    pub fn rewind(&mut self, message_id: &str) -> Result<Vec<PiEvent>, String> {
+        if self.snapshot.active_run_id.is_some() {
+            return Err("请等待当前回复结束。".into());
+        }
+        let position = self
+            .snapshot
+            .timeline
+            .iter()
+            .position(|entry| entry.kind == "message" && entry.id == message_id)
+            .ok_or("这条消息已发生变化，请重新打开会话。")?;
+        self.snapshot.timeline.truncate(position);
+        self.snapshot.messages.retain(|message| {
+            self.snapshot
+                .timeline
+                .iter()
+                .any(|entry| entry.kind == "message" && entry.id == message.id)
+        });
+        self.snapshot.tools.retain(|tool| {
+            self.snapshot
+                .timeline
+                .iter()
+                .any(|entry| entry.kind == "tool" && entry.id == tool.id)
+        });
+        self.current_message = None;
+        self.blocks.clear();
+        self.last_error = None;
+        self.cancelled = false;
+        Ok(vec![self.event(EventData::TranscriptReplaced {
+            messages: self.snapshot.messages.clone(),
+            tools: self.snapshot.tools.clone(),
+            timeline: self.snapshot.timeline.clone(),
+        })])
     }
 
     pub fn tool_index(&self, call_id: &str) -> Option<usize> {
@@ -418,6 +464,26 @@ impl Conversation {
             | "tool_execution_start"
             | "tool_execution_update"
             | "tool_execution_end" => self.tool_record(record),
+            "message_end" if record["message"]["role"] == "user" => {
+                let id = format!(
+                    "{}-user",
+                    self.snapshot.active_run_id.as_deref().unwrap_or_default()
+                );
+                if let Some(message) = self
+                    .snapshot
+                    .messages
+                    .iter_mut()
+                    .find(|message| message.id == id)
+                {
+                    message.timestamp = record["message"]["timestamp"]
+                        .as_f64()
+                        .filter(|time| *time > 0.0)
+                        .or(message.timestamp);
+                    let message = message.clone();
+                    return vec![self.event(EventData::MessageCompleted { message })];
+                }
+                vec![]
+            }
             "message_start" if record["message"]["role"] == "assistant" => {
                 self.blocks.clear();
                 self.last_error = None;
@@ -428,6 +494,10 @@ impl Conversation {
                     thinking: String::new(),
                     status: "streaming".into(),
                     error: None,
+                    timestamp: record["message"]["timestamp"]
+                        .as_f64()
+                        .filter(|time| *time > 0.0)
+                        .or_else(|| Some(now_ms())),
                     attachments: None,
                     started_at: None,
                     finished_at: None,
@@ -513,12 +583,22 @@ impl Conversation {
                     None
                 };
                 let message = ChatMessage {
-                    id,
+                    id: id.clone(),
                     role: "assistant".into(),
                     text,
                     thinking,
                     status: status.into(),
                     error,
+                    timestamp: raw["timestamp"]
+                        .as_f64()
+                        .filter(|time| *time > 0.0)
+                        .or_else(|| {
+                            self.snapshot
+                                .messages
+                                .iter()
+                                .find(|message| message.id == id)
+                                .and_then(|message| message.timestamp)
+                        }),
                     attachments: None,
                     started_at: None,
                     finished_at: None,
@@ -592,6 +672,30 @@ mod tests {
         history.end_restore();
         assert_eq!(history.snapshot.messages[0].started_at, Some(100000.0));
         assert_eq!(history.snapshot.messages[0].finished_at, Some(121000.0));
+        assert_eq!(history.snapshot.messages[0].timestamp, Some(100000.0));
+        assert_eq!(history.snapshot.messages[1].timestamp, Some(121000.0));
+    }
+
+    #[test]
+    fn rewinding_removes_only_the_selected_turn_and_later_tools() {
+        let mut conversation = Conversation::new("instance".into(), "project".into());
+        for text in ["first", "second"] {
+            conversation.begin(text.into(), text.into()).unwrap();
+            conversation.record(&json!({"type":"tool_execution_start","toolCallId":text,"toolName":"read","args":{"path":"a"}}));
+            conversation.finish("complete", None);
+        }
+        let events = conversation.rewind("second-user").unwrap();
+        assert_eq!(conversation.snapshot.messages.len(), 1);
+        assert_eq!(conversation.snapshot.messages[0].text, "first");
+        assert_eq!(conversation.snapshot.tools.len(), 1);
+        assert_eq!(conversation.snapshot.tools[0].tool_call_id, "first");
+        assert!(matches!(
+            events[0].data,
+            EventData::TranscriptReplaced { .. }
+        ));
+        assert!(conversation.rewind("missing").is_err());
+        conversation.rewind("first-user").unwrap();
+        assert!(conversation.snapshot.timeline.is_empty());
     }
 
     #[test]

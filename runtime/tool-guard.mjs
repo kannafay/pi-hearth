@@ -5,6 +5,22 @@ import { fileURLToPath } from 'node:url'
 
 export const guardCommand = 'hearth-guard-ready'
 export const approvalKind = 'pi-hearth-tool-approval-v1'
+export const rewindCommand = 'hearth-message-rewind'
+
+export async function rewindMessage(pi, args, ctx, token) {
+  const [provided, entryId, extra] = args.trim().split(/\s+/)
+  if (!token || provided !== token || extra || !/^[\w-]{1,128}$/.test(entryId ?? ''))
+    throw new Error('无效的消息操作。')
+  if (!ctx.isIdle()) throw new Error('请等待当前回复结束。')
+  const entry = ctx.sessionManager.getBranch().find((item) => item.id === entryId)
+  if (entry?.type !== 'message' || entry.message.role !== 'user')
+    throw new Error('这条消息不在当前会话中。')
+  // navigateTree treats selecting the current leaf as a no-op. A metadata
+  // entry allows retrying even when the failed run only persisted its prompt.
+  if (ctx.sessionManager.getLeafId() === entryId) pi.appendEntry('hearth-message-retry', {})
+  const result = await ctx.navigateTree(entryId, { summarize: false })
+  if (result.cancelled) throw new Error('已取消消息操作。')
+}
 
 // Match Pi's accepted path spellings before testing the real filesystem path.
 export function resolveToolPath(input, cwd) {
@@ -76,5 +92,9 @@ export default function registerGuard(pi) {
   pi.registerCommand(guardCommand, {
     description: 'pi-hearth tool approval guard',
     handler: async () => {},
+  })
+  pi.registerCommand(rewindCommand, {
+    description: 'pi-hearth message actions',
+    handler: (args, ctx) => rewindMessage(pi, args, ctx, process.env.HEARTH_MESSAGE_ACTION_TOKEN),
   })
 }

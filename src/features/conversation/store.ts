@@ -11,6 +11,7 @@ import {
   connectPi,
   disconnectPi,
   sendPiMessage,
+  rewritePiMessage,
   setPiModel,
   setPiThinkingLevel,
   stopPi,
@@ -60,6 +61,7 @@ interface ConversationState extends ConversationData {
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
+  rewrite: (messageId: string, message?: string) => Promise<boolean>
   stop: () => Promise<void>
   changeModel: (model: ModelInfo) => Promise<void>
   changeThinkingLevel: (level: string) => Promise<void>
@@ -128,6 +130,13 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
   if (event.runId && state.activeRunId && event.runId !== state.activeRunId) return next
   const data = event.data
   switch (data.type) {
+    case 'transcript_replaced':
+      next.messages = data.messages
+      next.tools = data.tools
+      next.timeline = data.timeline
+      next.blocks = {}
+      next.lastLocalActivityAt = Date.now()
+      break
     case 'run_started':
       next = {
         ...next,
@@ -396,6 +405,34 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await stopPi(instanceId)
     } catch (reason) {
       set({ error: String(reason) })
+    }
+  },
+  rewrite: async (messageId, message) => {
+    const { instanceId, status, readOnly, settingsPending, messages } = get()
+    const original = messages.find((item) => item.id === messageId && item.role === 'user')
+    if (
+      !instanceId ||
+      status !== 'ready' ||
+      readOnly ||
+      settingsPending ||
+      !original ||
+      (message !== undefined && !message.trim() && !original.attachments?.length)
+    )
+      return false
+    const runId = crypto.randomUUID()
+    set({
+      status: 'running',
+      activeRunId: runId,
+      error: null,
+      activity: message === undefined ? '正在重新回答…' : '正在发送修改…',
+    })
+    try {
+      await rewritePiMessage(instanceId, runId, messageId, message)
+      return true
+    } catch (reason) {
+      if (get().instanceId === instanceId && get().activeRunId === runId)
+        set({ status: 'ready', activeRunId: null, error: String(reason), activity: '' })
+      return false
     }
   },
   changeModel: async (model) => {

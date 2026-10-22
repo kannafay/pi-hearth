@@ -88,6 +88,7 @@ pub fn run() {
             pi::catalog::pi_open,
             pi::pi_connect,
             pi::pi_send,
+            pi::pi_rewrite,
             pi::pi_stop,
             pi::pi_set_model,
             pi::pi_set_thinking_level,

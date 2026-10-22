@@ -6,13 +6,21 @@ import {
   type ConversationData,
 } from './store'
 import type { ChatMessage, EventData, PiEvent, RuntimeSnapshot, ToolCall } from '@/lib/generated/pi'
-import { connectPi, sendPiMessage, setPiModel, setPiThinkingLevel, stopPi } from '@/lib/pi'
+import {
+  connectPi,
+  sendPiMessage,
+  rewritePiMessage,
+  setPiModel,
+  setPiThinkingLevel,
+  stopPi,
+} from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 
 vi.mock('@/lib/pi', () => ({
   connectPi: vi.fn(),
   disconnectPi: vi.fn(),
   sendPiMessage: vi.fn(),
+  rewritePiMessage: vi.fn(),
   stopPi: vi.fn(),
   setPiModel: vi.fn(),
   setPiThinkingLevel: vi.fn(),
@@ -58,6 +66,74 @@ beforeEach(() => {
   useConversationStore.setState({ availableThinkingLevels: snapshot.availableThinkingLevels })
   vi.mocked(setPiThinkingLevel).mockResolvedValue(snapshot)
   vi.mocked(setPiModel).mockResolvedValue(snapshot)
+})
+
+test('rewrites retain the current transcript until the authoritative branch event and prevent duplicate sends', async () => {
+  const prompt = {
+    ...message,
+    id: 'original-prompt',
+    role: 'user',
+    text: 'old',
+    status: 'complete',
+  }
+  const original = [
+    prompt,
+    { ...message, id: 'old-answer', text: 'old answer', status: 'complete' },
+  ]
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready', messages: original })
+  let finish!: () => void
+  vi.mocked(rewritePiMessage).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  const request = useConversationStore.getState().rewrite(prompt.id, 'new')
+  const run = useConversationStore.getState().activeRunId
+  expect(useConversationStore.getState().messages).toBe(original)
+  expect(await useConversationStore.getState().send('duplicate')).toBe(false)
+  expect(await useConversationStore.getState().rewrite(prompt.id)).toBe(false)
+  expect(rewritePiMessage).toHaveBeenCalledWith('pi-1', run, prompt.id, 'new')
+  useConversationStore
+    .getState()
+    .receive([
+      event(
+        1,
+        { type: 'transcript_replaced', messages: [], tools: [], timeline: [] },
+        'pi-1',
+        null,
+      ),
+    ])
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'running',
+    activeRunId: run,
+    messages: [],
+    timeline: [],
+    blocks: {},
+  })
+  finish()
+  expect(await request).toBe(true)
+})
+
+test('failed message actions keep history and cannot change read-only sessions', async () => {
+  const prompt = {
+    ...message,
+    id: 'original-prompt',
+    role: 'user',
+    text: 'old',
+    status: 'complete',
+  }
+  const messages = [prompt]
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready', messages })
+  vi.mocked(rewritePiMessage).mockRejectedValueOnce(new Error('record changed'))
+  expect(await useConversationStore.getState().rewrite(prompt.id)).toBe(false)
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    messages,
+    error: 'Error: record changed',
+  })
+  useConversationStore.setState({ readOnly: 'missing directory' })
+  expect(await useConversationStore.getState().rewrite(prompt.id)).toBe(false)
+  expect(rewritePiMessage).toHaveBeenCalledTimes(1)
 })
 
 test('switching during connection ignores the old failure and hydrates the latest target', async () => {

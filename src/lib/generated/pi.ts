@@ -7,7 +7,7 @@ export type Attachment = { id: string, name: string, kind: string, mimeType: str
 
 export type AttachmentPreview = { kind: string, source: string | null, text: string | null, };
 
-export type ChatMessage = { id: string, role: string, text: string, thinking: string, status: string, error: string | null, attachments?: Array<Attachment>, startedAt?: number, finishedAt?: number, };
+export type ChatMessage = { id: string, role: string, text: string, thinking: string, status: string, error: string | null, timestamp?: number, attachments?: Array<Attachment>, startedAt?: number, finishedAt?: number, };
 
 export type ToolCall = { id: string, toolCallId: string, runId: string, name: string, summary: string, arguments: string, argumentsTruncated: boolean, output: string, outputTruncated: boolean, status: string, approvalId: string | null, durationMs: number | null, };
 
@@ -31,6 +31,6 @@ export type ProjectInstructions = { path: string, content: string, };
 
 export type RuntimeSnapshot = { instanceId: string, projectPath: string, sessionId: string, sessionFile: string | null, readOnly: string | null, model: ModelInfo | null, models: Array<ModelInfo>, thinkingLevel: string, availableThinkingLevels: Array<string>, messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, activeRunId: string | null, sequence: number, };
 
-export type EventData = { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
+export type EventData = { "type": "transcript_replaced", messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, } | { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
 
 export type PiEvent = { instanceId: string, projectPath: string, sessionId: string, runId: string | null, sequence: number, data: EventData, };

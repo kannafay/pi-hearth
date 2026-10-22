@@ -20,6 +20,9 @@ pub struct ChatMessage {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub timestamp: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub attachments: Option<Vec<Attachment>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -169,6 +172,11 @@ pub struct RuntimeSnapshot {
     rename_all_fields = "camelCase"
 )]
 pub enum EventData {
+    TranscriptReplaced {
+        messages: Vec<ChatMessage>,
+        tools: Vec<ToolCall>,
+        timeline: Vec<TimelineEntry>,
+    },
     RunStarted {
         message: ChatMessage,
     },

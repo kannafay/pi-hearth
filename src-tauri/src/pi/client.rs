@@ -25,6 +25,10 @@ use uuid::Uuid;
 type Reply = oneshot::Sender<Result<Value, String>>;
 
 enum Control {
+    Rewind {
+        message_id: String,
+        reply: Reply,
+    },
     Restore {
         messages: Vec<Value>,
         reply: oneshot::Sender<Result<RuntimeSnapshot, String>>,
@@ -61,6 +65,8 @@ pub struct PiClient {
     pub instance_id: String,
     pub project_path: String,
     commands: mpsc::Sender<Control>,
+    pub(super) actions: Mutex<()>,
+    action_token: String,
 }
 
 #[derive(Clone)]
@@ -74,6 +80,7 @@ struct Pending {
     reply: Reply,
     prompt_run: Option<String>,
     deadline: Instant,
+    history: bool,
 }
 
 struct Approval {
@@ -91,6 +98,7 @@ impl PiClient {
     ) -> Result<Arc<Self>, String> {
         let cli = pi_cli_path()?;
         let instance_id = Uuid::new_v4().to_string();
+        let action_token = Uuid::new_v4().to_string();
         let output = ToolOutput::new(&data_dir.join("tool-output").join(&instance_id)).await?;
         let guard = data_dir.join("runtime/tool-guard.mjs");
         std::fs::create_dir_all(guard.parent().unwrap())
@@ -140,6 +148,7 @@ impl PiClient {
             .arg(sessions)
             .env("PI_CODING_AGENT_DIR", &agent_dir)
             .env("PI_TELEMETRY", "0")
+            .env("HEARTH_MESSAGE_ACTION_TOKEN", &action_token)
             .envs(config.environment)
             .current_dir(&project_path)
             .stdin(Stdio::piped())
@@ -171,6 +180,8 @@ impl PiClient {
             instance_id: instance_id.clone(),
             project_path: project_path.clone(),
             commands: sender,
+            actions: Mutex::new(()),
+            action_token,
         });
         tauri::async_runtime::spawn(async move {
             let _tree = tree;
@@ -197,6 +208,13 @@ impl PiClient {
                     }
                     control = receiver.recv() => {
                         match control {
+                            Some(Control::Rewind { message_id, reply }) => {
+                                let result = conversation.rewind(&message_id).map(|events| {
+                                    emit(&channel, events);
+                                    Value::Null
+                                });
+                                let _ = reply.send(result);
+                            }
                             Some(Control::Restore { messages, reply }) => {
                                 if conversation.snapshot.active_run_id.is_some() { let _ = reply.send(Err("请先停止任务再恢复历史。".into())); continue; }
                                 let mut result = Ok(());
@@ -241,7 +259,7 @@ impl PiClient {
                                     exit_error = Some("Pi 输入管道已中断，请重新连接。".into()); break;
                                 }
                                 let deadline = if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
-                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline) });
+                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries" });
                             }
                             Some(Control::Subscribe { channel: next, reply }) => { channel = next; let _ = reply.send(conversation.snapshot.clone()); }
                             Some(Control::Snapshot { reply }) => { let _ = reply.send(conversation.snapshot.clone()); }
@@ -273,7 +291,13 @@ impl PiClient {
                         match result {
                             Ok(0) => stdout_open = false,
                             Ok(length) => {
-                                let records = match decoder.push(&output_buffer[..length]) {
+                                // A complete native transcript can contain several sent images.
+                                // Keep ordinary records bounded; only history reads use the
+                                // same 64 MiB ceiling as the session-file adapter.
+                                let decoded = if pending.values().any(|request| request.history) {
+                                    decoder.push_bounded(&output_buffer[..length], 64 * 1024 * 1024)
+                                } else { decoder.push(&output_buffer[..length]) };
+                                let records = match decoded {
                                     Ok(records) => records,
                                     Err(error) => { exit_error = Some(error); break; }
                                 };
@@ -418,6 +442,33 @@ impl PiClient {
             .await
             .map_err(|_| "Pi 命令响应超时。")?
             .map_err(|_| "Pi 连接已关闭。")?
+    }
+
+    pub async fn rewrite(
+        &self,
+        message_id: &str,
+        replacement: Option<&str>,
+        run_id: String,
+    ) -> Result<(), String> {
+        let snapshot = self.snapshot().await?;
+        let entries = self.request(json!({"type":"get_entries"}), None).await?;
+        let rewrite = super::rewrite::prepare(&snapshot, &entries, message_id, replacement)?;
+        self.request(json!({"type":"prompt","message":format!("/hearth-message-rewind {} {}", self.action_token, rewrite.entry_id)}), None).await?;
+        let current = self.request(json!({"type":"get_entries"}), None).await?;
+        if current["leafId"] != rewrite.parent_id {
+            return Err("无法切换到这条消息，请重新打开会话后重试。".into());
+        }
+        let (reply, receive) = oneshot::channel();
+        self.commands
+            .send(Control::Rewind {
+                message_id: message_id.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| "Pi 连接已关闭。")?;
+        receive.await.map_err(|_| "Pi 连接已关闭。")??;
+        self.request(rewrite.prompt, Some(run_id)).await?;
+        Ok(())
     }
 
     pub async fn restore(&self, messages: Vec<Value>) -> Result<RuntimeSnapshot, String> {
@@ -1257,6 +1308,127 @@ mod tests {
         })
         .await
         .expect("live model response timed out")
+    }
+
+    // Explicit opt-in: uses the developer's existing CC Switch / Pi API key.
+    #[tokio::test]
+    #[ignore = "verifies message edits and regeneration with the configured Pi model"]
+    async fn live_rpc_message_rewrite() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/message-rewrite-live")
+            .join(Uuid::new_v4().to_string());
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let (sender, mut events) = mpsc::unbounded_channel();
+        let channel = Channel::new(move |body| {
+            let _ = sender.send(body.deserialize::<Value>().unwrap());
+            Ok(())
+        });
+        let manager = PiManager::default();
+        let snapshot = manager
+            .connect(
+                project.to_string_lossy().into(),
+                &root.join("data"),
+                channel,
+            )
+            .await
+            .unwrap();
+        let client = manager.client(&snapshot.instance_id).await.unwrap();
+        let model = snapshot
+            .models
+            .iter()
+            .find(|model| model.provider.starts_with("cc-switch"))
+            .unwrap_or(&snapshot.models[0]);
+        client
+            .request(
+                json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
+                None,
+            )
+            .await
+            .unwrap();
+        client
+            .request(json!({"type":"set_thinking_level","level":"off"}), None)
+            .await
+            .unwrap();
+        for word in ["ALPHA", "BETA"] {
+            let run = Uuid::new_v4().to_string();
+            client
+                .request(
+                    json!({"type":"prompt","message":format!("只回复 {word}，不要调用任何工具。")}),
+                    Some(run.clone()),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                finished(&mut events, &run).await.last().unwrap()["data"]["status"],
+                "complete"
+            );
+        }
+        let before = client.snapshot().await.unwrap();
+        let first_id = before.messages[0].id.clone();
+        let run = Uuid::new_v4().to_string();
+        client
+            .rewrite(
+                &first_id,
+                Some("只回复 GAMMA，不要调用任何工具。"),
+                run.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            finished(&mut events, &run).await.last().unwrap()["data"]["status"],
+            "complete"
+        );
+        let edited = client.snapshot().await.unwrap();
+        assert_eq!(edited.messages.len(), 2);
+        assert!(edited.messages[0].text.contains("GAMMA"));
+        assert!(edited.messages[1].text.contains("GAMMA"));
+        assert_eq!(edited.session_file, before.session_file);
+        assert!(
+            edited
+                .messages
+                .iter()
+                .all(|message| message.timestamp.is_some())
+        );
+        let run = Uuid::new_v4().to_string();
+        client
+            .rewrite(&edited.messages[0].id, None, run.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            finished(&mut events, &run).await.last().unwrap()["data"]["status"],
+            "complete"
+        );
+        let retried = client.snapshot().await.unwrap();
+        assert_eq!(retried.messages.len(), 2);
+        assert!(retried.messages[1].text.contains("GAMMA"));
+        let data = client
+            .request(json!({"type":"get_entries"}), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            data["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|entry| entry["type"] == "message" && entry["message"]["role"] == "user")
+                .count(),
+            4
+        );
+        let restored = super::super::catalog::helper(
+            &root.join("data"),
+            json!({"action":"history","path":retried.session_file}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(restored.as_array().unwrap().len(), 2);
+        assert!(!restored.to_string().contains("ALPHA"));
+        assert!(!restored.to_string().contains("BETA"));
+        assert!(restored.to_string().contains("GAMMA"));
+        manager.disconnect().await;
+        println!(
+            "Edit earlier turn and regenerate: native context, same session file, preserved branches and reopened transcript verified"
+        );
     }
 
     // Explicit opt-in: uses the developer's existing CC Switch / Pi API key.
