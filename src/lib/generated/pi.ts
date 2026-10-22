@@ -25,6 +25,12 @@ export type Selection = { projectPath: string | null, sessionPath: string | null
 
 export type SessionPreference = { pinned: boolean, archived: boolean, };
 
+export type AppTheme = "system" | "light" | "dark";
+
+export type AppSettings = { theme: AppTheme, sidebarOpen: boolean, inspectorOpen: boolean, navigationWidth: number, inspectorWidth: number, expandedProjects: Record<string, boolean>, thinkingLevel: string | null, };
+
+export type AppSettingsPatch = { theme?: AppTheme, sidebarOpen?: boolean, inspectorOpen?: boolean, navigationWidth?: number, inspectorWidth?: number, expandedProjects?: { [key in string]?: boolean }, thinkingLevel?: string, };
+
 export type WorkspaceCatalog = { projects: Array<ProjectInfo>, sessions: Array<SessionInfo>, generalCwd: string, selection: Selection, sessionPreferences: { [key in string]?: SessionPreference }, };
 
 export type ProjectInstructions = { path: string, content: string, };

@@ -26,6 +26,10 @@ export function WorkspaceShell() {
     projectPath,
     sidebarOpen,
     inspectorOpen,
+    navigationWidth,
+    inspectorWidth,
+    setNavigationWidth,
+    setInspectorWidth,
     toggleSidebar,
     setInspectorOpen,
     attachmentPreview,
@@ -39,9 +43,9 @@ export function WorkspaceShell() {
   const projectPresence = useDialogPresence(projectDialog)
   const attachmentPresence = useDialogPresence(attachmentPreview)
   const compact = useMediaQuery('(max-width: 1199px)')
-  const navigationPanel = useAnimatedPanel(sidebarOpen, 260)
+  const navigationPanel = useAnimatedPanel(sidebarOpen, navigationWidth)
   const dockedInspectorOpen = inspectorOpen && !compact
-  const inspectorPanel = useAnimatedPanel(dockedInspectorOpen, 400)
+  const inspectorPanel = useAnimatedPanel(dockedInspectorOpen, inspectorWidth)
   const dialogOpen =
     settingsOpen ||
     searchOpen ||
@@ -181,6 +185,8 @@ export function WorkspaceShell() {
             if (!isUserInteraction) return
             const open = layout.navigation > 0
             if (open !== sidebarOpen) toggleSidebar()
+            const width = navigationPanel.panelRef.current?.getSize().inPixels
+            if (open && width) setNavigationWidth(width)
           }}
         >
           <ResizablePanel
@@ -221,6 +227,8 @@ export function WorkspaceShell() {
                   if (!isUserInteraction || compact) return
                   const open = layout.inspector > 0
                   if (open !== inspectorOpen) setInspectorOpen(open)
+                  const width = inspectorPanel.panelRef.current?.getSize().inPixels
+                  if (open && width) setInspectorWidth(width)
                 }}
               >
                 <ResizablePanel id="conversation" minSize="400px">

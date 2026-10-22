@@ -1,3 +1,6 @@
+import { isDesktop } from '@/lib/desktop'
+import { updateAppSettings } from '@/lib/app-settings'
+
 const key = 'pi-hearth.thinking-level-v2'
 const levels = ['default', 'low', 'medium', 'high', 'xhigh', 'max']
 
@@ -10,7 +13,11 @@ export function loadThinkingPreference(): string {
   }
 }
 
-export function saveThinkingPreference(level: string) {
+export async function saveThinkingPreference(level: string) {
+  if (isDesktop()) {
+    await updateAppSettings({ thinkingLevel: level })
+    return
+  }
   try {
     localStorage.setItem(key, level)
   } catch {

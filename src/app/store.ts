@@ -1,5 +1,15 @@
 import { create } from 'zustand'
-import type { Attachment, ProjectInfo, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
+import type {
+  AppSettingsPatch,
+  AppTheme,
+  Attachment,
+  ProjectInfo,
+  SessionInfo,
+  WorkspaceCatalog,
+} from '@/lib/generated/pi'
+import { loadAppSettings, updateAppSettings } from '@/lib/app-settings'
+import { isDesktop } from '@/lib/desktop'
+import { loadThinkingPreference } from '@/features/conversation/thinking-preference'
 import { releaseAttachments } from '@/lib/attachments'
 import {
   loadCatalog,
@@ -10,7 +20,7 @@ import {
 import { useConversationStore } from '@/features/conversation/store'
 import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
 
-export type Theme = 'system' | 'light' | 'dark'
+export type Theme = AppTheme
 
 interface WorkspaceState {
   projects: ProjectInfo[]
@@ -36,6 +46,13 @@ interface WorkspaceState {
   clearAttachments: (ids?: string[]) => void
   sidebarOpen: boolean
   inspectorOpen: boolean
+  navigationWidth: number
+  inspectorWidth: number
+  setNavigationWidth: (width: number) => void
+  setInspectorWidth: (width: number) => void
+  settingsReady: boolean
+  settingsLoading: boolean
+  hydrateSettings: () => Promise<void>
   theme: Theme
   setProject: (path: string) => void
   setDraft: (draft: string) => void
@@ -174,6 +191,37 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   sidebarOpen: true,
   inspectorOpen: false,
+  navigationWidth: 260,
+  inspectorWidth: 400,
+  setNavigationWidth: (width) =>
+    set({ navigationWidth: Math.min(400, Math.max(220, Math.round(width))) }),
+  setInspectorWidth: (width) =>
+    set({ inspectorWidth: Math.min(560, Math.max(300, Math.round(width))) }),
+  settingsReady: false,
+  settingsLoading: false,
+  hydrateSettings: async () => {
+    if (get().settingsReady || get().settingsLoading) return
+    set({ settingsLoading: true, error: null })
+    try {
+      const settings = await loadAppSettings()
+      const thinkingLevel = settings.thinkingLevel ?? loadThinkingPreference()
+      if (settings.thinkingLevel === null) await updateAppSettings({ thinkingLevel })
+      useConversationStore.setState({ requestedThinkingLevel: thinkingLevel })
+      set({
+        theme: settings.theme,
+        sidebarOpen: settings.sidebarOpen,
+        inspectorOpen: settings.inspectorOpen,
+        navigationWidth: settings.navigationWidth,
+        inspectorWidth: settings.inspectorWidth,
+        expandedProjects: settings.expandedProjects,
+        settingsReady: true,
+      })
+    } catch (reason) {
+      set({ error: String(reason) })
+    } finally {
+      set({ settingsLoading: false })
+    }
+  },
   theme: 'system',
   setProject: (projectPath) =>
     set((state) => ({
@@ -326,3 +374,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       )
   },
 }))
+
+const persistedKeys = [
+  'theme',
+  'sidebarOpen',
+  'inspectorOpen',
+  'navigationWidth',
+  'inspectorWidth',
+  'expandedProjects',
+] as const
+
+useWorkspaceStore.subscribe((state, previous) => {
+  if (!state.settingsReady || !previous.settingsReady || !isDesktop()) return
+  const entries = persistedKeys
+    .filter((key) => state[key] !== previous[key])
+    .map((key) => [key, state[key]])
+  if (!entries.length) return
+  void updateAppSettings(Object.fromEntries(entries) as AppSettingsPatch).catch(
+    (reason: unknown) => {
+      useWorkspaceStore.setState({ error: `无法保存应用偏好：${String(reason)}` })
+    },
+  )
+})

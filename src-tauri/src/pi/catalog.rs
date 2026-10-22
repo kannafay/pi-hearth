@@ -2,9 +2,9 @@ use super::{
     client::{OpenOptions, PiManager},
     config::local_agent_directory,
     search::{IndexedDocument, SearchDocument, SearchIndex},
+    storage::{self, Preferences},
     types::*,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -53,14 +53,6 @@ impl WorkspaceManager {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", default)]
-struct Preferences {
-    projects: Vec<ProjectInfo>,
-    selection: Selection,
-    session_preferences: HashMap<String, SessionPreference>,
-}
-
 fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_local_data_dir()
@@ -68,25 +60,11 @@ fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 async fn preferences(data: &Path) -> Result<Preferences, String> {
-    match tokio::fs::read(data.join("workspace.json")).await {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|_| "工作台配置损坏，请检查 workspace.json。".into()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
-        Err(_) => Err("无法读取工作台配置。".into()),
-    }
+    storage::preferences(data).await
 }
 
 async fn save(data: &Path, preferences: &Preferences) -> Result<(), String> {
-    tokio::fs::create_dir_all(data)
-        .await
-        .map_err(|_| "无法创建工作台目录。")?;
-    let temp = data.join("workspace.json.tmp");
-    tokio::fs::write(&temp, serde_json::to_vec_pretty(preferences).unwrap())
-        .await
-        .map_err(|_| "无法保存工作台配置。")?;
-    tokio::fs::rename(temp, data.join("workspace.json"))
-        .await
-        .map_err(|_| "无法更新工作台配置。".into())
+    storage::save_preferences(data, preferences).await
 }
 
 pub async fn helper(data: &Path, request: Value) -> Result<Value, String> {
@@ -310,6 +288,7 @@ async fn delete_archived(
         selected.push(session);
     }
     let mut deleted = 0;
+    let mut deleted_paths = Vec::new();
     let mut failed = 0;
     for session in selected {
         match tokio::fs::remove_file(&session.path).await {
@@ -332,9 +311,10 @@ async fn delete_archived(
             prefs.selection.session_path = None;
         }
         deleted += 1;
+        deleted_paths.push(session.path.clone());
     }
     if deleted > 0 {
-        save(data, prefs).await?;
+        storage::save_preferences_and_remove_documents(data, prefs, deleted_paths).await?;
     }
     if failed > 0 {
         return Err(format!(
@@ -385,6 +365,10 @@ pub async fn workspace_search(
     if query.trim().is_empty() {
         return Ok(index.query(""));
     }
+    if !index.persisted_loaded {
+        index.documents = storage::search_documents(&data).await?;
+        index.persisted_loaded = true;
+    }
     let files: Vec<_> = index
         .catalog
         .as_ref()
@@ -395,6 +379,7 @@ pub async fn workspace_search(
         .map(|session| session.path.clone())
         .collect();
     let mut changed = Vec::new();
+    let mut existing = Vec::new();
     for file in files {
         let Ok(meta) = tokio::fs::metadata(&file).await else {
             index.documents.remove(&file);
@@ -403,6 +388,7 @@ pub async fn workspace_search(
         let Ok(modified) = meta.modified() else {
             continue;
         };
+        existing.push(file.clone());
         if index
             .documents
             .get(&file)
@@ -411,23 +397,25 @@ pub async fn workspace_search(
             changed.push((file, modified, meta.len()));
         }
     }
+    let mut updates = HashMap::new();
     if !changed.is_empty() {
         let documents: Vec<SearchDocument> = serde_json::from_value(helper(&data, json!({"action":"search_documents", "paths": changed.iter().map(|(file, _, _)| file).collect::<Vec<_>>()})).await?).map_err(|_| "无法建立会话搜索索引。")?;
         for document in documents {
             if let Some((_, modified, size)) =
                 changed.iter().find(|(file, _, _)| file == &document.path)
             {
-                index.documents.insert(
-                    document.path,
-                    IndexedDocument {
-                        modified: *modified,
-                        size: *size,
-                        texts: document.texts,
-                    },
-                );
+                let indexed = IndexedDocument {
+                    modified: *modified,
+                    size: *size,
+                    texts: document.texts,
+                };
+                updates.insert(document.path.clone(), indexed.clone());
+                index.documents.insert(document.path, indexed);
             }
         }
     }
+    index.documents.retain(|path, _| existing.contains(path));
+    storage::save_search_documents(&data, updates, existing).await?;
     Ok(index.query(&query))
 }
 

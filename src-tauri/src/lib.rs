@@ -79,6 +79,8 @@ pub fn run() {
             pi::attachments::attachment_clipboard_available,
             pi::attachments::attachment_release,
             pi::attachments::attachment_preview,
+            pi::storage::app_settings,
+            pi::storage::app_update_settings,
             pi::catalog::workspace_catalog,
             pi::catalog::workspace_search,
             pi::catalog::workspace_select,

@@ -6,6 +6,7 @@ mod process_tree;
 mod protocol;
 mod rewrite;
 mod search;
+pub mod storage;
 mod tool_output;
 mod types;
 

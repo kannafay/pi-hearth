@@ -14,6 +14,7 @@ pub struct SearchDocument {
     pub texts: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct IndexedDocument {
     pub modified: SystemTime,
     pub size: u64,
@@ -24,6 +25,7 @@ pub struct IndexedDocument {
 pub struct SearchIndex {
     pub catalog: Option<(Instant, WorkspaceCatalog)>,
     pub documents: HashMap<String, IndexedDocument>,
+    pub persisted_loaded: bool,
 }
 
 fn excerpt(text: &str, terms: &[String]) -> String {

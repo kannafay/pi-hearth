@@ -139,6 +139,68 @@ pub struct SessionPreference {
     pub archived: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum AppTheme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AppSettings {
+    pub theme: AppTheme,
+    pub sidebar_open: bool,
+    pub inspector_open: bool,
+    pub navigation_width: f64,
+    pub inspector_width: f64,
+    #[ts(type = "Record<string, boolean>")]
+    pub expanded_projects: std::collections::HashMap<String, bool>,
+    pub thinking_level: Option<String>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: AppTheme::System,
+            sidebar_open: true,
+            inspector_open: false,
+            navigation_width: 260.0,
+            inspector_width: 400.0,
+            expanded_projects: Default::default(),
+            thinking_level: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct AppSettingsPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub theme: Option<AppTheme>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sidebar_open: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub inspector_open: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub navigation_width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub inspector_width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub expanded_projects: Option<std::collections::HashMap<String, bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub thinking_level: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, TS)]
 pub struct ProjectInstructions {
     pub path: String,
@@ -238,6 +300,9 @@ fn export_frontend_types() {
         ProjectInfo::decl(),
         Selection::decl(),
         SessionPreference::decl(),
+        AppTheme::decl(),
+        AppSettings::decl(),
+        AppSettingsPatch::decl(),
         WorkspaceCatalog::decl(),
         ProjectInstructions::decl(),
         RuntimeSnapshot::decl(),

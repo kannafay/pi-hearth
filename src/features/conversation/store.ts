@@ -451,7 +451,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           : 'default'
       const thinking = await setPiThinkingLevel(instanceId, level)
       if (!current()) return
-      saveThinkingPreference(level)
+      await saveThinkingPreference(level).catch((reason: unknown) => {
+        if (current()) set({ error: `无法保存思考偏好：${String(reason)}` })
+      })
+      if (!current()) return
       set({
         ...settingsFromSnapshot(thinking),
         requestedThinkingLevel: level,
@@ -471,7 +474,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     try {
       const snapshot = await setPiThinkingLevel(instanceId, level)
       if (!current()) return
-      saveThinkingPreference(level)
+      await saveThinkingPreference(level).catch((reason: unknown) => {
+        if (current()) set({ error: `无法保存思考偏好：${String(reason)}` })
+      })
+      if (!current()) return
       set({ ...settingsFromSnapshot(snapshot), settingsPending: null })
     } catch (reason) {
       if (current()) set({ settingsPending: null, requestedThinkingLevel, error: String(reason) })
