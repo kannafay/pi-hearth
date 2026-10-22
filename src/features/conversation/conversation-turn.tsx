@@ -1,13 +1,19 @@
 import { memo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
+import { Check, Copy, Download } from 'lucide-react'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
+import { ConversationCode } from './conversation-code'
 import { ExecutionProcess } from './execution-process'
 import { MessageActions } from './message-actions'
 import { useConversationStore } from './store'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+
+const markdownComponents = { code: ConversationCode }
+const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
+const markdownTranslations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
 
 export const ConversationTurn = memo(function ConversationTurn({
   turn,
@@ -135,9 +141,12 @@ export const ConversationTurn = memo(function ConversationTurn({
             {reply ? (
               <Streamdown
                 plugins={{ code }}
+                components={markdownComponents}
+                icons={markdownIcons}
+                translations={markdownTranslations}
                 isAnimating={reply.status === 'streaming'}
                 mode={reply.status === 'streaming' ? 'streaming' : 'static'}
-                className="space-y-3 text-[14px] leading-6 wrap-anywhere"
+                className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-6 wrap-anywhere"
               >
                 {reply.text}
               </Streamdown>

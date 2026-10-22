@@ -416,6 +416,78 @@ select {
   transition: opacity 160ms ease-out;
 }
 
+.conversation-markdown [data-streamdown='code-block'] {
+  min-width: 0;
+  max-width: 100%;
+  gap: 0;
+  overflow: hidden;
+  border-color: color-mix(in oklch, var(--border) 70%, var(--background));
+  border-radius: 10px;
+  padding: 0;
+  background: color-mix(in oklch, var(--muted) 60%, var(--background));
+}
+
+.conversation-markdown [data-streamdown='code-block-header'] {
+  height: 44px;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  padding: 0 88px 0 16px;
+}
+
+.conversation-markdown [data-streamdown='code-block-header'] > span {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.conversation-markdown [data-streamdown='code-block-actions'] {
+  gap: 2px;
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.conversation-markdown [data-streamdown='code-block-actions'] button {
+  transition-property: color, background-color, box-shadow;
+}
+
+.conversation-markdown [data-streamdown='code-block-actions'] svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.6;
+}
+
+.conversation-markdown [data-streamdown='code-block-body'] {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 16px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.7;
+  overscroll-behavior: contain;
+  tab-size: 2;
+}
+
+.conversation-markdown [data-streamdown='code-block-body'] pre {
+  background: transparent;
+  font-family: 'Cascadia Code', Consolas, 'SFMono-Regular', monospace;
+}
+
+.conversation-markdown [data-streamdown='code-block-body'] code > span::before {
+  color: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  font-family: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 [data-conversation-message]:is(:hover, :focus-within) .message-actions {
   opacity: 1;
   pointer-events: auto;
