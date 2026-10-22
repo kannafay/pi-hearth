@@ -257,7 +257,7 @@ export function WorkspaceNavigation({
                                 render={
                                   <button
                                     type="button"
-                                    className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-1 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                     aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
                                   />
                                 }

@@ -287,10 +287,6 @@ select {
   color: var(--foreground);
 }
 
-.sidebar-project-row {
-  --sidebar-row-title-inset: 0.25rem;
-}
-
 .sidebar-row-title {
   --sidebar-title-tail-opacity: 1;
   mask-image: linear-gradient(
@@ -389,7 +385,7 @@ select {
 
 .sidebar-project-sessions .sidebar-session-link {
   border-width: 0;
-  padding-left: calc(var(--spacing) * 7);
+  padding-left: calc(var(--spacing) * 8);
 }
 
 .sidebar-project-sessions:is([data-starting-style], [data-ending-style]) {
