@@ -243,6 +243,12 @@ select {
 }
 
 .sidebar-session-row {
+  --sidebar-session-surface: color-mix(
+    in oklch,
+    var(--sidebar-accent) 55%,
+    oklch(from var(--shell-tint) l c h / 1)
+  );
+  position: relative;
   background-color: transparent;
   transition:
     background-color 160ms ease-out,
@@ -250,12 +256,47 @@ select {
 }
 
 .sidebar-session-row:is(:hover, :has(:focus-visible)) {
-  background-color: color-mix(in oklch, var(--sidebar-accent) 55%, transparent);
+  background-color: var(--sidebar-session-surface);
 }
 
 .sidebar-session-row[data-selected='true'] {
-  background-color: var(--sidebar-accent);
+  --sidebar-session-surface: var(--sidebar-accent);
+  background-color: var(--sidebar-session-surface);
   color: var(--foreground);
+}
+
+.sidebar-session-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 1;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+.sidebar-session-actions::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 -1.5rem;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--sidebar-session-surface);
+  mask-image: linear-gradient(to left, #000 0%, #000 calc(100% - 1.5rem), transparent 100%);
+  pointer-events: none;
+  transition: background-color 160ms ease-out;
+}
+
+.sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .sidebar-session-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Only the row paints the session highlight, including the action area. */

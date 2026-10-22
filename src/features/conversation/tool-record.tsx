@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, ChevronRight, FilePenLine, FileText, LoaderCircle, Terminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/scroll-area'
 import type { ToolCall, ToolLogPage } from '@/lib/generated/pi'
 import { decidePiTool, loadPiToolOutput } from '@/lib/pi'
@@ -98,12 +99,21 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
         >
           {toolLabels[tool.name] ?? tool.name}
         </span>
-        <span
-          className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
-          title={tool.summary}
-        >
-          {tool.summary}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" />
+            }
+          >
+            {tool.summary}
+          </TooltipTrigger>
+          <TooltipContent
+            showArrow={false}
+            className="max-w-[min(36rem,var(--available-width))] whitespace-pre-wrap wrap-anywhere"
+          >
+            {tool.summary}
+          </TooltipContent>
+        </Tooltip>
         {(running || (awaiting && deciding)) && (
           <LoaderCircle
             aria-hidden

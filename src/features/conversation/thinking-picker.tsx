@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useConversationStore } from './store'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 export function ThinkingPicker() {
   const {
@@ -38,19 +39,25 @@ export function ThinkingPicker() {
         if (level) void changeThinkingLevel(level)
       }}
     >
-      <SelectTrigger
-        aria-label="思考强度"
-        title={
-          value === 'default'
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SelectTrigger
+              aria-label="思考强度"
+              data-pending={Boolean(settingsPending) || undefined}
+              size="sm"
+              className="composer-select-trigger shrink-0"
+            />
+          }
+        >
+          <SelectValue placeholder="思考强度" />
+        </TooltipTrigger>
+        <TooltipContent showArrow={false}>
+          {value === 'default'
             ? `跟随模型默认设置，当前使用 ${effectiveLabel}`
-            : `思考强度：${effectiveLabel}`
-        }
-        data-pending={Boolean(settingsPending) || undefined}
-        size="sm"
-        className="composer-select-trigger shrink-0"
-      >
-        <SelectValue placeholder="思考强度" />
-      </SelectTrigger>
+            : `思考强度：${effectiveLabel}`}
+        </TooltipContent>
+      </Tooltip>
       <SelectContent alignItemWithTrigger={false} align="start" className="composer-select-content">
         <SelectGroup>
           {items.map((item) => (

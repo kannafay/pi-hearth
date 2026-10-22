@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { ArrowUp, LoaderCircle, Paperclip, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/icon-button'
 import { Textarea } from '@/components/ui/textarea'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
@@ -206,8 +207,8 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
         />
         <div className="flex h-7 items-stretch justify-between gap-2 px-2">
           <div className="flex h-full min-w-0 items-stretch gap-1">
-            <Button
-              aria-label="添加附件"
+            <IconButton
+              label="添加附件"
               title="添加附件（也可粘贴或拖入）"
               variant="ghost"
               size="icon-sm"
@@ -220,7 +221,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               ) : (
                 <Paperclip className="size-4 stroke-[1.6]" />
               )}
-            </Button>
+            </IconButton>
             <ModelPicker compact />
             <ThinkingPicker />
           </div>

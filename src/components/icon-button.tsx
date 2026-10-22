@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 export function IconButton({
   label,
+  title,
   children,
   ...props
 }: ComponentProps<typeof Button> & { label: string }) {
@@ -15,7 +16,7 @@ export function IconButton({
         {children}
       </TooltipTrigger>
       <TooltipContent variant="card" showArrow={false}>
-        {label}
+        {title ?? label}
       </TooltipContent>
     </Tooltip>
   )

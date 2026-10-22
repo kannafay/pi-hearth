@@ -3,6 +3,7 @@ import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'l
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
 import { IconButton } from '@/components/icon-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { useDialogPresence } from '@/components/use-dialog-presence'
@@ -224,12 +225,17 @@ export function WorkspaceShell() {
               <ResizablePanel id="conversation" minSize="400px">
                 <main aria-label="对话工作区" className="flex h-full min-h-0 flex-col">
                   <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
-                    <span
-                      className="shrink-0 text-muted-foreground"
-                      title={projectPath ?? undefined}
-                    >
-                      {projectName ?? '聊天'}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        disabled={!projectPath}
+                        render={<span className="shrink-0 text-muted-foreground" />}
+                      >
+                        {projectName ?? '聊天'}
+                      </TooltipTrigger>
+                      <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
+                        {projectPath}
+                      </TooltipContent>
+                    </Tooltip>
                     <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
                     <span className="truncate">
                       {session?.title ??

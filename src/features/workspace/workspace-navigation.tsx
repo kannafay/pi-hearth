@@ -108,7 +108,11 @@ export function WorkspaceNavigation({
               </div>
             </TooltipContent>
           </Tooltip>
-          <div className="mr-1 flex shrink-0 items-center gap-0.5">
+          <div
+            className="sidebar-session-actions flex items-center gap-0.5 px-1"
+            role="group"
+            aria-label="会话操作"
+          >
             <Tooltip>
               <TooltipTrigger
                 render={

@@ -1,6 +1,7 @@
 import { CircleAlert, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConnectionNotice } from './connection-notice'
 import { useConversationStore } from './store'
 
@@ -44,9 +45,12 @@ export function ConversationWelcome() {
         {projectName && (
           <p className="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <FolderOpen aria-hidden className="size-3.5 shrink-0" />
-            <span className="truncate" title={projectPath ?? undefined}>
-              {projectName}
-            </span>
+            <Tooltip>
+              <TooltipTrigger render={<span className="truncate" />}>{projectName}</TooltipTrigger>
+              <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
+                {projectPath}
+              </TooltipContent>
+            </Tooltip>
           </p>
         )}
         <h1 className="text-2xl leading-9 font-medium tracking-tight">
