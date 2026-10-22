@@ -31,7 +31,7 @@ export const ConversationTurn = memo(function ConversationTurn({
           <AttachmentList files={user.attachments ?? []} className="justify-end" />
           {user.text && (
             <div className="user-message-bubble min-w-0 max-w-full rounded-2xl px-4 py-2.5">
-              <p className="whitespace-pre-wrap text-[15px] leading-7 wrap-anywhere">{user.text}</p>
+              <p className="whitespace-pre-wrap text-[14px] leading-7 wrap-anywhere">{user.text}</p>
             </div>
           )}
         </article>
@@ -49,7 +49,7 @@ export const ConversationTurn = memo(function ConversationTurn({
               plugins={{ code }}
               isAnimating={reply.status === 'streaming'}
               mode={reply.status === 'streaming' ? 'streaming' : 'static'}
-              className="text-[15px] leading-7 wrap-anywhere"
+              className="text-[14px] leading-7 wrap-anywhere"
             >
               {reply.text}
             </Streamdown>

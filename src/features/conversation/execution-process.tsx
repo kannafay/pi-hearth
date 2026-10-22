@@ -68,7 +68,7 @@ export function ExecutionProcess({
       <CollapsibleTrigger
         aria-label="执行过程"
         disabled={awaiting || !items.length}
-        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-3 text-left text-[15px] text-muted-foreground outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-3 text-left text-[14px] text-muted-foreground outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
         <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
         {items.length > 0 && (
