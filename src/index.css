@@ -392,18 +392,40 @@ select {
   opacity: 0;
 }
 
-.execution-process-content {
+.execution-process-content,
+.tool-record-content {
   height: var(--collapsible-panel-height);
   overflow: hidden;
   opacity: 1;
   transition:
-    height 200ms var(--dialog-ease),
+    height 220ms var(--dialog-ease),
     opacity 160ms ease-out;
 }
 
-.execution-process-content:is([data-starting-style], [data-ending-style]) {
+:is(.execution-process-content, .tool-record-content):is(
+  [data-starting-style],
+  [data-ending-style]
+) {
   height: 0;
   opacity: 0;
+}
+
+.message-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+[data-conversation-message]:is(:hover, :focus-within) .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .workspace-body {

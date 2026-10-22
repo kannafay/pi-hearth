@@ -48,6 +48,7 @@ export const ConversationTurn = memo(function ConversationTurn({
       {user && (
         <article
           aria-label="你的消息"
+          data-conversation-message
           className={`ml-auto flex min-w-0 max-w-[85%] flex-col items-end gap-2 ${editing ? 'w-full' : 'w-fit'}`}
         >
           <AttachmentList files={user.attachments ?? []} className="justify-end" />
@@ -123,7 +124,7 @@ export const ConversationTurn = memo(function ConversationTurn({
         </article>
       )}
       {hasAssistant && (
-        <article aria-label="Pi 的回复" className="space-y-3">
+        <article aria-label="Pi 的回复" data-conversation-message className="space-y-3">
           <ExecutionProcess
             items={process}
             active={active}

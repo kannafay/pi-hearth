@@ -3,6 +3,7 @@ import { Check, ChevronRight, FilePenLine, FileText, LoaderCircle, Terminal, X }
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/scroll-area'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ToolCall, ToolLogPage } from '@/lib/generated/pi'
 import { decidePiTool, loadPiToolOutput } from '@/lib/pi'
 import { useConversationStore } from './store'
@@ -78,25 +79,23 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
   }
 
   return (
-    <div
+    <Collapsible
+      open={open}
+      onOpenChange={setExpanded}
       className={compact ? 'min-w-0 text-[13px]' : 'overflow-hidden rounded-lg border text-sm'}
       aria-label={`${toolLabels[tool.name] ?? tool.name}：${statusLabels[tool.status] ?? tool.status}`}
     >
-      <button
+      <CollapsibleTrigger
         type="button"
-        aria-expanded={open}
-        onClick={() => setExpanded(!expanded)}
         disabled={awaiting}
-        className={`flex w-full items-center gap-2 text-left hover:bg-muted/40 ${compact ? 'rounded-md px-2 py-1.5' : 'px-3 py-2.5'}`}
+        className={`flex w-full min-w-0 items-center gap-2 text-left transition-colors duration-160 ease-out enabled:hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none ${compact ? 'rounded-md px-1 py-1.5' : 'px-3 py-2.5'}`}
       >
         <ChevronRight
           aria-hidden
-          className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+          className={`size-3.5 shrink-0 text-muted-foreground transition-transform duration-160 ease-out ${open ? 'rotate-90' : ''}`}
         />
         <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <span
-          className={`shrink-0 ${compact ? 'font-normal text-muted-foreground' : 'font-medium'}`}
-        >
+        <span className={`shrink-0 ${compact ? 'font-normal text-foreground/80' : 'font-medium'}`}>
           {toolLabels[tool.name] ?? tool.name}
         </span>
         <Tooltip>
@@ -130,8 +129,8 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
             {(tool.durationMs / 1000).toFixed(1)}s
           </span>
         )}
-      </button>
-      {open && (
+      </CollapsibleTrigger>
+      <CollapsibleContent className="tool-record-content">
         <div className="space-y-3 border-t px-3 py-3">
           <div>
             <p className="mb-1.5 text-xs text-muted-foreground">参数</p>
@@ -227,7 +226,7 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
             </div>
           )}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

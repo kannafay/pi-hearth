@@ -65,7 +65,10 @@ export function MessageActions({
     <div
       role="group"
       aria-label={user ? '消息操作' : '回复操作'}
-      className={cn('flex min-h-7 flex-wrap items-center gap-0.5', user && 'justify-end')}
+      className={cn(
+        'message-actions flex min-h-7 flex-wrap items-center gap-0.5',
+        user && 'justify-end',
+      )}
     >
       {time && (
         <time
