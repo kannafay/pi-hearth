@@ -10,6 +10,7 @@ import {
   hasClipboardAttachments,
   releaseAttachments,
   stageFiles,
+  stagePaths,
 } from '@/lib/attachments'
 import type { Attachment } from '@/lib/generated/pi'
 
@@ -22,6 +23,7 @@ vi.mock('@/lib/attachments', () => ({
   stageFiles: vi.fn(),
   stagePaths: vi.fn(),
   MAX_ATTACHMENTS: 10,
+  prepareAttachmentPicker: vi.fn().mockResolvedValue('D:/Downloads'),
   listenForAttachmentDrop: vi.fn().mockResolvedValue(() => {}),
 }))
 const file: Attachment = {
@@ -41,7 +43,8 @@ beforeEach(() => {
     status: 'ready',
     send: vi.fn().mockResolvedValue(true),
   })
-  vi.mocked(chooseAttachments).mockResolvedValue([file])
+  vi.mocked(chooseAttachments).mockResolvedValue(['D:/notes.txt'])
+  vi.mocked(stagePaths).mockResolvedValue([file])
   vi.mocked(clipboardAttachments).mockResolvedValue([])
   vi.mocked(hasClipboardAttachments).mockResolvedValue(false)
   vi.mocked(stageFiles).mockResolvedValue([file])
@@ -57,6 +60,59 @@ test('selected files are sent with the draft and cleared only after acceptance',
   expect(useConversationStore.getState().send).toHaveBeenCalledWith('总结附件', ['file-1'])
   expect(screen.queryByText('notes.txt')).not.toBeInTheDocument()
   expect(useWorkspaceStore.getState().draft).toBe('')
+})
+
+test('the picker does not show an import spinner until files are selected', async () => {
+  let select!: (paths: string[]) => void
+  let finishImport!: (files: Attachment[]) => void
+  vi.mocked(chooseAttachments).mockReturnValue(
+    new Promise((resolve) => {
+      select = resolve
+    }),
+  )
+  vi.mocked(stagePaths).mockReturnValue(
+    new Promise((resolve) => {
+      finishImport = resolve
+    }),
+  )
+  render(<Composer onSendStart={() => {}} />)
+  const button = screen.getByRole('button', { name: '添加附件' })
+  fireEvent.click(button)
+  expect(button).toBeDisabled()
+  expect(button.querySelector('.animate-spin')).toBeNull()
+  expect(stagePaths).not.toHaveBeenCalled()
+  await act(async () => select(['D:/notes.txt']))
+  expect(button.querySelector('.animate-spin')).not.toBeNull()
+  expect(stagePaths).toHaveBeenCalledExactlyOnceWith(['D:/notes.txt'])
+  await act(async () => finishImport([file]))
+  expect(screen.getByText('notes.txt')).toBeVisible()
+  expect(button).toBeEnabled()
+})
+
+test('canceling the picker leaves the draft intact and skips file processing', async () => {
+  vi.mocked(chooseAttachments).mockResolvedValue([])
+  useWorkspaceStore.setState({ draft: '保留草稿', draftAttachments: [file] })
+  render(<Composer onSendStart={() => {}} />)
+  await userEvent.click(screen.getByRole('button', { name: '添加附件' }))
+  expect(stagePaths).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().draft).toBe('保留草稿')
+  expect(useWorkspaceStore.getState().draftAttachments).toEqual([file])
+  expect(screen.getByRole('button', { name: '添加附件' })).toBeEnabled()
+})
+
+test('a picker result cannot add files to a different conversation', async () => {
+  let select!: (paths: string[]) => void
+  vi.mocked(chooseAttachments).mockReturnValue(
+    new Promise((resolve) => {
+      select = resolve
+    }),
+  )
+  render(<Composer onSendStart={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: '添加附件' }))
+  act(() => useConversationStore.setState({ instanceId: 'other-runtime' }))
+  await act(async () => select(['D:/notes.txt']))
+  expect(stagePaths).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().draftAttachments).toEqual([])
 })
 
 test('drafts stay editable while settings are applied and Enter cannot race the change', async () => {

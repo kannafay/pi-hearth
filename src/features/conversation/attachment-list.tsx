@@ -21,7 +21,10 @@ export function AttachmentList({
         const media = ['image', 'video', 'audio'].includes(file.kind)
         const label = file.kind === 'image' ? '图片' : file.kind === 'video' ? '视频' : '音频'
         return (
-          <div key={file.id} className="attachment-item relative min-w-0 max-w-full">
+          <div
+            key={file.id}
+            className={`attachment-item relative min-w-0 ${media ? 'max-w-full' : 'max-w-[min(15rem,100%)]'}`}
+          >
             <button
               type="button"
               aria-label={media ? `查看${label}` : `查看 ${file.name}`}
@@ -29,7 +32,7 @@ export function AttachmentList({
               className={`relative flex overflow-hidden rounded-md border bg-muted/25 text-left outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring ${
                 media
                   ? `aspect-square ${onRemove ? 'w-14' : 'w-24'} max-w-full items-center justify-center`
-                  : `max-w-[min(15rem,100%)] items-center gap-2 p-2 pr-9 ${onRemove ? 'h-14' : ''}`
+                  : `w-full items-center gap-2 p-2 pr-9 ${onRemove ? 'h-14' : ''}`
               }`}
             >
               {media ? (

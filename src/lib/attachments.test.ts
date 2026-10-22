@@ -1,9 +1,17 @@
 import { invoke } from '@tauri-apps/api/core'
+import { dirname, downloadDir } from '@tauri-apps/api/path'
+import { open } from '@tauri-apps/plugin-dialog'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { getAttachmentPreview } from './attachments'
+import { chooseAttachments, getAttachmentPreview, prepareAttachmentPicker } from './attachments'
 import type { Attachment } from './generated/pi'
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/path', () => ({
+  downloadDir: vi.fn().mockResolvedValue('D:/Downloads'),
+  homeDir: vi.fn().mockResolvedValue('C:/Users/admin'),
+  dirname: vi.fn().mockResolvedValue('D:/Documents'),
+}))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }))
 const image: Attachment = {
   id: 'image',
   name: 'picture.png',
@@ -15,6 +23,29 @@ const image: Attachment = {
 }
 beforeEach(() => {
   vi.mocked(invoke).mockReset()
+  vi.mocked(open).mockReset()
+})
+
+test('the warmed picker opens a file directory, remembers the selection and defers processing', async () => {
+  await prepareAttachmentPicker()
+  vi.mocked(open).mockResolvedValueOnce(['D:/Documents/notes.txt']).mockResolvedValueOnce(null)
+  expect(await chooseAttachments()).toEqual(['D:/Documents/notes.txt'])
+  expect(open).toHaveBeenNthCalledWith(1, {
+    multiple: true,
+    directory: false,
+    title: '添加附件',
+    defaultPath: 'D:/Downloads',
+  })
+  expect(dirname).toHaveBeenCalledWith('D:/Documents/notes.txt')
+  expect(await chooseAttachments()).toEqual([])
+  expect(open).toHaveBeenNthCalledWith(2, {
+    multiple: true,
+    directory: false,
+    title: '添加附件',
+    defaultPath: 'D:/Documents',
+  })
+  expect(downloadDir).toHaveBeenCalledTimes(1)
+  expect(invoke).not.toHaveBeenCalled()
 })
 
 test('image preview loads the source file on demand instead of enlarging its thumbnail', async () => {

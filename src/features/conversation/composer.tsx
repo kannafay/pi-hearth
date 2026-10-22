@@ -12,6 +12,7 @@ import {
   hasClipboardAttachments,
   listenForAttachmentDrop,
   MAX_ATTACHMENTS,
+  prepareAttachmentPicker,
   releaseAttachments,
   stageFiles,
   stagePaths,
@@ -59,6 +60,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   )
   const [attachmentError, setAttachmentError] = useState('')
   const [pending, setPending] = useState(0)
+  const [selecting, setSelecting] = useState(false)
   const [dragging, setDragging] = useState(false)
   const nativePaste = useRef<Promise<Attachment[]> | null>(null)
   const busy = status === 'running' || status === 'stopping'
@@ -93,8 +95,26 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
     }
   }
 
+  async function choose() {
+    if (selecting) return
+    const instanceId = useConversationStore.getState().instanceId
+    setSelecting(true)
+    setAttachmentError('')
+    try {
+      const paths = await chooseAttachments()
+      if (paths.length && useConversationStore.getState().instanceId === instanceId) {
+        await receive(stagePaths(paths))
+      }
+    } catch (reason) {
+      setAttachmentError(String(reason))
+    } finally {
+      setSelecting(false)
+    }
+  }
+
   useEffect(() => {
     if (!desktop) return
+    void prepareAttachmentPicker()
     let disposed = false
     let unlisten: (() => void) | undefined
     void listenForAttachmentDrop(setDragging, (paths) => {
@@ -214,6 +234,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
                 status === 'ready' &&
                 !settingsPending &&
                 !sessionUpdating &&
+                !selecting &&
                 !pending &&
                 (draft.trim() || draftAttachments.length)
               )
@@ -229,9 +250,9 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               title="添加附件（也可粘贴或拖入）"
               variant="ghost"
               size="icon-sm"
-              disabled={!desktop || Boolean(readOnly) || pending > 0}
+              disabled={!desktop || Boolean(readOnly) || selecting || pending > 0}
               className="shrink-0 text-foreground/70"
-              onClick={() => void receive(chooseAttachments())}
+              onClick={() => void choose()}
             >
               {pending ? (
                 <LoaderCircle className="size-3.5 animate-spin" />
@@ -265,6 +286,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
                 Boolean(readOnly) ||
                 Boolean(settingsPending) ||
                 sessionUpdating ||
+                selecting ||
                 pending > 0 ||
                 (!draft.trim() && !draftAttachments.length)
               }

@@ -1,9 +1,18 @@
 import { invoke } from '@tauri-apps/api/core'
+import { dirname, downloadDir, homeDir } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Attachment, AttachmentPreview } from './generated/pi'
 
 export const MAX_ATTACHMENTS = 10
 const MAX_FILE_SIZE = 20 * 1024 * 1024
+let pickerDirectory: Promise<string | undefined> | undefined
+
+export function prepareAttachmentPicker() {
+  // Resolve this before the click, and avoid starting in Windows Home/Recent.
+  return (pickerDirectory ??= downloadDir()
+    .catch(() => homeDir())
+    .catch(() => undefined))
+}
 
 export async function getAttachmentPreview(file: Attachment): Promise<AttachmentPreview> {
   if (file.text !== undefined) return { kind: 'text', source: null, text: file.text }
@@ -21,8 +30,11 @@ export async function getAttachmentPreview(file: Attachment): Promise<Attachment
 }
 
 export async function chooseAttachments() {
-  const selected = await open({ multiple: true, directory: false, title: '添加附件' })
-  return selected ? stagePaths(Array.isArray(selected) ? selected : [selected]) : []
+  const defaultPath = await prepareAttachmentPicker()
+  const selected = await open({ multiple: true, directory: false, title: '添加附件', defaultPath })
+  const paths = selected ? (Array.isArray(selected) ? selected : [selected]) : []
+  if (paths.length) pickerDirectory = dirname(paths[0]).catch(() => defaultPath)
+  return paths
 }
 
 export function stagePaths(paths: string[]) {

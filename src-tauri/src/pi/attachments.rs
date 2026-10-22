@@ -1,6 +1,12 @@
 use super::types::{Attachment, AttachmentPreview};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use image::{DynamicImage, ImageFormat, ImageReader, codecs::jpeg::JpegEncoder};
+use image::{
+    DynamicImage, ImageEncoder, ImageReader,
+    codecs::{
+        jpeg::JpegEncoder,
+        png::{CompressionType, FilterType, PngEncoder},
+    },
+};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -58,11 +64,17 @@ fn media_type(name: &str) -> Option<(&'static str, &'static str)> {
 }
 
 fn encode_png(image: &DynamicImage) -> Result<Vec<u8>, String> {
-    let mut bytes = Cursor::new(Vec::new());
-    image
-        .write_to(&mut bytes, ImageFormat::Png)
+    let rgba = image.to_rgba8();
+    let mut bytes = Vec::new();
+    PngEncoder::new_with_quality(&mut bytes, CompressionType::Fast, FilterType::Sub)
+        .write_image(
+            &rgba,
+            rgba.width(),
+            rgba.height(),
+            image::ExtendedColorType::Rgba8,
+        )
         .map_err(|_| "无法处理图片。")?;
-    Ok(bytes.into_inner())
+    Ok(bytes)
 }
 
 fn decode_image(bytes: &[u8]) -> Result<DynamicImage, String> {
@@ -81,6 +93,14 @@ fn decode_image(bytes: &[u8]) -> Result<DynamicImage, String> {
 
 fn image_attachment(name: &str, bytes: &[u8]) -> Result<PreparedAttachment, String> {
     let image = decode_image(bytes)?;
+    prepare_image(name, &image, bytes.len())
+}
+
+fn prepare_image(
+    name: &str,
+    image: &DynamicImage,
+    source_size: usize,
+) -> Result<PreparedAttachment, String> {
     let preview = data_url(&encode_png(&image.thumbnail(160, 160))?, "image/png");
     let mut processed = Vec::new();
     // Bound the RPC record, including images echoed into native session events.
@@ -108,7 +128,7 @@ fn image_attachment(name: &str, bytes: &[u8]) -> Result<PreparedAttachment, Stri
                 .into(),
             kind: "image".into(),
             mime_type: "image/jpeg".into(),
-            size: bytes.len() as u32,
+            size: source_size as u32,
             preview: Some(preview),
             source_path: None,
             text: None,
@@ -119,6 +139,40 @@ fn image_attachment(name: &str, bytes: &[u8]) -> Result<PreparedAttachment, Stri
             json!({"type":"image","mimeType":"image/jpeg","data":STANDARD.encode(processed)}),
         ),
     })
+}
+
+#[cfg(any(windows, test))]
+fn cached_image(name: &str, bytes: &[u8], root: &Path) -> Result<PreparedAttachment, String> {
+    let mut file = prepare(name, bytes)?;
+    cache_file(&mut file, bytes, root)?;
+    Ok(file)
+}
+
+fn clipboard_image(
+    image: arboard::ImageData<'_>,
+    root: &Path,
+) -> Result<PreparedAttachment, String> {
+    if image.bytes.len() > 256 * 1024 * 1024 || image.width > 16384 || image.height > 16384 {
+        return Err("剪贴板图片尺寸过大。".into());
+    }
+    if image.width == 0 || image.height == 0 {
+        return Err("无法读取剪贴板图片。".into());
+    }
+    let image = image::RgbaImage::from_raw(
+        image.width as u32,
+        image.height as u32,
+        image.bytes.into_owned(),
+    )
+    .ok_or("无法读取剪贴板图片。")?;
+    let image = DynamicImage::ImageRgba8(image);
+    let bytes = encode_png(&image)?;
+    if bytes.len() > MAX_FILE {
+        return Err("单个附件不能超过 20 MiB。".into());
+    }
+    // Keep the original pixels for previews without decoding our own PNG again.
+    let mut file = prepare_image("粘贴的图片.png", &image, bytes.len())?;
+    cache_file(&mut file, &bytes, root)?;
+    Ok(file)
 }
 
 fn prepare(name: &str, bytes: &[u8]) -> Result<PreparedAttachment, String> {
@@ -412,23 +466,19 @@ pub async fn attachment_clipboard(
             }
             return paths.iter().map(|path| prepare_path(path)).collect();
         }
+        #[cfg(windows)]
+        if let Some(format) = clipboard_win::register_format("PNG")
+            && clipboard_win::is_format_avail(format.into())
+        {
+            // Browsers and screenshot tools already offer PNG; reuse those bytes.
+            let bytes: Vec<u8> =
+                clipboard_win::get_clipboard(clipboard_win::formats::RawData(format.into()))
+                    .map_err(|_| "剪贴板正忙，请再次粘贴。")?;
+            return Ok(vec![cached_image("粘贴的图片.png", &bytes, &root)?]);
+        }
         let mut clipboard = arboard::Clipboard::new().map_err(|_| "无法访问剪贴板。")?;
         match clipboard.get_image() {
-            Ok(image) => {
-                if image.bytes.len() > 256 * 1024 * 1024 {
-                    return Err("剪贴板图片尺寸过大。".into());
-                }
-                let image = image::RgbaImage::from_raw(
-                    image.width as u32,
-                    image.height as u32,
-                    image.bytes.into_owned(),
-                )
-                .ok_or("无法读取剪贴板图片。")?;
-                let bytes = encode_png(&DynamicImage::ImageRgba8(image))?;
-                let mut file = prepare("粘贴的图片.png", &bytes)?;
-                cache_file(&mut file, &bytes, &root)?;
-                Ok(vec![file])
-            }
+            Ok(image) => Ok(vec![clipboard_image(image, &root)?]),
             Err(arboard::Error::ContentNotAvailable) => Ok(vec![]),
             Err(_) => Err("无法读取剪贴板图片，请再次粘贴。".into()),
         }
@@ -550,6 +600,109 @@ pub fn restored_user(raw: &Value) -> (String, Option<Vec<Attachment>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "manual clipboard import benchmark"]
+    fn attachment_import_timing() {
+        let image = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(2560, 1440, |x, y| {
+            image::Rgba([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8, 255])
+        }));
+        let bytes = encode_png(&image).unwrap();
+        let root =
+            std::env::temp_dir().join(format!("pi-hearth-attachment-bench-{}", Uuid::new_v4()));
+        let start = std::time::Instant::now();
+        cached_image("benchmark.png", &bytes, &root).unwrap();
+        let png_time = start.elapsed();
+        let rgba = image.to_rgba8().into_raw();
+        let start = std::time::Instant::now();
+        clipboard_image(
+            arboard::ImageData {
+                width: 2560,
+                height: 1440,
+                bytes: rgba.into(),
+            },
+            &root,
+        )
+        .unwrap();
+        println!(
+            "PNG_IMPORT_MS={} BITMAP_IMPORT_MS={}",
+            png_time.as_millis(),
+            start.elapsed().as_millis()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clipboard_png_and_bitmap_keep_original_pixels_and_bounded_prompt_images() {
+        let root = std::env::temp_dir().join(format!("pi-hearth-clipboard-{}", Uuid::new_v4()));
+        let original = image::RgbaImage::from_fn(200, 100, |x, _| {
+            image::Rgba([17, 64, 128, if x < 100 { 0 } else { 128 }])
+        });
+        let png = encode_png(&DynamicImage::ImageRgba8(original.clone())).unwrap();
+        let files = [
+            cached_image("original.png", &png, &root).unwrap(),
+            clipboard_image(
+                arboard::ImageData {
+                    width: 200,
+                    height: 100,
+                    bytes: original.clone().into_raw().into(),
+                },
+                &root,
+            )
+            .unwrap(),
+        ];
+        for file in files {
+            assert_eq!(file.view.kind, "image");
+            let source = std::fs::read(file.view.source_path.unwrap()).unwrap();
+            assert_eq!(decode_image(&source).unwrap().to_rgba8(), original);
+            assert_eq!(source.len(), file.view.size as usize);
+            if file.view.name == "original.png" {
+                assert_eq!(source, png);
+            }
+            let preview = file.view.preview.unwrap();
+            let preview = STANDARD.decode(preview.split_once(',').unwrap().1).unwrap();
+            let preview = decode_image(&preview).unwrap();
+            assert_eq!((preview.width(), preview.height()), (160, 80));
+            let payload = file.image.unwrap();
+            let jpeg = STANDARD.decode(payload["data"].as_str().unwrap()).unwrap();
+            let prompt_image = decode_image(&jpeg).unwrap().to_rgb8();
+            assert!(prompt_image.get_pixel(0, 0)[0] > 240);
+        }
+        assert!(
+            clipboard_image(
+                arboard::ImageData {
+                    width: 16385,
+                    height: 1,
+                    bytes: Vec::new().into()
+                },
+                &root
+            )
+            .is_err()
+        );
+        assert!(
+            clipboard_image(
+                arboard::ImageData {
+                    width: 0,
+                    height: 0,
+                    bytes: Vec::new().into()
+                },
+                &root
+            )
+            .is_err()
+        );
+        assert!(
+            clipboard_image(
+                arboard::ImageData {
+                    width: 2,
+                    height: 2,
+                    bytes: vec![0; 4].into()
+                },
+                &root
+            )
+            .is_err()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn text_and_image_attachments_reach_native_prompt_and_restore_as_cards() {
