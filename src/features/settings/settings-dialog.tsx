@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { getAppVersion, isDesktop } from '@/lib/desktop'
 import { ModelSettings } from './model-settings'
+import { SettingsPageHeader } from './settings-page-header'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
@@ -92,9 +93,8 @@ export function SettingsDialog({
             viewportClassName="h-full overflow-x-hidden overflow-y-auto px-7 py-7"
           >
             <TabsContent value="appearance" className="m-0">
-              <h2 className="mb-1 text-lg font-medium">外观</h2>
-              <p className="mb-7 text-xs text-muted-foreground">让工作台适合你的使用环境。</p>
-              <div className="flex items-center justify-between gap-5 border-y py-5">
+              <SettingsPageHeader title="外观" description="让工作台适合你的使用环境。" />
+              <div className="flex items-center justify-between gap-5 border-b py-5">
                 <div>
                   <h3 className="text-sm font-normal">界面主题</h3>
                   <p className="mt-1.5 text-xs text-muted-foreground">选择浅色、深色或跟随系统。</p>
@@ -125,27 +125,26 @@ export function SettingsDialog({
               <ModelSettings />
             </TabsContent>
             <TabsContent value="diagnostics" className="m-0">
-              <h2 className="mb-1 text-lg font-medium">运行诊断</h2>
-              <p className="mb-7 text-xs text-muted-foreground">本地桌面核心与 Pi 的连接状态。</p>
+              <SettingsPageHeader title="运行诊断" description="本地桌面核心与 Pi 的连接状态。" />
               {!isDesktop() ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="border-b py-5 text-sm text-muted-foreground">
                   当前为浏览器预览，本地项目和桌面能力需在桌面应用中使用。
                 </p>
               ) : error ? (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="border-b py-5 text-sm text-destructive">
                   桌面核心连接失败：{error}
                 </p>
               ) : (
-                <div className="space-y-5 text-sm">
-                  <div className="border-b pb-5">
-                    <p>桌面核心</p>
-                    <p className="mt-2 text-xs text-muted-foreground">
+                <div className="divide-y border-b">
+                  <div className="py-5">
+                    <h3 className="text-sm font-normal">桌面核心</h3>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
                       {version ? `已连接桌面核心，版本 ${version}` : '正在连接桌面核心…'}
                     </p>
                   </div>
-                  <div className="flex justify-between gap-4">
-                    <span>Pi RPC</span>
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between gap-5 py-5 text-sm">
+                    <h3 className="text-sm font-normal">Pi RPC</h3>
+                    <span className="text-muted-foreground">
                       {status === 'disconnected'
                         ? '未连接'
                         : status === 'running' || status === 'stopping'
@@ -159,10 +158,9 @@ export function SettingsDialog({
               )}
             </TabsContent>
             <TabsContent value="about" className="m-0">
-              <h2 className="mb-1 text-lg font-medium">Pi Hearth</h2>
-              <p className="mb-7 text-xs text-muted-foreground">Pi Coding Agent 桌面工作台</p>
-              <div className="flex justify-between border-y py-5 text-sm">
-                <span>版本</span>
+              <SettingsPageHeader title="Pi Hearth" description="Pi Coding Agent 桌面工作台" />
+              <div className="flex items-center justify-between gap-5 border-b py-5 text-sm">
+                <h3 className="text-sm font-normal">版本</h3>
                 <span className="text-muted-foreground">{version ?? '开发预览'}</span>
               </div>
               <p className="mt-5 text-xs leading-6 text-muted-foreground">

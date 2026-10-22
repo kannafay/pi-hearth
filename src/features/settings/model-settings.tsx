@@ -3,6 +3,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
+import { SettingsPageHeader } from './settings-page-header'
 
 export function ModelSettings() {
   const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore()
@@ -11,15 +12,10 @@ export function ModelSettings() {
 
   return (
     <div>
-      <div>
-        <h2 className="text-lg font-medium">模型与凭证</h2>
-        <p className="mt-1 mb-7 text-xs leading-6 text-muted-foreground">
-          使用本机 Pi 配置，兼容 CC Switch。
-        </p>
-      </div>
-      <div className="space-y-3 border-y py-5">
-        <p className="text-sm">当前模型</p>
-        <p className="text-xs text-muted-foreground">
+      <SettingsPageHeader title="模型与凭证" description="使用本机 Pi 配置，兼容 CC Switch。" />
+      <div className="border-b py-5">
+        <h3 className="text-sm font-normal">当前模型</h3>
+        <p className="mt-1.5 text-xs text-muted-foreground">
           {model ? `${model.name} · ${model.provider}` : '尚未选择模型'}
         </p>
       </div>
@@ -67,7 +63,7 @@ export function ModelSettings() {
           </Collapsible>
         ))}
       </RadioGroup>
-      {!groups.length && <p className="mt-4 text-xs text-muted-foreground">暂无可用模型</p>}
+      {!groups.length && <p className="mt-5 text-xs text-muted-foreground">暂无可用模型</p>}
       <p className="mt-5 text-xs leading-6 text-muted-foreground">
         在 Pi 或 CC Switch
         中管理模型和密钥，更新后新建聊天即可读取。也可以直接在消息输入区切换模型。
