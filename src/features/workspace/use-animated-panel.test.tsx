@@ -42,6 +42,7 @@ function renderPanel(initialOpen: boolean) {
   Object.defineProperty(element, 'offsetWidth', { get: () => pixels })
 
   return {
+    controller,
     element,
     toggle: (open: boolean) => view.rerender(<Preview open={open} />),
     resize: (width: number) => {
@@ -70,6 +71,18 @@ test('keeps content at its expanded width through collapse and a rapid reopening
   act(() => vi.advanceTimersByTime(80))
   panel.resize(340)
   expect(panel.contentWidth()).toBe('340px')
+})
+
+test('reopens at its last pixel width after the group resizes while collapsed', () => {
+  const panel = renderPanel(true)
+  panel.resize(314)
+  panel.toggle(false)
+  panel.resize(0)
+  act(() => vi.advanceTimersByTime(220))
+
+  panel.toggle(true)
+  expect(panel.controller.resize).toHaveBeenLastCalledWith('314px')
+  expect(panel.contentWidth()).toBe('314px')
 })
 
 test('uses an expanded content width on first opening and resyncs when settled', () => {

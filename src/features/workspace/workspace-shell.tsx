@@ -187,6 +187,7 @@ export function WorkspaceShell() {
           <ResizablePanel
             id="navigation"
             {...navigationPanel}
+            groupResizeBehavior="preserve-pixel-size"
             collapsible
             minSize="220px"
             maxSize="400px"

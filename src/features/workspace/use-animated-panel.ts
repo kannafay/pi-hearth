@@ -6,7 +6,7 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
   const elementRef = useRef<HTMLDivElement | null>(null)
   const [defaultSize] = useState(() => (open ? `${expandedSize}px` : '0px'))
   const previousOpen = useRef(open)
-  const hasExpanded = useRef(open)
+  const lastExpandedSize = useRef(expandedSize)
   const groupRef = useRef<HTMLElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -25,17 +25,17 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
     groupRef.current = group
     group.setAttribute('data-panel-animating', '')
     if (open) {
-      if (hasExpanded.current) panel.expand()
-      else panel.resize(`${expandedSize}px`)
-      hasExpanded.current = true
+      panel.resize(`${lastExpandedSize.current}px`)
     } else panel.collapse()
 
     // Keep transitions limited to toggles so separator dragging stays immediate.
     timerRef.current = setTimeout(() => {
       group.removeAttribute('data-panel-animating')
       timerRef.current = null
-      if (open && element && element.offsetWidth > 0)
+      if (open && element && element.offsetWidth > 0) {
+        lastExpandedSize.current = element.offsetWidth
         element.style.setProperty('--workspace-panel-width', `${element.offsetWidth}px`)
+      }
     }, 220)
   }, [open, expandedSize])
 
@@ -50,8 +50,10 @@ export function useAnimatedPanel(open: boolean, expandedSize: number) {
   function onResize({ inPixels }: PanelSize) {
     // Reveal a stable-width panel rather than wrapping its contents as it closes.
     const element = elementRef.current
-    if (inPixels > 0 && !element?.parentElement?.hasAttribute('data-panel-animating'))
+    if (inPixels > 0 && !element?.parentElement?.hasAttribute('data-panel-animating')) {
+      lastExpandedSize.current = inPixels
       element?.style.setProperty('--workspace-panel-width', `${inPixels}px`)
+    }
   }
 
   return { panelRef, elementRef, defaultSize, onResize }
