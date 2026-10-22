@@ -323,6 +323,19 @@ select {
   transition: background-color 160ms ease-out;
 }
 
+.sidebar-session-row[data-responding] .sidebar-row-title {
+  padding-right: calc(var(--spacing) * 6);
+}
+
+.sidebar-session-progress {
+  opacity: 1;
+  transition: opacity 160ms ease-out;
+}
+
+.sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-progress {
+  opacity: 0;
+}
+
 :is(.sidebar-session-row, .sidebar-project-row):is(
     :hover,
     :has(:focus-visible),
@@ -346,6 +359,10 @@ select {
   :is(.sidebar-session-actions, .sidebar-project-actions) {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .sidebar-session-progress {
+    opacity: 0;
   }
 
   .sidebar-row-title {

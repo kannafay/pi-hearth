@@ -6,6 +6,7 @@ import {
   FolderOpen,
   FolderPlus,
   LayoutGrid,
+  LoaderCircle,
   MessageSquare,
   MoreHorizontal,
   Plus,
@@ -68,6 +69,7 @@ export function WorkspaceNavigation({
         <div
           key={session.path}
           data-selected={selected}
+          data-responding={busy && selected ? true : undefined}
           className="sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
           <Tooltip>
@@ -109,6 +111,19 @@ export function WorkspaceNavigation({
               </div>
             </TooltipContent>
           </Tooltip>
+          {busy && selected && (
+            <span
+              role="status"
+              aria-label="正在回复"
+              className="sidebar-session-progress pointer-events-none absolute inset-y-0 right-1 z-1 flex w-6 items-center justify-center text-muted-foreground"
+            >
+              <LoaderCircle
+                aria-hidden="true"
+                className="size-3.5 animate-spin stroke-[1.5] motion-reduce:animate-none"
+              />
+              <span className="sr-only">正在回复</span>
+            </span>
+          )}
           <div
             className="sidebar-session-actions flex items-center gap-0.5 px-1"
             role="group"

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -253,4 +253,79 @@ test('pinned chats sort first, archived chats stay hidden and row actions never 
   expect(toggleSessionPinned).toHaveBeenCalledExactlyOnceWith(plain)
   expect(setSessionArchived).toHaveBeenCalledExactlyOnceWith(plain, true)
   expect(openSession).not.toHaveBeenCalled()
+})
+
+test('only the replying session shows progress and terminal events always clear it', () => {
+  const session = {
+    path: 'D:/sessions/reply.jsonl',
+    id: 'reply',
+    cwd: project.path,
+    title: '正在进行的讨论',
+    modified: Date.now(),
+    messageCount: 2,
+  }
+  useWorkspaceStore.setState({
+    projects: [project],
+    projectPath: project.path,
+    sessions: [session, { ...session, path: 'other.jsonl', id: 'other', title: '其他讨论' }],
+  })
+  useConversationStore.setState({
+    instanceId: 'runtime',
+    sessionFile: 'd:\\SESSIONS\\reply.jsonl',
+    status: 'connecting',
+  })
+  render(
+    <WorkspaceNavigation
+      desktop
+      onAdd={vi.fn()}
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
+  act(() => useConversationStore.setState({ status: 'ready' }))
+  expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
+
+  const event = {
+    instanceId: 'runtime',
+    projectPath: project.path,
+    sessionId: 'reply',
+    runId: 'run',
+  }
+  const start = {
+    type: 'run_started' as const,
+    message: {
+      id: 'run-user',
+      role: 'user',
+      text: '你好',
+      thinking: '',
+      status: 'complete',
+      error: null,
+    },
+  }
+  act(() => useConversationStore.getState().receive([{ ...event, sequence: 1, data: start }]))
+  const progress = screen.getByRole('status', { name: '正在回复' })
+  const currentRow = screen.getByRole('button', { name: session.title }).parentElement
+  const otherRow = screen.getByRole('button', { name: '其他讨论' }).parentElement
+  expect(currentRow).toContainElement(progress)
+  expect(otherRow).not.toContainElement(progress)
+  act(() => useConversationStore.setState({ status: 'stopping' }))
+  expect(screen.getByRole('status', { name: '正在回复' })).toBeInTheDocument()
+  act(() =>
+    useConversationStore
+      .getState()
+      .receive([
+        { ...event, sequence: 2, data: { type: 'run_finished', status: 'cancelled', error: null } },
+      ]),
+  )
+  expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
+  act(() => useConversationStore.getState().receive([{ ...event, sequence: 3, data: start }]))
+  expect(screen.getByRole('status', { name: '正在回复' })).toBeInTheDocument()
+  act(() =>
+    useConversationStore
+      .getState()
+      .receive([{ ...event, sequence: 4, data: { type: 'disconnected', error: '连接已断开' } }]),
+  )
+  expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
 })
