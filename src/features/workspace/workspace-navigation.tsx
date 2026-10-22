@@ -106,7 +106,7 @@ export function WorkspaceNavigation({
 
   return (
     <nav aria-label="项目与会话" className="workspace-navigation flex h-full min-h-0 flex-col pb-2">
-      <div className="flex h-11 shrink-0 items-center px-2 pt-px">
+      <div className="flex h-11 shrink-0 items-center px-3 pt-px">
         <Button
           variant="ghost"
           className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
@@ -122,7 +122,7 @@ export function WorkspaceNavigation({
         onValueChange={(value) => setFilter(String(value))}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="mx-2 mt-3 mb-5 flex h-8 items-center">
+        <div className="mx-3 mt-3 mb-5 flex h-8 items-center">
           <Tabs.List
             aria-label="会话分类"
             className="sidebar-tabs relative isolate grid h-8 min-w-0 flex-1 grid-cols-3 items-center rounded-lg p-0.5"
@@ -149,7 +149,7 @@ export function WorkspaceNavigation({
         <Tabs.Panel value={filter} className="flex min-h-0 flex-1 flex-col">
           <ScrollArea
             className="min-h-0 flex-1"
-            viewportClassName="h-full overflow-x-hidden overflow-y-auto px-2"
+            viewportClassName="h-full overflow-x-hidden overflow-y-auto px-3"
           >
             {filter !== 'chats' && (
               <section aria-label="项目" className="mb-6">
@@ -320,7 +320,7 @@ export function WorkspaceNavigation({
       </Tabs.Root>
       <Button
         variant="ghost"
-        className="mx-2 mt-3 h-8 justify-start gap-2.5 px-2 text-[13px] text-muted-foreground"
+        className="mx-3 mt-3 h-8 justify-start gap-2.5 px-2 text-[13px] text-muted-foreground"
         onClick={onSettings}
       >
         <Settings className="size-4 stroke-[1.6]" />
