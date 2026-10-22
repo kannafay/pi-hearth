@@ -18,6 +18,32 @@ beforeEach(() => {
   vi.mocked(getAttachmentPreview).mockReset()
 })
 
+test.each(['image', 'video', 'audio', 'text'])(
+  '%s previews enter from closed and release their content after dismissal',
+  async (kind) => {
+    vi.mocked(getAttachmentPreview).mockResolvedValue({
+      kind,
+      source: kind === 'text' ? null : 'data:application/octet-stream;base64,AAAA',
+      text: kind === 'text' ? '附件文字内容' : null,
+    })
+    const onComplete = vi.fn()
+    const props = { onClose: vi.fn(), onOpenChangeComplete: onComplete }
+    const view = render(<AttachmentPreviewDialog {...props} file={null} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(getAttachmentPreview).not.toHaveBeenCalled()
+
+    view.rerender(<AttachmentPreviewDialog {...props} file={{ ...file, kind }} />)
+    const popup = screen.getByRole('dialog')
+    expect(popup).toHaveAttribute('data-starting-style')
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+    await waitFor(() => expect(popup).not.toHaveAttribute('data-starting-style'))
+
+    view.rerender(<AttachmentPreviewDialog {...props} file={null} />)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(onComplete).toHaveBeenCalledWith(false)
+  },
+)
+
 test('images open in a large preview without displaying the filename and Escape closes', async () => {
   vi.mocked(getAttachmentPreview).mockResolvedValue({
     kind: 'image',

@@ -47,7 +47,6 @@ export function WorkspaceShell() {
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const projectPresence = useDialogPresence(projectDialog)
-  const attachmentPresence = useDialogPresence(attachmentPreview)
   const compact = useMediaQuery('(max-width: 1199px)')
   const navigationPanel = useAnimatedPanel(sidebarOpen, navigationWidth)
   const dockedInspectorOpen = inspectorOpen && !compact
@@ -300,15 +299,10 @@ export function WorkspaceShell() {
       </WorkspaceDialog>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <SessionSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
-      {attachmentPresence.value && (
-        <AttachmentPreviewDialog
-          key={attachmentPresence.value.id}
-          file={attachmentPresence.value}
-          open={attachmentPreview !== null}
-          onClose={() => setAttachmentPreview(null)}
-          onOpenChangeComplete={attachmentPresence.onOpenChangeComplete}
-        />
-      )}
+      <AttachmentPreviewDialog
+        file={attachmentPreview}
+        onClose={() => setAttachmentPreview(null)}
+      />
       {projectPresence.value && (
         <ProjectDialog
           key={
