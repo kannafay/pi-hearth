@@ -88,7 +88,7 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
       <CollapsibleTrigger
         type="button"
         disabled={awaiting}
-        className={`flex w-full min-w-0 items-center gap-2 text-left transition-colors duration-160 ease-out enabled:hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none ${compact ? 'rounded-md px-1 py-1.5' : 'px-3 py-2.5'}`}
+        className={`flex w-full min-w-0 items-center gap-2 text-left transition-colors duration-160 ease-out enabled:hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none ${compact ? 'rounded-md py-1.5 pr-1 pl-0' : 'px-3 py-2.5'}`}
       >
         <ChevronRight
           aria-hidden

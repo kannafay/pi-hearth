@@ -102,12 +102,12 @@ export function ExecutionProcess({
               follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48
           }}
         >
-          <div className="ml-1.5 space-y-4 border-l border-border/70 pl-3">
+          <div className="space-y-4">
             {items.map((item) =>
               item.kind === 'tool' ? (
                 <ToolRecord key={item.id} tool={item.tool} compact />
               ) : item.kind === 'thinking' ? (
-                <div key={item.id} className="space-y-2 px-1">
+                <div key={item.id} className="space-y-2 pr-1">
                   <p className="flex items-center gap-1.5 text-xs font-medium text-foreground/65">
                     <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
                     思考
@@ -123,7 +123,7 @@ export function ExecutionProcess({
               ) : (
                 <p
                   key={item.id}
-                  className="px-1 text-[13px] leading-[1.65] whitespace-pre-wrap text-muted-foreground wrap-anywhere"
+                  className="pr-1 text-[13px] leading-[1.65] whitespace-pre-wrap text-muted-foreground wrap-anywhere"
                 >
                   {item.message.text}
                 </p>
