@@ -121,6 +121,38 @@ test('rejected input remains available for retry and running replaces send with 
   expect(screen.queryByRole('button', { name: '发送消息' })).not.toBeInTheDocument()
 })
 
+test('a quick plain reply keeps both messages without the duration header', () => {
+  useConversationStore.setState({
+    status: 'ready',
+    messages: [
+      {
+        id: 'prompt',
+        role: 'user',
+        text: '你好',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        startedAt: 100_000,
+        finishedAt: 102_000,
+      },
+      {
+        id: 'reply',
+        role: 'assistant',
+        text: '你好！需要我帮忙什么？',
+        thinking: '',
+        status: 'complete',
+        error: null,
+      },
+    ],
+  })
+  render(<ConversationPanel />)
+  expect(within(screen.getByRole('article', { name: '你的消息' })).getByText('你好')).toBeVisible()
+  const reply = screen.getByRole('article', { name: 'Pi 的回复' })
+  expect(within(reply).getByText('你好！需要我帮忙什么？')).toBeVisible()
+  expect(within(reply).queryByRole('button', { name: '执行过程' })).not.toBeInTheDocument()
+  expect(within(reply).queryByText(/用时/)).not.toBeInTheDocument()
+})
+
 test('a confirmed stop is displayed as cancellation rather than a provider error', () => {
   useConversationStore.setState({
     status: 'ready',

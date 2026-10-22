@@ -56,6 +56,10 @@ export function ExecutionProcess({
   // A manual choice applies to this phase only; finishing always collapses the process.
   const open = awaiting || (choice?.active === active ? choice.open : active)
   const failures = tools.filter((tool) => tool.status === 'failed').length
+  const elapsed =
+    startedAt !== undefined && finishedAt !== undefined
+      ? Math.max(0, finishedAt - startedAt)
+      : undefined
 
   useEffect(() => {
     if (open && (active || awaiting) && (follow.current || awaiting) && viewport.current) {
@@ -63,18 +67,20 @@ export function ExecutionProcess({
     }
   }, [items, active, awaiting, open])
 
+  if (!active && !items.length && elapsed !== undefined && elapsed <= 2000) return null
+
   return (
     <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
       <CollapsibleTrigger
         aria-label="执行过程"
         disabled={awaiting || !items.length}
-        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
         <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
         {items.length > 0 && (
           <ChevronRight
             aria-hidden
-            className="size-3.5 shrink-0 transition-transform in-data-panel-open:rotate-90"
+            className="size-3.5 shrink-0 transition-transform duration-160 ease-out in-data-panel-open:rotate-90"
           />
         )}
         {awaiting ? (
@@ -83,7 +89,7 @@ export function ExecutionProcess({
           <span className="text-xs text-destructive">{failures} 次失败</span>
         ) : null}
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent className="execution-process-content">
         <ScrollArea
           ref={viewport}
           role="region"
