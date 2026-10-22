@@ -10,9 +10,6 @@ use tauri::{
     WebviewWindow, WebviewWindowBuilder,
 };
 
-#[cfg(windows)]
-mod windows;
-
 const LABEL: &str = "tray-menu";
 const WIDTH: f64 = 208.0;
 const HEIGHT: f64 = 148.0;
@@ -98,7 +95,6 @@ struct Anchor {
 #[derive(Clone, Copy)]
 struct Presentation {
     epoch: u64,
-    foreground: usize,
     content: Bounds,
 }
 
@@ -146,11 +142,6 @@ enum MenuSignal {
     Close {
         epoch: u64,
     },
-    Key {
-        epoch: u64,
-        key: String,
-        shift: bool,
-    },
 }
 
 fn current(window: &WebviewWindow, epoch: u64) -> bool {
@@ -163,9 +154,6 @@ fn current(window: &WebviewWindow, epoch: u64) -> bool {
 }
 
 fn hide(window: &WebviewWindow) -> Result<(), String> {
-    #[cfg(windows)]
-    return windows::hide(window);
-    #[cfg(not(windows))]
     window.hide().map_err(|e| e.to_string())
 }
 
@@ -222,12 +210,9 @@ pub fn create(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .maximizable(false)
         .skip_taskbar(true)
         .always_on_top(true)
-        .focusable(!cfg!(windows))
         .focused(false)
         .visible(false)
         .build()?;
-    #[cfg(windows)]
-    windows::configure(&popup)?;
     let handle = popup.clone();
     popup.on_window_event(move |event| match event {
         tauri::WindowEvent::CloseRequested { api, .. }
@@ -241,7 +226,6 @@ pub fn create(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .load(Ordering::SeqCst);
             let _ = dismiss(&handle, epoch);
         }
-        #[cfg(not(windows))]
         tauri::WindowEvent::Focused(false) => {
             let epoch = handle
                 .app_handle()
@@ -307,10 +291,6 @@ pub fn show(app: &AppHandle, position: PhysicalPosition<f64>) -> Result<(), Stri
     let inset = (INSET * scale).round() as u32;
     let presentation = Presentation {
         epoch,
-        #[cfg(windows)]
-        foreground: windows::foreground(),
-        #[cfg(not(windows))]
-        foreground: 0,
         content: Bounds {
             x: bounds.x + inset as i32,
             y: bounds.y + inset as i32,
@@ -372,23 +352,14 @@ pub fn tray_present(window: WebviewWindow, epoch: u64) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .presentation
         .filter(|presentation| presentation.epoch == epoch);
-    let Some(presentation) = presentation else {
+    if presentation.is_none() {
         return Ok(());
-    };
-    #[cfg(windows)]
-    if !windows::same_foreground(presentation.foreground) {
-        return dismiss(&window, epoch);
     }
-    #[cfg(windows)]
-    windows::present(window, presentation)?;
-    #[cfg(not(windows))]
-    {
-        window.show().map_err(|e| e.to_string())?;
-        window.set_focus().map_err(|e| e.to_string())?;
-        window
-            .emit("tray-menu-signal", MenuSignal::Shown { epoch })
-            .map_err(|e| e.to_string())?;
-    }
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    window
+        .emit("tray-menu-signal", MenuSignal::Shown { epoch })
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

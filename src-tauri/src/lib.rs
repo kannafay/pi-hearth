@@ -1,5 +1,9 @@
 mod desktop;
 mod pi;
+#[cfg(not(windows))]
+mod tray_menu;
+#[cfg(windows)]
+#[path = "tray_menu/native.rs"]
 mod tray_menu;
 
 use tauri::Manager;
@@ -30,18 +34,20 @@ pub fn run() {
         }
         context
     };
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if !app.state::<desktop::Lifecycle>().is_shutting_down() {
                 let _ = desktop::show_window(app);
             }
         }))
         .manage(desktop::Lifecycle::default())
-        .manage(tray_menu::TrayMenuState::default())
         .manage(pi::PiManager::default())
         .manage(pi::WorkspaceManager::default())
         .manage(pi::attachments::AttachmentManager::default())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(not(windows))]
+    let builder = builder.manage(tray_menu::TrayMenuState::default());
+    builder
         .setup(desktop::setup)
         .on_window_event(|window, event| {
             if window.label() == "main"
@@ -57,10 +63,15 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            #[cfg(not(windows))]
             tray_menu::tray_ready,
+            #[cfg(not(windows))]
             tray_menu::tray_present,
+            #[cfg(not(windows))]
             tray_menu::tray_dismiss,
+            #[cfg(not(windows))]
             tray_menu::tray_closed,
+            #[cfg(not(windows))]
             tray_menu::tray_action,
             pi::attachments::attachment_paths,
             pi::attachments::attachment_bytes,

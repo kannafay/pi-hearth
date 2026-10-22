@@ -51,9 +51,12 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(windows)]
+    let menu = crate::tray_menu::create(app)?;
+    #[cfg(not(windows))]
     crate::tray_menu::create(app)?;
     let icon = app.default_window_icon().ok_or("缺少应用图标。")?.clone();
-    TrayIconBuilder::with_id("main-tray")
+    let tray = TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .tooltip("Pi Hearth")
         .on_tray_icon_event(|tray, event| {
@@ -68,6 +71,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 } => {
                     let _ = show_window(tray.app_handle());
                 }
+                #[cfg(not(windows))]
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
@@ -78,7 +82,12 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => {}
             }
-        })
-        .build(app)?;
+        });
+    #[cfg(windows)]
+    let tray = tray
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(crate::tray_menu::on_menu_event);
+    tray.build(app)?;
     Ok(())
 }
