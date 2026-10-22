@@ -213,63 +213,65 @@ export function WorkspaceShell() {
             disabled={!sidebarOpen}
           />
           <ResizablePanel id="content" minSize="400px">
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="workspace-surface workspace-panel-group"
-              onLayoutChanged={(layout, { isUserInteraction }) => {
-                if (!isUserInteraction || compact) return
-                const open = layout.inspector > 0
-                if (open !== inspectorOpen) setInspectorOpen(open)
-              }}
-            >
-              <ResizablePanel id="conversation" minSize="400px">
-                <main aria-label="对话工作区" className="flex h-full min-h-0 flex-col">
-                  <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
-                    <Tooltip>
-                      <TooltipTrigger
-                        disabled={!projectPath}
-                        render={<span className="shrink-0 text-muted-foreground" />}
-                      >
-                        {projectName ?? '聊天'}
-                      </TooltipTrigger>
-                      <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
-                        {projectPath}
-                      </TooltipContent>
-                    </Tooltip>
-                    <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-                    <span className="truncate">
-                      {session?.title ??
-                        conversation.messages.find((message) => message.role === 'user')?.text ??
-                        '新对话'}
-                    </span>
-                  </div>
-                  <ConversationPanel />
-                </main>
-              </ResizablePanel>
-              <ResizableHandle
-                className="workspace-panel-separator"
-                data-panel-open={dockedInspectorOpen}
-                disabled={!dockedInspectorOpen}
-              />
-              <ResizablePanel
-                id="inspector"
-                {...inspectorPanel}
-                collapsible
-                minSize="300px"
-                maxSize="560px"
-                style={{ overflow: 'hidden' }}
+            <div className="workspace-content-inset h-full min-w-0 flex-1">
+              <ResizablePanelGroup
+                orientation="horizontal"
+                className="workspace-surface workspace-panel-group"
+                onLayoutChanged={(layout, { isUserInteraction }) => {
+                  if (!isUserInteraction || compact) return
+                  const open = layout.inspector > 0
+                  if (open !== inspectorOpen) setInspectorOpen(open)
+                }}
               >
-                <div
-                  className="workspace-panel-content"
-                  data-side="right"
+                <ResizablePanel id="conversation" minSize="400px">
+                  <main aria-label="对话工作区" className="flex h-full min-h-0 flex-col">
+                    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
+                      <Tooltip>
+                        <TooltipTrigger
+                          disabled={!projectPath}
+                          render={<span className="shrink-0 text-muted-foreground" />}
+                        >
+                          {projectName ?? '聊天'}
+                        </TooltipTrigger>
+                        <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
+                          {projectPath}
+                        </TooltipContent>
+                      </Tooltip>
+                      <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate">
+                        {session?.title ??
+                          conversation.messages.find((message) => message.role === 'user')?.text ??
+                          '新对话'}
+                      </span>
+                    </div>
+                    <ConversationPanel />
+                  </main>
+                </ResizablePanel>
+                <ResizableHandle
+                  className="workspace-panel-separator"
                   data-panel-open={dockedInspectorOpen}
-                  aria-hidden={!dockedInspectorOpen}
-                  inert={!dockedInspectorOpen}
+                  disabled={!dockedInspectorOpen}
+                />
+                <ResizablePanel
+                  id="inspector"
+                  {...inspectorPanel}
+                  collapsible
+                  minSize="300px"
+                  maxSize="560px"
+                  style={{ overflow: 'hidden' }}
                 >
-                  <Inspector />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                  <div
+                    className="workspace-panel-content"
+                    data-side="right"
+                    data-panel-open={dockedInspectorOpen}
+                    aria-hidden={!dockedInspectorOpen}
+                    inert={!dockedInspectorOpen}
+                  >
+                    <Inspector />
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
