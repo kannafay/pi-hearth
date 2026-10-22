@@ -49,7 +49,7 @@ export function MessageActions({
   )
   const time = messageTime(timestamp)
   const button =
-    'size-7 text-muted-foreground/70 transition-colors duration-150 hover:bg-muted/80 hover:text-foreground [&_svg]:size-3.5'
+    'size-7 text-muted-foreground/70 transition-colors duration-150 hover:bg-muted/80 hover:text-foreground dark:hover:bg-white/10 dark:focus-visible:bg-white/10 dark:active:bg-white/15 [&_svg]:size-3.5'
   async function copy() {
     setError('')
     try {
