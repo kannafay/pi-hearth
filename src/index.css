@@ -408,7 +408,8 @@ select {
 }
 
 .execution-process-content,
-.tool-record-content {
+.tool-record-content,
+.settings-model-content {
   height: var(--collapsible-panel-height);
   overflow: hidden;
   opacity: 1;
@@ -417,7 +418,7 @@ select {
     opacity 160ms ease-out;
 }
 
-:is(.execution-process-content, .tool-record-content):is(
+:is(.execution-process-content, .tool-record-content, .settings-model-content):is(
   [data-starting-style],
   [data-ending-style]
 ) {
@@ -571,6 +572,10 @@ select {
   background: var(--background);
 }
 
+.menu-popup {
+  animation-fill-mode: both;
+}
+
 .composer-select-trigger {
   @apply border-0 py-0 text-foreground/70 shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
 }
@@ -687,6 +692,50 @@ select {
     [data-ending-style]
   ) {
   transform: translateX(12px);
+}
+
+.settings-panels {
+  position: relative;
+  display: grid;
+}
+
+.settings-panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 200ms var(--dialog-ease),
+    transform 200ms var(--dialog-ease);
+}
+
+.settings-panel:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.settings-panel[data-ending-style] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.settings-dialog
+  :is(
+    [data-slot='tabs-trigger'],
+    [data-slot='button'],
+    [data-slot='input'],
+    [data-slot='select-trigger'],
+    [data-slot='collapsible-trigger'],
+    [data-slot='radio-group-item']
+  ) {
+  transition-property: background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: var(--dialog-ease);
+}
+
+.settings-dialog [data-slot='tabs-trigger']:hover:not([data-active]) {
+  background: color-mix(in oklch, var(--accent) 70%, transparent);
 }
 
 .conversation-welcome {
