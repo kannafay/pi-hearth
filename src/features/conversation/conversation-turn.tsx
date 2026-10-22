@@ -30,8 +30,8 @@ export const ConversationTurn = memo(function ConversationTurn({
         >
           <AttachmentList files={user.attachments ?? []} className="justify-end" />
           {user.text && (
-            <div className="user-message-bubble min-w-0 max-w-full rounded-2xl px-4 py-2.5">
-              <p className="whitespace-pre-wrap text-[14px] leading-7 wrap-anywhere">{user.text}</p>
+            <div className="user-message-bubble min-w-0 max-w-full rounded-xl px-3 py-2">
+              <p className="whitespace-pre-wrap text-[14px] leading-6 wrap-anywhere">{user.text}</p>
             </div>
           )}
         </article>
