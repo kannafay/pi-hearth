@@ -4,21 +4,23 @@ use std::{
     ptr::null_mut,
     time::{Duration, Instant},
 };
-use tauri::{Emitter, WebviewWindow};
+use tauri::{Emitter, Manager, WebviewWindow};
 use windows_sys::Win32::{
-    Foundation::{LPARAM, LRESULT, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::{LibraryLoader::GetModuleHandleW, Threading::GetCurrentThreadId},
     UI::{
         Input::KeyboardAndMouse::{
             GetAsyncKeyState, VK_CONTROL, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_LWIN, VK_MENU,
             VK_RETURN, VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
         },
+        Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::*,
     },
 };
 
 const INPUT: u32 = WM_APP + 41;
 const DISMISS: u32 = WM_APP + 42;
+const FRAME_SUBCLASS: usize = 1;
 
 struct Context {
     thread: u32,
@@ -58,9 +60,57 @@ pub(super) fn hide(window: &WebviewWindow) -> Result<(), String> {
     let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
     window
         .run_on_main_thread(move || {
-            unsafe { ShowWindow(hwnd as _, SW_HIDE) };
+            unsafe {
+                ShowWindow(hwnd as _, SW_HIDE);
+                let owner = GetWindow(hwnd as _, GW_OWNER);
+                if !owner.is_null() {
+                    // Finish the notification-icon interaction on its owning
+                    // window, just like the native TrackPopupMenu path.
+                    PostMessageW(owner, WM_NULL, 0, 0);
+                }
+            }
         })
         .map_err(|e| e.to_string())
+}
+
+fn popup_style(style: u32) -> u32 {
+    (style & !WS_OVERLAPPEDWINDOW) | WS_POPUP
+}
+
+fn popup_ex_style(style: u32) -> u32 {
+    (style & !(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME))
+        | WS_EX_TOOLWINDOW
+        | WS_EX_NOACTIVATE
+}
+
+unsafe extern "system" fn popup_frame(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass: usize,
+    _data: usize,
+) -> LRESULT {
+    match message {
+        WM_STYLECHANGING if lparam != 0 => {
+            // Tao can reapply its cached caption styles after a window-state
+            // change. Filter them before Windows can paint even a single frame.
+            let style = unsafe { &mut *(lparam as *mut STYLESTRUCT) };
+            if wparam as i32 == GWL_STYLE {
+                style.styleNew = popup_style(style.styleNew);
+            } else if wparam as i32 == GWL_EXSTYLE {
+                style.styleNew = popup_ex_style(style.styleNew);
+            }
+        }
+        WM_NCCALCSIZE | WM_NCPAINT => return 0,
+        WM_NCACTIVATE => return 1,
+        WM_MOUSEACTIVATE => return MA_NOACTIVATE as _,
+        WM_NCDESTROY => unsafe {
+            RemoveWindowSubclass(hwnd, Some(popup_frame), subclass);
+        },
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
 pub(super) fn configure(window: &WebviewWindow) -> Result<(), String> {
@@ -68,20 +118,18 @@ pub(super) fn configure(window: &WebviewWindow) -> Result<(), String> {
     window
         .run_on_main_thread(move || unsafe {
             let hwnd = hwnd as _;
-            // Keep the popup out of the taskbar while allowing foreground
-            // activation, so the shell can dismiss its notification-area flyout.
+            // Only the icon's native owner participates in activation. The
+            // WebView is a non-activating, caption-free presentation surface.
+            if SetWindowSubclass(hwnd, Some(popup_frame), FRAME_SUBCLASS, 0) == 0 {
+                eprintln!(
+                    "Cannot configure tray menu frame: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-            SetWindowLongPtrW(
-                hwnd,
-                GWL_STYLE,
-                ((style & !WS_OVERLAPPEDWINDOW) | WS_POPUP) as isize,
-            );
+            SetWindowLongPtrW(hwnd, GWL_STYLE, popup_style(style) as isize);
             let extended = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-            SetWindowLongPtrW(
-                hwnd,
-                GWL_EXSTYLE,
-                ((extended & !(WS_EX_APPWINDOW | WS_EX_NOACTIVATE)) | WS_EX_TOOLWINDOW) as isize,
-            );
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, popup_ex_style(extended) as isize);
             SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -97,6 +145,12 @@ pub(super) fn configure(window: &WebviewWindow) -> Result<(), String> {
 
 pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Result<(), String> {
     let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+    let owner = window
+        .app_handle()
+        .tray_by_id("main-tray")
+        .ok_or("托盘图标尚未就绪。")?
+        .with_inner_tray_icon(|tray| tray.window_handle() as usize)
+        .map_err(|e| e.to_string())?;
     let popup = window.clone();
     window
         .run_on_main_thread(move || {
@@ -107,7 +161,18 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
                 let _ = dismiss(&popup, presentation.epoch);
                 return;
             }
-            // Reinsert the popup above the shell flyout before activation.
+            // Use the actual notification-icon owner, as the native menu path
+            // does. Activating the WebView leaves the shell's tray interaction
+            // unrelated to the popup and can strand the overflow flyout.
+            unsafe {
+                SetWindowLongPtrW(hwnd as _, GWLP_HWNDPARENT, owner as isize);
+                SetForegroundWindow(owner as _);
+            }
+            if foreground() != owner {
+                let _ = dismiss(&popup, presentation.epoch);
+                return;
+            }
+            // Keep the rendered menu above the shell without activating it.
             if unsafe {
                 SetWindowPos(
                     hwnd as _,
@@ -124,15 +189,8 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
                 let _ = dismiss(&popup, presentation.epoch);
                 return;
             }
-            // A tray context menu must own foreground activation. Leaving it
-            // with the shell strands the overflow flyout after our menu closes.
-            unsafe { SetForegroundWindow(hwnd as _) };
-            if foreground() != hwnd {
-                let _ = dismiss(&popup, presentation.epoch);
-                return;
-            }
             let presentation = Presentation {
-                foreground: hwnd,
+                foreground: owner,
                 ..presentation
             };
             if let Err(error) = watch(popup.clone(), presentation) {
@@ -319,6 +377,39 @@ fn watch(window: WebviewWindow, presentation: Presentation) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn popup_never_regains_a_caption_or_resizing_frame() {
+        let style = popup_style(WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN);
+        assert_eq!(style & WS_OVERLAPPEDWINDOW, 0);
+        assert_ne!(style & WS_POPUP, 0);
+        assert_ne!(style & WS_VISIBLE, 0);
+        assert_ne!(style & WS_CLIPCHILDREN, 0);
+    }
+
+    #[test]
+    fn popup_stays_non_activating_and_taskbar_free_after_style_updates() {
+        let style = popup_ex_style(
+            WS_EX_APPWINDOW
+                | WS_EX_WINDOWEDGE
+                | WS_EX_CLIENTEDGE
+                | WS_EX_DLGMODALFRAME
+                | WS_EX_LAYERED
+                | WS_EX_TOPMOST,
+        );
+        assert_eq!(
+            style & (WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME),
+            0
+        );
+        for preserved in [
+            WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW,
+            WS_EX_LAYERED,
+            WS_EX_TOPMOST,
+        ] {
+            assert_ne!(style & preserved, 0);
+        }
+    }
+
     #[test]
     fn only_menu_navigation_keys_are_intercepted() {
         for key in [

@@ -222,6 +222,7 @@ pub fn create(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .maximizable(false)
         .skip_taskbar(true)
         .always_on_top(true)
+        .focusable(!cfg!(windows))
         .focused(false)
         .visible(false)
         .build()?;
