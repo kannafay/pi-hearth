@@ -242,8 +242,14 @@ select {
   background: var(--sidebar-accent);
 }
 
+@property --sidebar-title-tail-opacity {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
 :is(.sidebar-session-row, .sidebar-project-row) {
-  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 30%, transparent);
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 18%, transparent);
   --sidebar-row-actions-width: 3.625rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
@@ -286,10 +292,16 @@ select {
 }
 
 .sidebar-row-title {
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent 100%);
-  mask-size: calc(100% + 1.5rem) 100%;
+  --sidebar-title-tail-opacity: 1;
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset) - 1.5rem),
+    rgb(0 0 0 / var(--sidebar-title-tail-opacity))
+      calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset))
+  );
+  mask-size: 100% 100%;
   mask-repeat: no-repeat;
-  transition: mask-size 160ms ease-out;
+  transition: --sidebar-title-tail-opacity 160ms ease-out;
 }
 
 :is(.sidebar-session-actions, .sidebar-project-actions) {
@@ -331,7 +343,7 @@ select {
     :has([data-slot='dropdown-menu-trigger'][aria-expanded='true'])
   )
   .sidebar-row-title {
-  mask-size: calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset)) 100%;
+  --sidebar-title-tail-opacity: 0;
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -341,7 +353,7 @@ select {
   }
 
   .sidebar-row-title {
-    mask-size: calc(100% - var(--sidebar-row-actions-width) + var(--sidebar-row-title-inset)) 100%;
+    --sidebar-title-tail-opacity: 0;
   }
 }
 
