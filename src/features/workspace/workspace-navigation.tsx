@@ -328,7 +328,7 @@ export function WorkspaceNavigation({
                         </div>
                       </div>
                       <CollapsibleContent className="sidebar-project-sessions">
-                        <div className="ml-3 flex flex-col gap-1 pt-1 pl-1.5">
+                        <div className="flex flex-col gap-1 pt-1">
                           {rows(sessions.filter((session) => samePath(session.cwd, project.path)))}
                           {!sessions.some((session) => samePath(session.cwd, project.path)) && (
                             <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>
