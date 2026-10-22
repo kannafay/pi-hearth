@@ -77,7 +77,7 @@ export function SessionSearchDialog({
 
   useEffect(() => {
     let current = true
-    if (!term || !desktop) return
+    if (!open || !term || !desktop) return
     const timer = setTimeout(() => {
       void searchSessions(term)
         .then((found) => {
@@ -95,7 +95,7 @@ export function SessionSearchDialog({
       current = false
       clearTimeout(timer)
     }
-  }, [term, desktop, retry])
+  }, [open, term, desktop, retry])
 
   useEffect(() => {
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
@@ -110,7 +110,15 @@ export function SessionSearchDialog({
   return (
     <WorkspaceDialog
       open={open}
-      onOpenChangeComplete={onOpenChangeComplete}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          setQuery('')
+          setResponse({ query: '', attempt: 0, results: [], error: null })
+          setActive(0)
+          setRetry(0)
+        }
+        onOpenChangeComplete?.(open)
+      }}
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
@@ -134,7 +142,7 @@ export function SessionSearchDialog({
         <DialogDescription className="sr-only">
           搜索项目名称、会话标题与对话内容，使用上下方向键选择，回车打开。
         </DialogDescription>
-        <div className="flex h-15 shrink-0 items-center gap-3 border-b px-6 pr-13">
+        <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4 pr-13">
           <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={input}
@@ -160,7 +168,7 @@ export function SessionSearchDialog({
             />
           )}
         </div>
-        <div role="status" className="shrink-0 px-6 pt-4 pb-2 text-xs text-muted-foreground">
+        <div role="status" className="shrink-0 px-4 pt-3 pb-1 text-xs text-muted-foreground">
           {loading
             ? '正在搜索本地会话…'
             : term
@@ -169,7 +177,7 @@ export function SessionSearchDialog({
         </div>
         <ScrollArea
           className="min-h-0 flex-1"
-          viewportClassName="h-full overflow-x-hidden overflow-y-auto p-2"
+          viewportClassName="h-full overflow-x-hidden overflow-y-auto p-1.5"
         >
           <div
             ref={list}
@@ -177,7 +185,7 @@ export function SessionSearchDialog({
             role="listbox"
             aria-label="搜索结果"
             aria-busy={loading}
-            className="space-y-1"
+            className="space-y-0.5"
           >
             {!loading &&
               shown.map((result, index) => (
@@ -189,17 +197,17 @@ export function SessionSearchDialog({
                   disabled={busy || !desktop}
                   onPointerMove={() => setActive(index)}
                   onClick={() => openSession(result.session)}
-                  className="group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-muted disabled:opacity-60"
+                  className="group flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors duration-160 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-muted disabled:opacity-60"
                 >
                   <MessageSquare
                     aria-hidden
                     className="mt-0.5 size-4 shrink-0 text-muted-foreground"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
+                    <span className="block truncate text-[13px] leading-5">
                       <Highlight text={result.session.title} query={term} />
                     </span>
-                    <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="mt-0.5 flex items-center gap-2 text-[11px] leading-4 text-muted-foreground">
                       <span className="truncate">
                         <Highlight text={result.projectName} query={term} />
                       </span>
@@ -215,7 +223,7 @@ export function SessionSearchDialog({
                       )}
                     </span>
                     {result.snippet && term && (
-                      <span className="mt-1.5 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                      <span className="mt-1 line-clamp-1 block text-xs leading-5 text-muted-foreground">
                         <Highlight text={result.snippet} query={term} />
                       </span>
                     )}
@@ -256,7 +264,7 @@ export function SessionSearchDialog({
             )
           )}
         </ScrollArea>
-        <div className="flex shrink-0 justify-between border-t px-6 py-3 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 justify-between border-t px-4 py-2.5 text-[11px] text-muted-foreground">
           <span>{busy ? '当前任务结束后可以切换会话' : '↑ ↓ 选择 · Enter 打开'}</span>
           <span>Esc 关闭</span>
         </div>

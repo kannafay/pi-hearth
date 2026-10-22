@@ -36,7 +36,6 @@ export function WorkspaceShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const searchPresence = useDialogPresence(searchOpen ? true : null)
   const projectPresence = useDialogPresence(projectDialog)
   const attachmentPresence = useDialogPresence(attachmentPreview)
   const compact = useMediaQuery('(max-width: 1199px)')
@@ -286,13 +285,7 @@ export function WorkspaceShell() {
         </DialogContent>
       </WorkspaceDialog>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      {searchPresence.value && (
-        <SessionSearchDialog
-          open={searchOpen}
-          onClose={() => setSearchOpen(false)}
-          onOpenChangeComplete={searchPresence.onOpenChangeComplete}
-        />
-      )}
+      <SessionSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
       {attachmentPresence.value && (
         <AttachmentPreviewDialog
           key={attachmentPresence.value.id}

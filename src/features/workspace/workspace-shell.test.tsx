@@ -51,6 +51,21 @@ test('header search remains available when the sidebar is collapsed', async () =
   await waitFor(() => expect(search).toHaveFocus())
 })
 
+test('search returns to an empty query after its closing transition and reopening', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  await user.type(
+    await screen.findByRole('combobox', { name: '搜索项目、标题或对话内容' }),
+    '临时查询',
+  )
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  expect(await screen.findByRole('combobox', { name: '搜索项目、标题或对话内容' })).toHaveValue('')
+  expect(screen.getByText('最近会话')).toBeVisible()
+})
+
 test('repeated sidebar toggles preserve its filter and the mounted conversation draft', async () => {
   const user = userEvent.setup()
   render(<WorkspaceShell />)
