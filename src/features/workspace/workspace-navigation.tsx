@@ -106,7 +106,7 @@ export function WorkspaceNavigation({
 
   return (
     <nav aria-label="项目与会话" className="workspace-navigation flex h-full min-h-0 flex-col pb-2">
-      <div className="flex h-11 shrink-0 items-center px-3 pt-px">
+      <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
         <Button
           variant="ghost"
           className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
@@ -281,12 +281,11 @@ export function WorkspaceNavigation({
                 {!workspace.projects.length && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="mt-1 ml-1 text-xs text-muted-foreground"
+                    className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
                     disabled={!desktop || busy}
                     onClick={onAdd}
                   >
-                    <Plus />
+                    <FolderPlus className="size-4 stroke-[1.5]" />
                     添加项目
                   </Button>
                 )}
