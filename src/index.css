@@ -61,6 +61,8 @@
   --caption-hover: oklch(0.9 0.006 300);
   --caption-pressed: oklch(0.85 0.006 300);
   --background: oklch(1 0 0);
+  --composer-background: var(--background);
+  --user-message-background: #000;
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -99,7 +101,10 @@
   --workspace-border: oklch(1 0 0 / 9%);
   --caption-hover: oklch(0.37 0.008 300);
   --caption-pressed: oklch(0.43 0.008 300);
-  --background: oklch(0.145 0 0);
+  --background: #181818;
+  --composer-background: #363636;
+  --user-message-background: #303030;
+  --sidebar-tab-background: #454545;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -388,6 +393,13 @@ select {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
+.dark .sidebar-tab-indicator {
+  background: var(--sidebar-tab-background);
+  box-shadow:
+    0 1px 3px oklch(0 0 0 / 18%),
+    inset 0 0 0 1px oklch(1 0 0 / 8%);
+}
+
 .sidebar-project-sessions {
   height: var(--collapsible-panel-height);
   overflow: hidden;
@@ -634,7 +646,7 @@ select {
 }
 
 .user-message-bubble {
-  background: #000;
+  background: var(--user-message-background);
   color: oklch(0.985 0 0);
 }
 

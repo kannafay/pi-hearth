@@ -139,7 +139,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
       )}
       <div
         aria-label="消息输入区"
-        className={`relative overflow-hidden rounded-xl border bg-background pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
+        className={`relative overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault()
