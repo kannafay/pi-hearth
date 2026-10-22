@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Archive, ArchiveRestore, Trash2 } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,41 @@ import { isDesktop } from '@/lib/desktop'
 import { sessionPreference } from '@/lib/session-preferences'
 import type { SessionInfo } from '@/lib/generated/pi'
 import { SettingsPageHeader } from './settings-page-header'
+
+function ArchivedSessionTitle({ title }: { title: string }) {
+  const ref = useRef<HTMLParagraphElement>(null)
+  const [truncated, setTruncated] = useState(false)
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const measure = () => setTruncated(element.scrollWidth > element.clientWidth)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [title])
+
+  return (
+    <Tooltip disabled={!truncated}>
+      <TooltipTrigger
+        tabIndex={truncated ? 0 : undefined}
+        render={<p ref={ref} className="truncate text-[13px] leading-5" />}
+      >
+        {title}
+      </TooltipTrigger>
+      <TooltipContent
+        role="tooltip"
+        showArrow={false}
+        align="start"
+        className="max-w-80 leading-5 wrap-anywhere"
+      >
+        {title}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 export function ArchivedSessions() {
   const {
@@ -153,14 +188,7 @@ export function ArchivedSessions() {
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <Tooltip>
-                      <TooltipTrigger render={<p className="truncate text-[13px] leading-5" />}>
-                        {session.title}
-                      </TooltipTrigger>
-                      <TooltipContent showArrow={false} className="max-w-80 wrap-anywhere">
-                        {session.title}
-                      </TooltipContent>
-                    </Tooltip>
+                    <ArchivedSessionTitle title={session.title} />
                     <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
                       {project?.name ?? '聊天'} ·{' '}
                       {new Date(session.modified).toLocaleDateString('zh-CN')}
