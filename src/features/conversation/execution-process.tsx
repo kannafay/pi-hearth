@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Brain, ChevronRight, Clock, LoaderCircle, Terminal } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ProcessItem } from './conversation-turns'
 import { ToolRecord } from './tool-record'
 import { ScrollArea } from '@/components/scroll-area'
-import { cn } from '@/lib/utils'
 
 export function formatElapsed(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -31,7 +30,7 @@ function ElapsedTime({
   if (startedAt === undefined || (!active && finishedAt === undefined))
     return <span>{active ? '正在处理…' : '已完成'}</span>
   return (
-    <span className="tabular-nums">
+    <span>
       {active ? '已处理 ' : '用时 '}
       {formatElapsed((active ? now : finishedAt!) - startedAt)}
     </span>
@@ -57,14 +56,6 @@ export function ExecutionProcess({
   // A manual choice applies to this phase only; finishing always collapses the process.
   const open = awaiting || (choice?.active === active ? choice.open : active)
   const failures = tools.filter((tool) => tool.status === 'failed').length
-  const hasDetails = items.length > 0
-  const Icon = active
-    ? LoaderCircle
-    : items.some((item) => item.kind === 'thinking')
-      ? Brain
-      : tools.length
-        ? Terminal
-        : Clock
   const elapsed =
     startedAt !== undefined && finishedAt !== undefined
       ? Math.max(0, finishedAt - startedAt)
@@ -79,57 +70,32 @@ export function ExecutionProcess({
   if (!active && !items.length && elapsed !== undefined && elapsed <= 2000) return null
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={(open) => setChoice({ active, open })}
-      className={cn(
-        'min-w-0',
-        hasDetails && 'overflow-hidden rounded-xl border border-border/60 bg-muted/20',
-      )}
-    >
+    <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
       <CollapsibleTrigger
         aria-label="执行过程"
         disabled={awaiting || !items.length}
-        className={cn(
-          'flex w-full min-w-0 items-center gap-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-default',
-          hasDetails ? 'px-3 py-2 enabled:hover:bg-muted/45 enabled:hover:text-foreground' : 'py-1',
-        )}
+        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
-        <Icon
-          aria-hidden
-          className={cn(
-            'size-3.5 shrink-0 stroke-[1.6]',
-            active && 'animate-spin motion-reduce:animate-none',
-          )}
-        />
         <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
-        {tools.length > 0 && (
-          <span className="hidden text-xs text-muted-foreground/75 sm:inline">
-            {tools.length} 次工具调用
-          </span>
-        )}
-        <span className="min-w-0 flex-1" />
-        {awaiting ? (
-          <span className="rounded-md bg-background/80 px-1.5 py-0.5 text-xs text-foreground">
-            等待确认
-          </span>
-        ) : failures > 0 ? (
-          <span className="text-xs text-destructive">{failures} 次失败</span>
-        ) : null}
-        {hasDetails && (
+        {items.length > 0 && (
           <ChevronRight
             aria-hidden
             className="size-3.5 shrink-0 transition-transform duration-160 ease-out in-data-panel-open:rotate-90"
           />
         )}
+        {awaiting ? (
+          <span className="text-xs text-foreground">等待确认</span>
+        ) : failures > 0 ? (
+          <span className="text-xs text-destructive">{failures} 次失败</span>
+        ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="execution-process-content">
         <ScrollArea
           ref={viewport}
           role="region"
           aria-label="执行过程详情"
-          className="border-t border-border/50 px-3 py-3"
-          viewportClassName="max-h-72 overflow-x-hidden overflow-y-auto pr-2"
+          className="mt-3"
+          viewportClassName="max-h-80 overflow-x-hidden overflow-y-auto pr-2"
           onScroll={() => {
             const element = viewport.current
             if (element)
@@ -142,7 +108,10 @@ export function ExecutionProcess({
                 <ToolRecord key={item.id} tool={item.tool} compact />
               ) : item.kind === 'thinking' ? (
                 <div key={item.id} className="space-y-2 px-1">
-                  <p className="text-xs font-medium text-foreground/65">思考</p>
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-foreground/65">
+                    <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
+                    思考
+                  </p>
                   <div className="space-y-2 text-[13px] leading-[1.65] text-muted-foreground wrap-anywhere">
                     {item.text.split(/\n\s*\n/).map((paragraph, index) => (
                       <p key={index} className="whitespace-pre-wrap">

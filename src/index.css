@@ -398,7 +398,7 @@ select {
   overflow: hidden;
   opacity: 1;
   transition:
-    height 220ms var(--dialog-ease),
+    height 200ms var(--dialog-ease),
     opacity 160ms ease-out;
 }
 
