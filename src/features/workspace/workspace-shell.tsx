@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
@@ -35,7 +36,12 @@ export function WorkspaceShell() {
     attachmentPreview,
     setAttachmentPreview,
   } = workspace
-  const conversation = useConversationStore()
+  const conversation = useConversationStore(
+    useShallow((state) => ({
+      sessionFile: state.sessionFile,
+      firstUserText: state.messages.find((message) => message.role === 'user')?.text,
+    })),
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
@@ -247,9 +253,7 @@ export function WorkspaceShell() {
                       </Tooltip>
                       <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
                       <span className="truncate">
-                        {session?.title ??
-                          conversation.messages.find((message) => message.role === 'user')?.text ??
-                          '新对话'}
+                        {session?.title ?? conversation.firstUserText ?? '新对话'}
                       </span>
                     </div>
                     <ConversationPanel />

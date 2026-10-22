@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import {
   Select,
   SelectContent,
@@ -17,7 +18,16 @@ export function ModelPicker({
   label?: string
   compact?: boolean
 }) {
-  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore()
+  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
+    useShallow((state) => ({
+      models: state.models,
+      model: state.model,
+      status: state.status,
+      readOnly: state.readOnly,
+      settingsPending: state.settingsPending,
+      changeModel: state.changeModel,
+    })),
+  )
   const groups = groupModelsByProvider(models)
   const items = models.map((item) => ({
     value: modelKey(item),

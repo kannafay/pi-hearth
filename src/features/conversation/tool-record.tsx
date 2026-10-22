@@ -7,6 +7,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import type { ToolCall, ToolLogPage } from '@/lib/generated/pi'
 import { decidePiTool, loadPiToolOutput } from '@/lib/pi'
 import { useConversationStore } from './store'
+import { useShallow } from 'zustand/react/shallow'
+import { useConversationLocalState } from './conversation-local-state'
 
 const statusLabels: Record<string, string> = {
   awaiting_approval: '等待确认',
@@ -27,7 +29,10 @@ const toolLabels: Record<string, string> = {
 }
 
 function useOutputPage(instanceId: string | null, toolId: string, section: 'arguments' | 'output') {
-  const [page, setPage] = useState<ToolLogPage | null>(null)
+  const [page, setPage] = useConversationLocalState<ToolLogPage | null>(
+    `tool:${toolId}:${section}`,
+    null,
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   async function load() {
@@ -48,10 +53,12 @@ function useOutputPage(instanceId: string | null, toolId: string, section: 'argu
 }
 
 export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?: boolean }) {
-  const { instanceId, status } = useConversationStore()
+  const { instanceId, status } = useConversationStore(
+    useShallow((state) => ({ instanceId: state.instanceId, status: state.status })),
+  )
   const awaiting = tool.status === 'awaiting_approval'
   const running = tool.status === 'running' || tool.status === 'queued'
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useConversationLocalState(`tool:${tool.id}:expanded`, false)
   const open = awaiting || expanded
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')

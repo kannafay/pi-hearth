@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -6,7 +7,16 @@ import { useConversationStore } from '@/features/conversation/store'
 import { SettingsPageHeader } from './settings-page-header'
 
 export function ModelSettings() {
-  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore()
+  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
+    useShallow((state) => ({
+      models: state.models,
+      model: state.model,
+      status: state.status,
+      readOnly: state.readOnly,
+      settingsPending: state.settingsPending,
+      changeModel: state.changeModel,
+    })),
+  )
   const groups = groupModelsByProvider(models)
   const disabled = status !== 'ready' || Boolean(readOnly) || Boolean(settingsPending)
 

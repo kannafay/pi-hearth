@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { ArrowUp, LoaderCircle, Paperclip, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,8 +30,8 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const {
     status,
     sessionFile,
-    messages,
-    activeRunId,
+    runStarted,
+    hasMessages,
     error,
     readOnly,
     settingsPending,
@@ -38,13 +39,29 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
     model,
     send,
     stop,
-  } = useConversationStore()
+  } = useConversationStore(
+    useShallow((state) => ({
+      status: state.status,
+      sessionFile: state.sessionFile,
+      hasMessages: state.messages.length > 0,
+      error: state.error,
+      readOnly: state.readOnly,
+      settingsPending: state.settingsPending,
+      activity: state.activity,
+      model: state.model,
+      send: state.send,
+      stop: state.stop,
+      runStarted: Boolean(
+        state.activeRunId &&
+        state.messages.some((message) => message.id === `${state.activeRunId}-user`),
+      ),
+    })),
+  )
   const [attachmentError, setAttachmentError] = useState('')
   const [pending, setPending] = useState(0)
   const [dragging, setDragging] = useState(false)
   const nativePaste = useRef<Promise<Attachment[]> | null>(null)
   const busy = status === 'running' || status === 'stopping'
-  const runStarted = messages.some((message) => message.id === `${activeRunId}-user`)
   const desktop = isDesktop()
   const connecting = status === 'connecting' || status === 'disconnected'
   const sessionUpdating = Boolean(
@@ -258,7 +275,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
           )}
         </div>
       </div>
-      {connecting && messages.length > 0 ? (
+      {connecting && hasMessages ? (
         <ConnectionNotice className="mt-2 px-1" />
       ) : statusText ? (
         <p role="status" className="mt-2 truncate px-1 text-[11px] text-muted-foreground/80">

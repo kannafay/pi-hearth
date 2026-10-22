@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useId, useState } from 'react'
 import { Tabs } from '@base-ui/react/tabs'
 import {
@@ -56,7 +57,9 @@ export function WorkspaceNavigation({
   onInstructions: (project: ProjectInfo) => void
 }) {
   const workspace = useWorkspaceStore()
-  const { status, sessionFile } = useConversationStore()
+  const { status, sessionFile } = useConversationStore(
+    useShallow((state) => ({ status: state.status, sessionFile: state.sessionFile })),
+  )
   const [filter, setFilter] = useState('all')
   const tooltipId = useId()
   const busy = ['running', 'stopping'].includes(status)

@@ -10,6 +10,7 @@ import { MessageActions } from './message-actions'
 import { useConversationStore } from './store'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { useConversationLocalState } from './conversation-local-state'
 
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
@@ -32,11 +33,14 @@ export const ConversationTurn = memo(function ConversationTurn({
   const hasAssistant =
     active || process.length > 0 || reply || cancelled || error || user?.finishedAt !== undefined
   const lastProcess = process.at(-1)
-  const { status, instanceId, readOnly, settingsPending, rewrite } = useConversationStore()
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
+  const rewrite = useConversationStore((state) => state.rewrite)
+  const canRewrite = useConversationStore(
+    (state) =>
+      state.status === 'ready' && !!state.instanceId && !state.readOnly && !state.settingsPending,
+  )
+  const [editing, setEditing] = useConversationLocalState(`editing:${turn.id}`, false)
+  const [draft, setDraft] = useConversationLocalState(`draft:${turn.id}`, '')
   const [submitting, setSubmitting] = useState(false)
-  const canRewrite = status === 'ready' && !!instanceId && !readOnly && !settingsPending
 
   async function save() {
     if (!user || !canRewrite || submitting) return
@@ -132,6 +136,7 @@ export const ConversationTurn = memo(function ConversationTurn({
       {hasAssistant && (
         <article aria-label="Pi 的回复" data-conversation-message className="space-y-3">
           <ExecutionProcess
+            stateKey={turn.id}
             items={process}
             active={active}
             startedAt={user?.startedAt}

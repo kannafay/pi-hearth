@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import { LoaderCircle, RotateCcw } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
@@ -6,8 +7,18 @@ import { isDesktop } from '@/lib/desktop'
 import { useConversationStore } from './store'
 
 export function ConnectionNotice({ className = '' }: { className?: string }) {
-  const { status, sessionFile, messages, error, connectionStartedAt, connect, disconnect } =
-    useConversationStore()
+  const { status, sessionFile, hasMessages, error, connectionStartedAt, connect, disconnect } =
+    useConversationStore(
+      useShallow((state) => ({
+        status: state.status,
+        sessionFile: state.sessionFile,
+        hasMessages: state.messages.length > 0,
+        error: state.error,
+        connectionStartedAt: state.connectionStartedAt,
+        connect: state.connect,
+        disconnect: state.disconnect,
+      })),
+    )
   const projectPath = useWorkspaceStore((state) => state.projectPath)
   const [slowFor, setSlowFor] = useState<number | null>(null)
   const connecting = status === 'connecting'
@@ -40,7 +51,7 @@ export function ConnectionNotice({ className = '' }: { className?: string }) {
         {connecting
           ? slow
             ? '连接较慢，仍在等待本地助手…'
-            : sessionFile && !messages.length
+            : sessionFile && !hasMessages
               ? '正在载入会话…'
               : '正在连接助手…'
           : error

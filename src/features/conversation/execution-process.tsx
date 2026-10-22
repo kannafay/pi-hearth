@@ -4,6 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import type { ProcessItem } from './conversation-turns'
 import { ToolRecord } from './tool-record'
 import { ScrollArea } from '@/components/scroll-area'
+import { useConversationLocalState } from './conversation-local-state'
 
 export function formatElapsed(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -38,17 +39,22 @@ function ElapsedTime({
 }
 
 export function ExecutionProcess({
+  stateKey,
   items,
   active,
   startedAt,
   finishedAt,
 }: {
+  stateKey?: string
   items: ProcessItem[]
   active: boolean
   startedAt?: number
   finishedAt?: number
 }) {
-  const [choice, setChoice] = useState<{ active: boolean; open: boolean } | null>(null)
+  const [choice, setChoice] = useConversationLocalState<{ active: boolean; open: boolean } | null>(
+    stateKey ? `process:${stateKey}` : undefined,
+    null,
+  )
   const viewport = useRef<HTMLDivElement>(null)
   const follow = useRef(true)
   const tools = items.flatMap((item) => (item.kind === 'tool' ? [item.tool] : []))

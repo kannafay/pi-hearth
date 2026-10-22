@@ -1,6 +1,7 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { Streamdown } from 'streamdown'
 import { ConversationPanel } from './conversation-panel'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from './store'
@@ -8,14 +9,50 @@ import type { ChatMessage, PiEvent, ToolCall } from '@/lib/generated/pi'
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 vi.mock('streamdown', () => ({
-  Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
+  Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>),
 }))
 vi.mock('@streamdown/code', () => ({ code: {} }))
 
+const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
+
 beforeEach(() => {
+  // jsdom has no layout. Supply viewport/row sizes while using the real virtualizer.
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.getAttribute('role') === 'log' ? 600 : 0
+  })
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900)
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.hasAttribute('data-turn-id') ? 180 : 0
+  })
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const list = this.querySelector<HTMLElement>('[data-conversation-list]')
+    return Math.max(this.clientHeight, Number.parseFloat(list?.style.height ?? '') || 0)
+  })
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    value(this: HTMLElement, options: ScrollToOptions) {
+      this.scrollTop = Math.max(
+        0,
+        Math.min(options.top ?? 0, this.scrollHeight - this.clientHeight),
+      )
+      this.dispatchEvent(new Event('scroll'))
+    },
+  })
+  vi.mocked(Streamdown).mockClear()
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   useWorkspaceStore.setState({ projectPath: 'D:\\项目', draft: '' })
+})
+
+afterEach(() => {
+  if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
 })
 
 test('sent attachments sit outside and before the text bubble and still open previews', async () => {
@@ -397,4 +434,149 @@ test('cached history stays visible during connection and failures have an inline
   expect(screen.getByRole('alert')).toHaveTextContent('助手启动失败')
   await user.click(screen.getByRole('button', { name: '重新连接' }))
   expect(connect).toHaveBeenCalledWith('D:\\项目', 'history.jsonl')
+})
+
+function historyFixture(count: number) {
+  const messages: ChatMessage[] = Array.from({ length: count }, (_, index) => [
+    {
+      id: `history-user-${index}`,
+      role: 'user',
+      text: `历史问题 ${index}`,
+      thinking: '',
+      status: 'complete',
+      error: null,
+      startedAt: 1000,
+      finishedAt: 2000,
+    },
+    {
+      id: `history-reply-${index}`,
+      role: 'assistant',
+      text: `历史回复 ${index}`,
+      thinking: '',
+      status: 'complete',
+      error: null,
+    },
+  ]).flat()
+  return { messages, timeline: messages.map(({ id }) => ({ kind: 'message', id })) }
+}
+
+test('a 2000-turn conversation mounts only the viewport and overscan, and older messages remain reachable', async () => {
+  useConversationStore.setState({ status: 'ready', ...historyFixture(2000) })
+  render(<ConversationPanel />)
+  await screen.findByText('历史回复 1999')
+  expect(document.querySelectorAll('[data-turn-id]').length).toBeLessThan(20)
+  expect(screen.queryByText('历史问题 0')).not.toBeInTheDocument()
+  const viewport = screen.getByRole('log', { name: '对话消息' })
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  await screen.findByText('历史问题 0')
+  expect(screen.getByText('历史回复 0')).toBeVisible()
+  expect(screen.queryByText('历史回复 1999')).not.toBeInTheDocument()
+  expect(document.querySelectorAll('[data-turn-id]').length).toBeLessThan(20)
+})
+
+test('streaming text, thoughts and tool changes do not render visible historical Markdown again', async () => {
+  const history = historyFixture(1000)
+  const { user: prompt, progress, tool, answer, timeline } = processFixture()
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'running',
+    activeRunId: 'run-1',
+    messages: [
+      ...history.messages,
+      prompt,
+      progress,
+      { ...answer, text: '', thinking: '', status: 'streaming' },
+    ],
+    tools: [tool],
+    timeline: [...history.timeline, ...timeline, { kind: 'message', id: answer.id }],
+  })
+  render(<ConversationPanel />)
+  await screen.findByText('历史回复 999')
+  vi.mocked(Streamdown).mockClear()
+  for (let sequence = 1; sequence <= 50; sequence++)
+    receive(sequence, {
+      type: 'message_delta',
+      messageId: answer.id,
+      contentIndex: 0,
+      kind: sequence % 2 ? 'text' : 'thinking',
+      delta: '流式内容',
+    })
+  receive(51, { type: 'tool_changed', tool: { ...tool, output: '工具输出继续增加' } })
+  const renders = vi.mocked(Streamdown).mock.calls.map(([props]) => props.children)
+  expect(renders.some((text) => typeof text === 'string' && text.includes('流式内容'))).toBe(true)
+  expect(renders.filter((text) => typeof text === 'string' && text.startsWith('历史回复'))).toEqual(
+    [],
+  )
+  expect(screen.getByText('历史回复 999')).toBeVisible()
+  expect(document.querySelectorAll('[data-turn-id]').length).toBeLessThan(20)
+})
+
+test('focused editors stay mounted and drafts survive scrolling out and back into the virtual list', async () => {
+  useConversationStore.setState({
+    status: 'ready',
+    instanceId: 'pi-1',
+    sessionFile: 'history.jsonl',
+    ...historyFixture(100),
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  await screen.findByText('历史回复 99')
+  const viewport = screen.getByRole('log', { name: '对话消息' })
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  const question = await screen.findByText('历史问题 0')
+  await user.click(within(question.closest('article')!).getByRole('button', { name: '编辑消息' }))
+  const editor = screen.getByRole('textbox', { name: '编辑消息内容' })
+  await user.clear(editor)
+  await user.type(editor, '暂未提交的编辑草稿')
+  fireEvent.scroll(viewport, { target: { scrollTop: viewport.scrollHeight - 600 } })
+  await screen.findByText('历史回复 99')
+  expect(editor).toBeInTheDocument()
+  expect(editor).toHaveFocus()
+  await user.click(screen.getByRole('textbox', { name: '消息草稿' }))
+  await waitFor(() => expect(editor).not.toBeInTheDocument())
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  expect(await screen.findByRole('textbox', { name: '编辑消息内容' })).toHaveValue(
+    '暂未提交的编辑草稿',
+  )
+  act(() => useConversationStore.setState({ sessionFile: 'another.jsonl' }))
+  await screen.findByText('历史回复 99')
+  const nextViewport = screen.getByRole('log', { name: '对话消息' })
+  fireEvent.wheel(nextViewport, { deltaY: -1000 })
+  fireEvent.scroll(nextViewport, { target: { scrollTop: 0 } })
+  await screen.findByText('历史问题 0')
+  expect(screen.queryByRole('textbox', { name: '编辑消息内容' })).not.toBeInTheDocument()
+})
+
+test('process and tool expansion survive unmounting a historical virtual row', async () => {
+  const history = historyFixture(100)
+  const { user: prompt, progress, tool, answer, timeline } = processFixture()
+  useConversationStore.setState({
+    status: 'ready',
+    messages: [prompt, progress, answer, ...history.messages],
+    tools: [{ ...tool, status: 'complete' }],
+    timeline: [...timeline, { kind: 'message', id: answer.id }, ...history.timeline],
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  await screen.findByText('历史回复 99')
+  const viewport = screen.getByRole('log', { name: '对话消息' })
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  await user.click(await screen.findByRole('button', { name: '执行过程' }))
+  await user.click(screen.getByRole('button', { name: /读取文件/ }))
+  expect(screen.getByText(tool.output)).toBeVisible()
+  await user.click(screen.getByRole('textbox', { name: '消息草稿' }))
+  fireEvent.scroll(viewport, { target: { scrollTop: viewport.scrollHeight - 600 } })
+  await waitFor(() => expect(screen.queryByText(answer.text)).not.toBeInTheDocument())
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  expect(await screen.findByRole('button', { name: '执行过程' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: /读取文件/ })).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText(tool.output)).toBeVisible()
 })

@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { CircleAlert, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
@@ -7,7 +8,13 @@ import { useConversationStore } from './store'
 
 export function ConversationWelcome() {
   const { projectPath } = useWorkspaceStore()
-  const { status, sessionFile, error } = useConversationStore()
+  const { status, sessionFile, error } = useConversationStore(
+    useShallow((state) => ({
+      status: state.status,
+      sessionFile: state.sessionFile,
+      error: state.error,
+    })),
+  )
   const connecting = status === 'connecting'
   const desktop = isDesktop()
   const projectName = projectPath?.split(/[\\/]/).filter(Boolean).at(-1)

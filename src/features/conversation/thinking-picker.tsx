@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import {
   Select,
   SelectContent,
@@ -18,7 +19,17 @@ export function ThinkingPicker() {
     availableThinkingLevels,
     requestedThinkingLevel,
     changeThinkingLevel,
-  } = useConversationStore()
+  } = useConversationStore(
+    useShallow((state) => ({
+      status: state.status,
+      readOnly: state.readOnly,
+      settingsPending: state.settingsPending,
+      thinkingLevel: state.thinkingLevel,
+      availableThinkingLevels: state.availableThinkingLevels,
+      requestedThinkingLevel: state.requestedThinkingLevel,
+      changeThinkingLevel: state.changeThinkingLevel,
+    })),
+  )
   const items = [
     { value: 'default', label: 'Default' },
     { value: 'low', label: 'Low' },

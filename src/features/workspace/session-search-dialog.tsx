@@ -36,7 +36,7 @@ export function SessionSearchDialog({
   onOpenChangeComplete?: (open: boolean) => void
 }) {
   const workspace = useWorkspaceStore()
-  const { status } = useConversationStore()
+  const status = useConversationStore((state) => state.status)
   const [query, setQuery] = useState('')
   const [response, setResponse] = useState<{
     query: string

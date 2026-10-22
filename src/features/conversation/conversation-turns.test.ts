@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { ChatMessage, ToolCall } from '@/lib/generated/pi'
-import { buildConversationTurns } from './conversation-turns'
+import { buildConversationTurns, createConversationViewSelector } from './conversation-turns'
 
 function message(id: string, role: string, text: string, thinking = ''): ChatMessage {
   return { id, role, text, thinking, status: 'complete', error: null }
@@ -104,4 +104,101 @@ test('partial histories keep orphaned tool records, and plain chats need no proc
   )
   expect(plain.process).toEqual([])
   expect(plain.reply?.text).toBe('你好。')
+})
+
+function transcript(count: number) {
+  const messages = Array.from({ length: count }, (_, index) => [
+    message(`u${index}`, 'user', `问题 ${index}`),
+    message(`a${index}`, 'assistant', `回复 ${index}`),
+  ]).flat()
+  return {
+    sessionFile: 'history.jsonl',
+    instanceId: 'pi-1',
+    messages,
+    tools: [] as ToolCall[],
+    timeline: messages.map(({ id }) => ({ kind: 'message', id })),
+  }
+}
+
+test('streaming text, thoughts and tool output preserve every historical turn and the ID list', () => {
+  const select = createConversationViewSelector()
+  let state = transcript(1000)
+  const initial = select(state)
+  for (let index = 0; index < 40; index++) {
+    state = {
+      ...state,
+      messages: state.messages.map((item) =>
+        item.id === 'a999'
+          ? { ...item, text: item.text + '新内容', thinking: item.thinking + '思考' }
+          : item,
+      ),
+    }
+    const next = select(state)
+    expect(next.ids).toBe(initial.ids)
+    for (let history = 0; history < 999; history++)
+      expect(next.turns.get(`u${history}`)).toBe(initial.turns.get(`u${history}`))
+    expect(next.turns.get('u999')?.reply?.text).toContain('新内容')
+  }
+  state = {
+    ...state,
+    tools: [tool],
+    timeline: [...state.timeline, { kind: 'tool', id: tool.id }],
+  }
+  const withTool = select(state)
+  expect(withTool.ids).toBe(initial.ids)
+  state = { ...state, tools: [{ ...tool, output: '增量工具输出' }] }
+  const next = select(state)
+  expect(next.turns.get('u0')).toBe(initial.turns.get('u0'))
+  expect(next.turns.get('u999')).not.toBe(withTool.turns.get('u999'))
+  expect([...next.turns.values()]).toEqual(
+    buildConversationTurns(state.messages, state.tools, state.timeline),
+  )
+  expect(initial.turns.get('u999')?.reply?.text).toBe('回复 999')
+  expect(withTool.turns.get('u999')?.process.at(-1)).toMatchObject({
+    tool: { output: tool.output },
+  })
+})
+
+test('append, rewrite truncation and session changes keep grouping correct without mutating snapshots', () => {
+  const select = createConversationViewSelector()
+  const first = transcript(2)
+  const initial = select(first)
+  const appended = transcript(3)
+  appended.messages.splice(0, 4, ...first.messages)
+  const added = select(appended)
+  expect(added.ids).toEqual(['u0', 'u1', 'u2'])
+  expect(added.turns.get('u0')).toBe(initial.turns.get('u0'))
+  // React can read an earlier snapshot while a later one is already cached.
+  expect(select(first)).toBe(initial)
+  const rewritten = {
+    ...appended,
+    messages: [first.messages[0], message('replacement', 'assistant', '重新回答')],
+    timeline: [first.timeline[0], { kind: 'message', id: 'replacement' }],
+  }
+  expect(select(rewritten).ids).toEqual(['u0'])
+  expect(select(rewritten).turns.get('u0')?.reply?.text).toBe('重新回答')
+  expect(added.ids).toHaveLength(3)
+  expect(initial.turns.get('u0')?.reply?.text).toBe('回复 0')
+  const switched = select({ ...first, sessionFile: 'another.jsonl' })
+  expect(switched.ids).not.toBe(initial.ids)
+  expect(switched.turns.get('u0')).not.toBe(initial.turns.get('u0'))
+})
+
+test('same-size history replacements and reads of old snapshots do not leave stale message locations', () => {
+  const select = createConversationViewSelector()
+  const first = transcript(1)
+  const initial = select(first)
+  const replacement = {
+    ...first,
+    timeline: [],
+    messages: [message('new-user', 'user', '新的问题'), message('new-ai', 'assistant', '新回复')],
+  }
+  expect(select(replacement).ids).toEqual(['new-user'])
+  select(first)
+  const next = select({
+    ...replacement,
+    messages: [replacement.messages[0], { ...replacement.messages[1], text: '新回复继续' }],
+  })
+  expect(next.turns.get('new-user')?.reply?.text).toBe('新回复继续')
+  expect(initial.turns.get('u0')?.reply?.text).toBe('回复 0')
 })
