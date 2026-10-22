@@ -128,6 +128,20 @@ pub async fn pi_set_thinking_level(
     level: String,
 ) -> Result<RuntimeSnapshot, String> {
     let client = manager.client(&instance_id).await?;
+    let snapshot = client.snapshot().await?;
+    let level = if level == "default" {
+        let model = snapshot.model.as_ref().ok_or("请先选择模型。")?;
+        config::default_thinking_level(
+            &config::local_agent_directory()?,
+            &model.provider,
+            &model.id,
+        )?
+    } else {
+        if !snapshot.available_thinking_levels.contains(&level) {
+            return Err("当前模型不支持这个思考档位。".into());
+        }
+        level
+    };
     client
         .request(json!({"type":"set_thinking_level","level":level}), None)
         .await?;

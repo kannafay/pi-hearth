@@ -57,13 +57,59 @@ pub fn prepare_config(source: &Path, target: &Path) -> Result<RuntimeConfig, Str
     .map_err(|_| "无法写入 Pi 模型配置。")?;
     std::fs::write(
         target.join("settings.json"),
-        b"{\"defaultThinkingLevel\":\"off\",\"telemetry\":false}",
+        serde_json::to_vec(&thinking_settings(source)?).unwrap(),
     )
     .map_err(|_| "无法写入 Pi 运行设置。")?;
     Ok(RuntimeConfig {
         environment,
         secrets,
     })
+}
+
+fn thinking_settings(source: &Path) -> Result<Value, String> {
+    let settings: Value = match std::fs::read(source.join("settings.json")) {
+        Ok(bytes) => {
+            serde_json::from_slice(&bytes).map_err(|_| "本机 Pi 的 settings.json 格式有误。")?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({}),
+        Err(_) => return Err("无法读取本机 Pi 运行设置。".into()),
+    };
+    let valid_level = |value: &Value| {
+        value.as_str().is_some_and(|level| {
+            ["off", "minimal", "low", "medium", "high", "xhigh", "max"].contains(&level)
+        })
+    };
+    let default = settings
+        .get("defaultThinkingLevel")
+        .filter(|level| valid_level(level))
+        .cloned()
+        .unwrap_or(json!("medium"));
+    let models: Map<String, Value> = settings["modelThinkingLevels"]
+        .as_object()
+        .map(|models| {
+            models
+                .iter()
+                .filter(|(_, level)| valid_level(level))
+                .map(|(model, level)| (model.clone(), level.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({"telemetry": false, "defaultThinkingLevel": default, "modelThinkingLevels": models}))
+}
+
+pub fn default_thinking_level(
+    source: &Path,
+    provider: &str,
+    model: &str,
+) -> Result<String, String> {
+    let settings = thinking_settings(source)?;
+    Ok(
+        settings["modelThinkingLevels"][format!("{provider}/{model}")]
+            .as_str()
+            .or_else(|| settings["defaultThinkingLevel"].as_str())
+            .unwrap_or("medium")
+            .into(),
+    )
 }
 
 fn protect_values(
@@ -133,6 +179,33 @@ pub fn redact(mut text: String, secrets: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_effort_uses_model_override_then_global_then_pi_default() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/thinking-default-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&source).unwrap();
+        assert_eq!(
+            default_thinking_level(&source, "p", "model").unwrap(),
+            "medium"
+        );
+        std::fs::write(source.join("settings.json"), serde_json::to_vec(&json!({
+            "defaultThinkingLevel": "high", "modelThinkingLevels": {"p/model": "xhigh", "p/invalid": "bad"},
+            "unrelated": "not copied"
+        })).unwrap()).unwrap();
+        assert_eq!(
+            default_thinking_level(&source, "p", "model").unwrap(),
+            "xhigh"
+        );
+        assert_eq!(
+            default_thinking_level(&source, "p", "other").unwrap(),
+            "high"
+        );
+        let settings = thinking_settings(&source).unwrap();
+        assert!(settings.get("unrelated").is_none());
+        assert!(settings["modelThinkingLevels"].get("p/invalid").is_none());
+    }
 
     #[test]
     fn credentials_are_removed_from_persisted_provider_metadata() {

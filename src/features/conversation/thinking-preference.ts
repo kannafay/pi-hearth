@@ -1,12 +1,12 @@
-const key = 'pi-hearth.thinking-level'
-const levels = ['low', 'medium', 'high', 'max']
+const key = 'pi-hearth.thinking-level-v2'
+const levels = ['default', 'low', 'medium', 'high', 'xhigh', 'max']
 
-export function loadThinkingPreference(): string | null {
+export function loadThinkingPreference(): string {
   try {
     const level = localStorage.getItem(key)
-    return level && levels.includes(level) ? level : null
+    return level && levels.includes(level) ? level : 'default'
   } catch {
-    return null
+    return 'default'
   }
 }
 

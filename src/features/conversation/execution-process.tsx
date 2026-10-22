@@ -1,11 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, LoaderCircle } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ProcessItem } from './conversation-turns'
 import { ToolRecord } from './tool-record'
 import { ScrollArea } from '@/components/scroll-area'
 
-export function ExecutionProcess({ items, active }: { items: ProcessItem[]; active: boolean }) {
+export function formatElapsed(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return `${hours ? `${hours}小时` : ''}${minutes ? `${minutes}分` : ''}${seconds % 60}秒`
+}
+
+function ElapsedTime({
+  active,
+  startedAt,
+  finishedAt,
+}: {
+  active: boolean
+  startedAt?: number
+  finishedAt?: number
+}) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!active) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [active])
+  if (startedAt === undefined || (!active && finishedAt === undefined))
+    return <span>{active ? '正在处理…' : '已完成'}</span>
+  return (
+    <span>
+      {active ? '已处理 ' : '用时 '}
+      {formatElapsed((active ? now : finishedAt!) - startedAt)}
+    </span>
+  )
+}
+
+export function ExecutionProcess({
+  items,
+  active,
+  startedAt,
+  finishedAt,
+}: {
+  items: ProcessItem[]
+  active: boolean
+  startedAt?: number
+  finishedAt?: number
+}) {
   const [choice, setChoice] = useState<{ active: boolean; open: boolean } | null>(null)
   const viewport = useRef<HTMLDivElement>(null)
   const follow = useRef(true)
@@ -25,15 +67,16 @@ export function ExecutionProcess({ items, active }: { items: ProcessItem[]; acti
     <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
       <CollapsibleTrigger
         aria-label="执行过程"
-        disabled={awaiting}
-        className="flex max-w-full items-center gap-2 rounded-md py-1 text-left text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        disabled={awaiting || !items.length}
+        className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-3 text-left text-[13px] text-muted-foreground outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
-        <ChevronRight aria-hidden className="size-3.5 shrink-0 in-data-panel-open:rotate-90" />
-        {active && !awaiting && (
-          <LoaderCircle aria-hidden className="size-3.5 shrink-0 animate-spin" />
+        <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
+        {items.length > 0 && (
+          <ChevronRight
+            aria-hidden
+            className="size-3.5 shrink-0 transition-transform in-data-panel-open:rotate-90"
+          />
         )}
-        <span>执行过程</span>
-        {tools.length > 0 && <span className="text-xs">{tools.length} 次工具调用</span>}
         {awaiting ? (
           <span className="text-xs text-foreground">等待确认</span>
         ) : failures > 0 ? (
@@ -45,8 +88,8 @@ export function ExecutionProcess({ items, active }: { items: ProcessItem[]; acti
           ref={viewport}
           role="region"
           aria-label="执行过程详情"
-          className="mt-2"
-          viewportClassName="max-h-80 space-y-2 overflow-x-hidden overflow-y-auto border-l border-border/70 pl-3"
+          className="mt-3"
+          viewportClassName="max-h-80 space-y-3 overflow-x-hidden overflow-y-auto"
           onScroll={() => {
             const element = viewport.current
             if (element)

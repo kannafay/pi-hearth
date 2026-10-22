@@ -6,6 +6,13 @@ use uuid::Uuid;
 
 const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
 
+fn now_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as f64
+}
+
 #[derive(Default)]
 pub struct JsonLines {
     pending: Vec<u8>,
@@ -106,6 +113,8 @@ impl Conversation {
             status: "complete".into(),
             error: None,
             attachments,
+            started_at: Some(now_ms()),
+            finished_at: None,
         };
         self.snapshot.messages.push(message.clone());
         self.snapshot.timeline.push(TimelineEntry {
@@ -125,6 +134,18 @@ impl Conversation {
 
     pub fn restore_message(&mut self, raw: &Value) -> Vec<Value> {
         let mut records = vec![];
+        if raw["role"] != "user"
+            && let Some(finished) = raw["__hearthFinishedAt"].as_f64()
+            && let Some(user) = self
+                .snapshot
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.role == "user")
+            && user.started_at.is_some_and(|started| finished >= started)
+        {
+            user.finished_at = Some(finished);
+        }
         if self.snapshot.active_run_id.is_none() {
             self.snapshot.active_run_id = Some(Uuid::new_v4().to_string());
         }
@@ -140,6 +161,8 @@ impl Conversation {
                     status: "complete".into(),
                     error: None,
                     attachments,
+                    started_at: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
+                    finished_at: None,
                 };
                 self.snapshot.timeline.push(TimelineEntry {
                     kind: "message".into(),
@@ -303,6 +326,16 @@ impl Conversation {
         if self.snapshot.active_run_id.is_none() {
             return vec![];
         }
+        let finished_at = now_ms();
+        if let Some(user) = self
+            .snapshot
+            .messages
+            .iter_mut()
+            .rev()
+            .find(|message| message.role == "user")
+        {
+            user.finished_at = Some(finished_at);
+        }
         for message in &mut self.snapshot.messages {
             if message.status == "streaming" {
                 message.status = status.into();
@@ -334,6 +367,7 @@ impl Conversation {
         events.push(self.event(EventData::RunFinished {
             status: status.into(),
             error,
+            finished_at: Some(finished_at),
         }));
         self.snapshot.active_run_id = None;
         events
@@ -395,6 +429,8 @@ impl Conversation {
                     status: "streaming".into(),
                     error: None,
                     attachments: None,
+                    started_at: None,
+                    finished_at: None,
                 };
                 self.current_message = Some(message.id.clone());
                 self.snapshot.messages.push(message.clone());
@@ -484,6 +520,8 @@ impl Conversation {
                     status: status.into(),
                     error,
                     attachments: None,
+                    started_at: None,
+                    finished_at: None,
                 };
                 if let Some(current) = self
                     .snapshot
@@ -528,6 +566,33 @@ fn model_info(value: &Value) -> Option<ModelInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn turn_timing_is_finalized_once_and_restored_from_transcript_completion() {
+        let mut conversation = Conversation::new("instance".into(), "project".into());
+        conversation.begin("run".into(), "hello".into()).unwrap();
+        let started = conversation.snapshot.messages[0].started_at.unwrap();
+        let events = conversation.finish("complete", None);
+        let finished = conversation.snapshot.messages[0].finished_at.unwrap();
+        assert!(finished >= started);
+        assert!(
+            matches!(&events.last().unwrap().data, EventData::RunFinished { finished_at: Some(time), .. } if *time == finished)
+        );
+        assert!(conversation.finish("complete", None).is_empty());
+        assert_eq!(
+            conversation.snapshot.messages[0].finished_at,
+            Some(finished)
+        );
+
+        let mut history = Conversation::new("history".into(), "project".into());
+        history.restore_message(&json!({"role":"user", "content":"hello", "timestamp": 100000}));
+        history.restore_message(
+            &json!({"role":"assistant", "content":"hello", "__hearthFinishedAt":121000}),
+        );
+        history.end_restore();
+        assert_eq!(history.snapshot.messages[0].started_at, Some(100000.0));
+        assert_eq!(history.snapshot.messages[0].finished_at, Some(121000.0));
+    }
 
     #[test]
     fn thinking_settings_follow_the_runtime_and_model_capabilities() {
@@ -657,7 +722,7 @@ mod tests {
         conversation.record(&json!({"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"auth failed"}}));
         let events = conversation.record(&json!({"type":"agent_settled","aborted":false}));
         assert!(
-            matches!(&events[0].data, EventData::RunFinished {status, error:Some(error)} if status == "failed" && error == "auth failed")
+            matches!(&events[0].data, EventData::RunFinished {status, error:Some(error), ..} if status == "failed" && error == "auth failed")
         );
         conversation.begin("run-2".into(), "hello".into()).unwrap();
         conversation.mark_cancelling();

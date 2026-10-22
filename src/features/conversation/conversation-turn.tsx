@@ -17,7 +17,9 @@ export const ConversationTurn = memo(function ConversationTurn({
     lastAssistant?.status === 'cancelled' ||
     process.some((item) => item.kind === 'tool' && item.tool.status === 'cancelled')
   const error = lastAssistant?.error
-  const hasAssistant = active || process.length > 0 || reply || cancelled || error
+  const hasAssistant =
+    active || process.length > 0 || reply || cancelled || error || user?.finishedAt !== undefined
+  const lastProcess = process.at(-1)
 
   return (
     <div className="space-y-8">
@@ -36,7 +38,12 @@ export const ConversationTurn = memo(function ConversationTurn({
       )}
       {hasAssistant && (
         <article aria-label="Pi 的回复" className="space-y-3">
-          {process.length > 0 && <ExecutionProcess items={process} active={active} />}
+          <ExecutionProcess
+            items={process}
+            active={active}
+            startedAt={user?.startedAt}
+            finishedAt={user?.finishedAt}
+          />
           {reply ? (
             <Streamdown
               plugins={{ code }}
@@ -46,9 +53,18 @@ export const ConversationTurn = memo(function ConversationTurn({
             >
               {reply.text}
             </Streamdown>
-          ) : active && process.length === 0 ? (
-            <p className="text-sm text-muted-foreground">正在等待回复…</p>
           ) : null}
+          {active && (
+            <p className="text-[13px] text-muted-foreground/70">
+              {lastProcess?.kind === 'tool' && lastProcess.tool.status === 'awaiting_approval'
+                ? '等待工具调用确认…'
+                : lastProcess?.kind === 'tool' && lastProcess.tool.status === 'running'
+                  ? '正在执行工具…'
+                  : reply?.text
+                    ? '正在生成…'
+                    : '正在思考…'}
+            </p>
+          )}
           {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
           {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}
         </article>

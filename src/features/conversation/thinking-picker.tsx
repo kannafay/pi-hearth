@@ -14,20 +14,20 @@ export function ThinkingPicker() {
     readOnly,
     settingsPending,
     thinkingLevel,
+    availableThinkingLevels,
     requestedThinkingLevel,
     changeThinkingLevel,
   } = useConversationStore()
   const items = [
+    { value: 'default', label: 'Default' },
     { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
     { value: 'high', label: 'High' },
+    { value: 'xhigh', label: 'XHigh' },
     { value: 'max', label: 'Max' },
   ]
-  const selected = requestedThinkingLevel ?? thinkingLevel
-  const current = selected === 'xhigh' ? 'max' : selected
-  const value = items.some((item) => item.value === current) ? current : null
-  const effective = thinkingLevel === 'xhigh' ? 'max' : thinkingLevel
-  const effectiveLabel = items.find((item) => item.value === effective)?.label ?? '关闭'
+  const value = requestedThinkingLevel ?? 'default'
+  const effectiveLabel = items.find((item) => item.value === thinkingLevel)?.label ?? '关闭'
 
   return (
     <Select
@@ -41,9 +41,9 @@ export function ThinkingPicker() {
       <SelectTrigger
         aria-label="思考强度"
         title={
-          !settingsPending && requestedThinkingLevel && current !== effective
-            ? `思考强度：保留所选档位，当前模型实际使用${effectiveLabel}`
-            : '思考强度'
+          value === 'default'
+            ? `跟随模型默认设置，当前使用 ${effectiveLabel}`
+            : `思考强度：${effectiveLabel}`
         }
         data-pending={Boolean(settingsPending) || undefined}
         size="sm"
@@ -54,7 +54,11 @@ export function ThinkingPicker() {
       <SelectContent alignItemWithTrigger={false} align="start" className="composer-select-content">
         <SelectGroup>
           {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              disabled={item.value !== 'default' && !availableThinkingLevels.includes(item.value)}
+            >
               {item.label}
             </SelectItem>
           ))}

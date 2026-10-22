@@ -121,7 +121,10 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
         status: state.status === 'stopping' ? 'stopping' : 'running',
         error: null,
         activity: state.status === 'stopping' ? '正在停止…' : '正在等待回复…',
-        messages: [...state.messages, data.message],
+        messages: [
+          ...state.messages,
+          { ...data.message, startedAt: data.message.startedAt ?? Date.now() },
+        ],
         timeline: [...state.timeline, { kind: 'message', id: data.message.id }],
       }
       break
@@ -183,7 +186,11 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.activity = data.status === 'cancelled' ? '已停止生成' : ''
       next.error = data.error
       next.messages = state.messages.map((m) =>
-        m.status === 'streaming' ? { ...m, status: data.status, error: data.error } : m,
+        m.id === `${event.runId}-user`
+          ? { ...m, finishedAt: data.finishedAt ?? Date.now() }
+          : m.status === 'streaming'
+            ? { ...m, status: data.status, error: data.error }
+            : m,
       )
       next.tools = state.tools.map((tool) =>
         ['awaiting_approval', 'queued', 'running'].includes(tool.status)
@@ -207,7 +214,11 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.error = data.error
       next.activity = ''
       next.messages = state.messages.map((m) =>
-        m.status === 'streaming' ? { ...m, status: 'failed' } : m,
+        m.id === `${state.activeRunId}-user`
+          ? { ...m, finishedAt: Date.now() }
+          : m.status === 'streaming'
+            ? { ...m, status: 'failed' }
+            : m,
       )
       next.tools = state.tools.map((tool) =>
         ['awaiting_approval', 'queued', 'running'].includes(tool.status)
@@ -256,8 +267,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         (snapshot) => {
           if (request !== connection) return
           set({ ...fromSnapshot(snapshot), requestedThinkingLevel })
-          if (requestedThinkingLevel) {
-            restorePreference = get().changeThinkingLevel(requestedThinkingLevel)
+          if (!snapshot.readOnly && !snapshot.activeRunId) {
+            const level =
+              requestedThinkingLevel === 'default' ||
+              snapshot.availableThinkingLevels.includes(requestedThinkingLevel)
+                ? requestedThinkingLevel
+                : 'default'
+            restorePreference = get().changeThinkingLevel(level)
           }
         },
         (event) => {
@@ -330,12 +346,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       const snapshot = await setPiModel(instanceId, model.provider, model.id)
       if (!current()) return
       set(settingsFromSnapshot(snapshot))
-      if (requestedThinkingLevel) {
-        const thinking = await setPiThinkingLevel(instanceId, requestedThinkingLevel)
-        if (!current()) return
-        set(settingsFromSnapshot(thinking))
-      }
-      set({ settingsPending: null })
+      const level =
+        requestedThinkingLevel && snapshot.availableThinkingLevels.includes(requestedThinkingLevel)
+          ? requestedThinkingLevel
+          : 'default'
+      const thinking = await setPiThinkingLevel(instanceId, level)
+      if (!current()) return
+      saveThinkingPreference(level)
+      set({
+        ...settingsFromSnapshot(thinking),
+        requestedThinkingLevel: level,
+        settingsPending: null,
+      })
     } catch (reason) {
       if (current()) set({ settingsPending: null, error: String(reason) })
     }
@@ -343,6 +365,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   changeThinkingLevel: async (level) => {
     const { instanceId, status, readOnly, settingsPending, requestedThinkingLevel } = get()
     if (!instanceId || status !== 'ready' || readOnly || settingsPending) return
+    if (level !== 'default' && !get().availableThinkingLevels.includes(level)) return
     const request = connection
     const current = () => request === connection && get().instanceId === instanceId
     set({ settingsPending: 'thinking', requestedThinkingLevel: level, error: null })

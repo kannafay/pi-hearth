@@ -35,7 +35,7 @@ const snapshot: RuntimeSnapshot = {
   model: { provider: 'test', id: 'chat', name: 'Chat' },
   models: [],
   thinkingLevel: 'medium',
-  availableThinkingLevels: ['off', 'low', 'medium', 'high', 'max'],
+  availableThinkingLevels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   messages: [],
   tools: [],
   timeline: [],
@@ -55,6 +55,9 @@ beforeEach(() => {
   localStorage.clear()
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   vi.clearAllMocks()
+  useConversationStore.setState({ availableThinkingLevels: snapshot.availableThinkingLevels })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue(snapshot)
+  vi.mocked(setPiModel).mockResolvedValue(snapshot)
 })
 
 test('switching during connection ignores the old failure and hydrates the latest target', async () => {
@@ -222,7 +225,7 @@ test('a delayed run-start event cannot undo a pending stop', () => {
   expect(next.activity).toBe('正在停止…')
 })
 
-test('all four thinking levels are sent regardless of advertised capabilities while busy changes remain blocked', async () => {
+test('unsupported efforts are rejected while supported levels and Default can be selected', async () => {
   useConversationStore.setState({
     instanceId: 'pi-1',
     status: 'ready',
@@ -234,7 +237,11 @@ test('all four thinking levels are sent regardless of advertised capabilities wh
     thinkingLevel,
     availableThinkingLevels: ['off', 'high'],
   }))
-  for (const level of ['low', 'medium', 'high', 'max']) {
+  for (const level of ['low', 'medium', 'xhigh', 'max']) {
+    await useConversationStore.getState().changeThinkingLevel(level)
+  }
+  expect(setPiThinkingLevel).not.toHaveBeenCalled()
+  for (const level of ['high', 'default']) {
     await useConversationStore.getState().changeThinkingLevel(level)
     expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', level)
     expect(useConversationStore.getState()).toMatchObject({
@@ -246,7 +253,31 @@ test('all four thinking levels are sent regardless of advertised capabilities wh
   }
   useConversationStore.setState({ status: 'running' })
   await useConversationStore.getState().changeThinkingLevel('low')
-  expect(setPiThinkingLevel).toHaveBeenCalledTimes(4)
+  expect(setPiThinkingLevel).toHaveBeenCalledTimes(2)
+})
+
+test('turn timing uses native start and finish events rather than the time the UI received them', () => {
+  const state: ConversationData = { ...emptyConversation, instanceId: 'pi-1' }
+  const started = reducePiEvent(
+    state,
+    event(1, {
+      type: 'run_started',
+      message: {
+        ...message,
+        id: 'run-1-user',
+        role: 'user',
+        text: '你好',
+        status: 'complete',
+        startedAt: 100_000,
+      },
+    }),
+  )
+  const finished = reducePiEvent(
+    started,
+    event(2, { type: 'run_finished', status: 'complete', error: null, finishedAt: 121_000 }),
+  )
+  expect(finished.messages[0]).toMatchObject({ startedAt: 100_000, finishedAt: 121_000 })
+  expect(finished.activeRunId).toBeNull()
 })
 
 test('a failed thinking change preserves the selected effort and a late result cannot replace a new session', async () => {
@@ -287,7 +318,7 @@ test('a failed thinking change preserves the selected effort and a late result c
   })
 })
 
-test('Pi normalization preserves and persists the requested effort across model changes and reconnects', async () => {
+test('unsupported manual efforts fall back to Default on model changes and reconnects keep Default', async () => {
   useConversationStore.setState({ instanceId: 'pi-1', status: 'ready', model: snapshot.model })
   vi.mocked(setPiThinkingLevel).mockImplementation(async (instanceId) => ({
     ...snapshot,
@@ -311,6 +342,16 @@ test('Pi normalization preserves and persists the requested effort across model 
     requestedThinkingLevel: 'low',
     thinkingLevel: 'high',
   })
+  vi.mocked(setPiModel).mockResolvedValue({
+    ...snapshot,
+    model,
+    thinkingLevel: 'high',
+    availableThinkingLevels: ['off', 'high'],
+  })
+  await useConversationStore.getState().changeModel(model)
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', 'default')
+  expect(useConversationStore.getState().requestedThinkingLevel).toBe('default')
+  expect(loadThinkingPreference()).toBe('default')
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => {
     hydrate({ ...snapshot, instanceId: 'pi-2' })
@@ -321,11 +362,11 @@ test('Pi normalization preserves and persists the requested effort across model 
     thinkingLevel: 'high',
   })
   await useConversationStore.getState().connect('project')
-  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-2', 'low')
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-2', 'default')
   expect(useConversationStore.getState()).toMatchObject({
     instanceId: 'pi-2',
     status: 'ready',
-    requestedThinkingLevel: 'low',
+    requestedThinkingLevel: 'default',
     thinkingLevel: 'high',
     settingsPending: null,
   })

@@ -78,7 +78,15 @@ export async function history(file, sdk) {
     cursor = index.get(cursor.parentId)
   }
   return branch.flatMap((entry) => {
-    if (entry.type === 'message' && entry.message.role !== 'system') return [entry.message]
+    if (entry.type === 'message' && entry.message.role !== 'system') {
+      const finished = Date.parse(entry.timestamp)
+      return [
+        {
+          ...entry.message,
+          ...(Number.isFinite(finished) ? { __hearthFinishedAt: finished } : {}),
+        },
+      ]
+    }
     if (entry.type === 'custom_message' && entry.display)
       return [{ role: 'assistant', content: entry.content }]
     if (entry.type === 'compaction' || entry.type === 'branch_summary')

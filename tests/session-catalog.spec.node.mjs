@@ -83,6 +83,7 @@ test('history keeps the native active branch and tools without modifying its fil
   const before = await readFile(file, 'utf8')
   const messages = await history(file, sdk)
   assert.ok(messages.some((item) => item.role === 'toolResult' && item.toolCallId === 'tool-1'))
+  assert.ok(messages.every((item) => Number.isFinite(item.__hearthFinishedAt)))
   assert.equal(JSON.stringify(messages).includes('abandoned answer'), false)
   assert.equal(await readFile(file, 'utf8'), before)
   const [document, missing] = await searchDocuments([file, `${file}.missing`], sdk)

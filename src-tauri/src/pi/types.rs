@@ -21,6 +21,12 @@ pub struct ChatMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub attachments: Option<Vec<Attachment>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub started_at: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub finished_at: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
@@ -176,6 +182,9 @@ pub enum EventData {
     RunFinished {
         status: String,
         error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        finished_at: Option<f64>,
     },
     Status {
         text: String,
