@@ -1,4 +1,7 @@
-use super::{catalog::same_path, types::*};
+use super::{
+    catalog::{same_path, session_key},
+    types::*,
+};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -54,6 +57,13 @@ impl SearchIndex {
             .collect();
         let mut results = Vec::new();
         for session in &catalog.sessions {
+            if catalog
+                .session_preferences
+                .get(&session_key(&session.path))
+                .is_some_and(|entry| entry.archived)
+            {
+                continue;
+            }
             let project_name = catalog
                 .projects
                 .iter()
@@ -160,6 +170,7 @@ mod tests {
                     }],
                     general_cwd: "general".into(),
                     selection: Selection::default(),
+                    session_preferences: HashMap::new(),
                 },
             )),
             ..Default::default()
@@ -179,5 +190,25 @@ mod tests {
         assert_eq!(index.query("hearth rust").len(), 1);
         assert!(index.query("不存在").is_empty());
         assert_eq!(index.query("")[0].session.path, "2");
+        index
+            .catalog
+            .as_mut()
+            .unwrap()
+            .1
+            .session_preferences
+            .insert(
+                "0".into(),
+                SessionPreference {
+                    pinned: false,
+                    archived: true,
+                },
+            );
+        assert_eq!(index.query("关键词").len(), 1);
+        assert!(
+            index
+                .query("")
+                .iter()
+                .all(|result| result.session.path != "0")
+        );
     }
 }

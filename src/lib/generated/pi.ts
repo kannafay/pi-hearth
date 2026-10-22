@@ -23,7 +23,9 @@ export type ProjectInfo = { path: string, name: string, };
 
 export type Selection = { projectPath: string | null, sessionPath: string | null, };
 
-export type WorkspaceCatalog = { projects: Array<ProjectInfo>, sessions: Array<SessionInfo>, generalCwd: string, selection: Selection, };
+export type SessionPreference = { pinned: boolean, archived: boolean, };
+
+export type WorkspaceCatalog = { projects: Array<ProjectInfo>, sessions: Array<SessionInfo>, generalCwd: string, selection: Selection, sessionPreferences: { [key in string]?: SessionPreference }, };
 
 export type ProjectInstructions = { path: string, content: string, };
 

@@ -20,11 +20,14 @@ import { ThinkingPicker } from './thinking-picker'
 import { AttachmentList } from './attachment-list'
 import { useConversationStore } from './store'
 import { ConnectionNotice } from './connection-notice'
+import { sessionKey } from '@/lib/session-preferences'
 
 export function Composer({ onSendStart }: { onSendStart: () => void }) {
-  const { draft, setDraft, draftAttachments, clearAttachments } = useWorkspaceStore()
+  const { draft, setDraft, draftAttachments, clearAttachments, sessionActionPending } =
+    useWorkspaceStore()
   const {
     status,
+    sessionFile,
     messages,
     activeRunId,
     error,
@@ -43,6 +46,9 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const runStarted = messages.some((message) => message.id === `${activeRunId}-user`)
   const desktop = isDesktop()
   const connecting = status === 'connecting' || status === 'disconnected'
+  const sessionUpdating = Boolean(
+    sessionActionPending && sessionKey(sessionActionPending) === sessionKey(sessionFile),
+  )
   const statusText = connecting ? '' : activity || (!model ? '请配置模型' : '')
 
   async function receive(request: Promise<Attachment[]>) {
@@ -189,6 +195,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
               if (
                 status === 'ready' &&
                 !settingsPending &&
+                !sessionUpdating &&
                 !pending &&
                 (draft.trim() || draftAttachments.length)
               )
@@ -239,6 +246,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
                 status !== 'ready' ||
                 Boolean(readOnly) ||
                 Boolean(settingsPending) ||
+                sessionUpdating ||
                 pending > 0 ||
                 (!draft.trim() && !draftAttachments.length)
               }

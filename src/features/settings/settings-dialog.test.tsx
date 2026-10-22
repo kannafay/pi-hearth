@@ -96,3 +96,59 @@ test('vertical settings tabs use arrows and Enter, and closing restores focus', 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   await waitFor(() => expect(screen.getByRole('button', { name: '打开设置' })).toHaveFocus())
 })
+
+test('the archive settings page restores conversations without deleting native sessions', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  const session = {
+    path: 'archived.jsonl',
+    id: 'archived',
+    cwd: 'general',
+    title: '已归档的讨论',
+    modified: Date.now(),
+    messageCount: 2,
+  }
+  const setSessionArchived = vi.fn(async () => {
+    useWorkspaceStore.setState({ sessionPreferences: {} })
+    return true
+  })
+  useWorkspaceStore.setState({
+    sessions: [session],
+    sessionPreferences: { [session.path]: { pinned: true, archived: true } },
+    setSessionArchived,
+  })
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  await user.click(screen.getByRole('tab', { name: '归档' }))
+  expect(screen.getByRole('heading', { name: '归档' })).toBeVisible()
+  expect(screen.getByText(session.title)).toBeVisible()
+  await user.click(screen.getByRole('button', { name: `恢复 ${session.title}` }))
+  expect(setSessionArchived).toHaveBeenCalledExactlyOnceWith(session, false)
+  expect(await screen.findByText('暂无归档会话')).toBeVisible()
+  expect(useWorkspaceStore.getState().sessions).toEqual([session])
+})
+
+test('a failed archive restore displays its error inside settings and permits retry', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  const session = {
+    path: 'archived.jsonl',
+    id: 'archived',
+    cwd: 'general',
+    title: '需要恢复',
+    modified: 1,
+    messageCount: 1,
+  }
+  useWorkspaceStore.setState({
+    sessions: [session],
+    sessionPreferences: { [session.path]: { pinned: false, archived: true } },
+    error: '无法保存工作台配置',
+    setSessionArchived: vi.fn().mockResolvedValue(false),
+  })
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  await user.click(screen.getByRole('tab', { name: '归档' }))
+  await user.click(screen.getByRole('button', { name: `恢复 ${session.title}` }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法保存工作台配置')
+  expect(screen.getByRole('button', { name: `恢复 ${session.title}` })).toBeEnabled()
+})

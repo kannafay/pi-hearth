@@ -1,10 +1,15 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from './store'
 import { useConversationStore } from '@/features/conversation/store'
-import { loadCatalog, addProject } from '@/lib/workspace'
+import { loadCatalog, addProject, updateSessionPreference } from '@/lib/workspace'
+import { sessionKey } from '@/lib/session-preferences'
 import type { PiEvent, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 
-vi.mock('@/lib/workspace', () => ({ loadCatalog: vi.fn(), addProject: vi.fn() }))
+vi.mock('@/lib/workspace', () => ({
+  loadCatalog: vi.fn(),
+  addProject: vi.fn(),
+  updateSessionPreference: vi.fn(),
+}))
 const session: SessionInfo = {
   path: 'history.jsonl',
   id: 'native-id',
@@ -18,6 +23,7 @@ const catalog: WorkspaceCatalog = {
   sessions: [session],
   generalCwd: 'general',
   selection: { projectPath: null, sessionPath: null },
+  sessionPreferences: {},
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -25,6 +31,10 @@ beforeEach(() => {
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   useConversationStore.setState({ connect: vi.fn().mockResolvedValue(undefined), status: 'ready' })
   vi.mocked(loadCatalog).mockResolvedValue(structuredClone(catalog))
+  vi.mocked(updateSessionPreference).mockImplementation(async (path, preference) => ({
+    ...useWorkspaceStore.getState().sessionPreferences,
+    [sessionKey(path)!]: preference,
+  }))
 })
 
 test('startup permits a general conversation and initializes only once', async () => {
@@ -253,4 +263,98 @@ test('opening a session during new-chat startup keeps the latest selection', asy
   await pending
   expect(useWorkspaceStore.getState().selectedSessionPath).toBe(session.path)
   expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
+})
+
+test('pinning and archiving persist independently and another session can be archived without reconnecting', async () => {
+  useWorkspaceStore.setState({ ...catalog })
+  useConversationStore.setState({ sessionFile: 'current.jsonl' })
+  await useWorkspaceStore.getState().toggleSessionPinned(session)
+  expect(updateSessionPreference).toHaveBeenLastCalledWith(session.path, {
+    pinned: true,
+    archived: false,
+  })
+  expect(await useWorkspaceStore.getState().setSessionArchived(session, true)).toBe(true)
+  expect(updateSessionPreference).toHaveBeenLastCalledWith(session.path, {
+    pinned: true,
+    archived: true,
+  })
+  expect(await useWorkspaceStore.getState().setSessionArchived(session, false)).toBe(true)
+  expect(useWorkspaceStore.getState().sessionPreferences[session.path]).toEqual({
+    pinned: true,
+    archived: false,
+  })
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useConversationStore.getState().sessionFile).toBe('current.jsonl')
+})
+
+test('archiving the current conversation opens a fresh chat and cannot interrupt its active run', async () => {
+  useWorkspaceStore.setState({ ...catalog, projectPath: session.cwd })
+  useConversationStore.setState({ sessionFile: session.path, status: 'running' })
+  expect(await useWorkspaceStore.getState().setSessionArchived(session, true)).toBe(false)
+  expect(updateSessionPreference).not.toHaveBeenCalled()
+  useConversationStore.setState({
+    status: 'ready',
+    connect: vi.fn(async () => {
+      useConversationStore.setState({ sessionFile: 'new.jsonl' })
+    }),
+  })
+  expect(await useWorkspaceStore.getState().setSessionArchived(session, true)).toBe(true)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe('new.jsonl')
+})
+
+test('failed session changes leave the visible catalog and selection intact', async () => {
+  useWorkspaceStore.setState({ ...catalog, selectedSessionPath: session.path })
+  vi.mocked(updateSessionPreference).mockRejectedValueOnce('无法保存工作台配置')
+  expect(await useWorkspaceStore.getState().setSessionArchived(session, true)).toBe(false)
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    sessionPreferences: {},
+    sessionActionPending: null,
+    selectedSessionPath: session.path,
+    error: '无法保存工作台配置',
+  })
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('an older catalog response cannot undo a completed pin or archive change', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true })
+  let finish!: (value: WorkspaceCatalog) => void
+  vi.mocked(loadCatalog).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  const refresh = useWorkspaceStore.getState().refresh()
+  await useWorkspaceStore.getState().toggleSessionPinned(session)
+  finish(catalog)
+  await refresh
+  expect(useWorkspaceStore.getState().sessionPreferences[session.path]?.pinned).toBe(true)
+  expect(useWorkspaceStore.getState().loading).toBe(false)
+})
+
+test('startup restores session preferences without reopening the selected archived conversation', async () => {
+  vi.mocked(loadCatalog).mockResolvedValueOnce({
+    ...catalog,
+    selection: { projectPath: session.cwd, sessionPath: session.path },
+    sessionPreferences: { [session.path]: { pinned: true, archived: true } },
+  })
+  await useWorkspaceStore.getState().initialize()
+  expect(useWorkspaceStore.getState().sessionPreferences[session.path]?.archived).toBe(true)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    undefined,
+  )
+})
+
+test('project expansion stays independent when opening another project or changing filters', async () => {
+  const other = { ...session, path: 'other.jsonl', cwd: 'D:/other' }
+  useWorkspaceStore.getState().setProject(session.cwd)
+  await useWorkspaceStore.getState().openSession(other)
+  expect(useWorkspaceStore.getState().expandedProjects).toMatchObject({
+    [sessionKey(session.cwd)!]: true,
+    [sessionKey(other.cwd)!]: true,
+  })
+  useWorkspaceStore.getState().setProjectExpanded(session.cwd, false)
+  await useWorkspaceStore.getState().openSession(other)
+  expect(useWorkspaceStore.getState().expandedProjects[sessionKey(session.cwd)!]).toBe(false)
 })

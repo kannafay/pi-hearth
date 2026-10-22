@@ -9,6 +9,7 @@ import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { isDesktop } from '@/lib/desktop'
 import { searchSessions } from '@/lib/workspace'
 import type { SessionInfo, SessionSearchResult } from '@/lib/generated/pi'
+import { sessionPreference, visibleSessions } from '@/lib/session-preferences'
 
 function Highlight({ text, query }: { text: string; query: string }) {
   const terms = query.trim().split(/\s+/).filter(Boolean)
@@ -46,18 +47,25 @@ export function SessionSearchDialog({ onClose }: { onClose: () => void }) {
   const loading = desktop && Boolean(term) && !currentResponse
   const error = currentResponse ? response.error : null
   const busy = status === 'running' || status === 'stopping'
-  const recent: SessionSearchResult[] = workspace.sessions.slice(0, 20).map((session) => ({
-    session,
-    projectName:
-      workspace.projects.find(
-        (project) =>
-          project.path.replaceAll('\\', '/').toLowerCase() ===
-          session.cwd.replaceAll('\\', '/').toLowerCase(),
-      )?.name ?? '聊天',
-    snippet: '',
-    matchedIn: 'recent',
-  }))
-  const shown = term ? (currentResponse ? response.results : []) : recent
+  const recent: SessionSearchResult[] = visibleSessions(
+    workspace.sessions,
+    workspace.sessionPreferences,
+  )
+    .slice(0, 20)
+    .map((session) => ({
+      session,
+      projectName:
+        workspace.projects.find(
+          (project) =>
+            project.path.replaceAll('\\', '/').toLowerCase() ===
+            session.cwd.replaceAll('\\', '/').toLowerCase(),
+        )?.name ?? '聊天',
+      snippet: '',
+      matchedIn: 'recent',
+    }))
+  const shown = (term ? (currentResponse ? response.results : []) : recent).filter(
+    (result) => !sessionPreference(workspace.sessionPreferences, result.session.path).archived,
+  )
 
   useEffect(() => {
     let current = true

@@ -113,7 +113,7 @@ test('sliding filters and session navigation stay usable while a session is conn
   expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute('aria-selected', 'true')
   await user.click(screen.getByRole('tab', { name: '聊天' }))
   expect(screen.queryByRole('region', { name: '项目' })).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: /普通会话/ }))
+  await user.click(screen.getByRole('button', { name: '普通会话' }))
   expect(openSession).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('tab', { name: '项目' }))
   expect(screen.queryByRole('button', { name: /普通会话/ })).not.toBeInTheDocument()
@@ -149,7 +149,7 @@ test('session and project tooltips expose full titles and paths without native t
       />
     </TooltipProvider>,
   )
-  const row = screen.getByRole('button', { name: /讨论侧边栏被省略的完整会话标题/ })
+  const row = screen.getByRole('button', { name: session.title })
   expect(row).not.toHaveAttribute('title')
   await user.hover(row)
   const tooltip = await screen.findByRole('tooltip')
@@ -163,4 +163,94 @@ test('session and project tooltips expose full titles and paths without native t
   expect(trigger).not.toHaveAttribute('title')
   await user.hover(trigger)
   expect(within(await screen.findByRole('tooltip')).getByText(project.path)).toBeVisible()
+})
+
+test('switching projects and tabs preserves each project expansion independently', async () => {
+  const second = { path: 'D:/projects/second', name: 'Second' }
+  const session = {
+    path: 'second.jsonl',
+    id: 'second',
+    cwd: second.path,
+    title: '第二个项目的聊天',
+    modified: 2,
+    messageCount: 1,
+  }
+  useWorkspaceStore.setState({ projects: [project, second], sessions: [session] })
+  useWorkspaceStore.getState().setProject(project.path)
+  useConversationStore.setState({ connect: vi.fn().mockResolvedValue(undefined) })
+  const user = userEvent.setup()
+  render(
+    <WorkspaceNavigation
+      desktop
+      onAdd={vi.fn()}
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  const first = screen.getByRole('button', { name: 'Hearth' })
+  const other = screen.getByRole('button', { name: 'Second' })
+  await user.click(other)
+  await user.click(screen.getByRole('button', { name: session.title }))
+  expect(useWorkspaceStore.getState().projectPath).toBe(second.path)
+  expect(first).toHaveAttribute('aria-expanded', 'true')
+  expect(other).toHaveAttribute('aria-expanded', 'true')
+  await user.click(first)
+  await user.click(screen.getByRole('tab', { name: '聊天' }))
+  await user.click(screen.getByRole('tab', { name: '全部' }))
+  expect(screen.getByRole('button', { name: 'Hearth' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByRole('button', { name: 'Second' })).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('pinned chats sort first, archived chats stay hidden and row actions never open the chat', async () => {
+  const plain = {
+    path: 'plain.jsonl',
+    id: 'plain',
+    cwd: 'general',
+    title: '普通聊天',
+    modified: 20,
+    messageCount: 2,
+  }
+  const pinned = { ...plain, path: 'pinned.jsonl', id: 'pinned', title: '置顶聊天', modified: 10 }
+  const archived = { ...plain, path: 'archived.jsonl', id: 'archived', title: '已归档聊天' }
+  const toggleSessionPinned = vi.fn().mockResolvedValue(undefined)
+  const setSessionArchived = vi.fn().mockResolvedValue(true)
+  const openSession = vi.fn()
+  useWorkspaceStore.setState({
+    generalCwd: 'general',
+    sessions: [plain, pinned, archived],
+    sessionPreferences: {
+      'pinned.jsonl': { pinned: true, archived: false },
+      'archived.jsonl': { pinned: false, archived: true },
+    },
+    toggleSessionPinned,
+    setSessionArchived,
+    openSession,
+  })
+  const user = userEvent.setup()
+  render(
+    <WorkspaceNavigation
+      desktop
+      onAdd={vi.fn()}
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  expect(screen.queryByRole('button', { name: archived.title })).not.toBeInTheDocument()
+  expect(
+    screen
+      .getByRole('button', { name: pinned.title })
+      .compareDocumentPosition(screen.getByRole('button', { name: plain.title })) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(screen.getByRole('button', { name: `取消置顶 ${pinned.title}` })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await user.click(screen.getByRole('button', { name: `置顶 ${plain.title}` }))
+  await user.click(screen.getByRole('button', { name: `归档 ${plain.title}` }))
+  expect(toggleSessionPinned).toHaveBeenCalledExactlyOnceWith(plain)
+  expect(setSessionArchived).toHaveBeenCalledExactlyOnceWith(plain, true)
+  expect(openSession).not.toHaveBeenCalled()
 })

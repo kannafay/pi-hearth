@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Info, Palette, SlidersHorizontal } from 'lucide-react'
+import { Activity, Archive, Info, Palette, SlidersHorizontal } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -17,10 +17,12 @@ import {
 import { getAppVersion, isDesktop } from '@/lib/desktop'
 import { ModelSettings } from './model-settings'
 import { SettingsPageHeader } from './settings-page-header'
+import { ArchivedSessions } from './archived-sessions'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
   { value: 'models', label: '模型与凭证', icon: SlidersHorizontal },
+  { value: 'archived', label: '归档', icon: Archive },
   { value: 'diagnostics', label: '运行诊断', icon: Activity },
   { value: 'about', label: '关于', icon: Info },
 ] as const
@@ -66,7 +68,7 @@ export function SettingsDialog({
       <DialogContent className="overflow-hidden p-0 sm:max-w-190">
         <DialogTitle className="sr-only">设置</DialogTitle>
         <DialogDescription className="sr-only">
-          Pi Hearth 的外观、模型与运行信息。
+          Pi Hearth 的外观、模型、归档与运行信息。
         </DialogDescription>
         <Tabs
           defaultValue="appearance"
@@ -123,6 +125,9 @@ export function SettingsDialog({
             </TabsContent>
             <TabsContent value="models" className="m-0">
               <ModelSettings />
+            </TabsContent>
+            <TabsContent value="archived" className="m-0">
+              <ArchivedSessions />
             </TabsContent>
             <TabsContent value="diagnostics" className="m-0">
               <SettingsPageHeader title="运行诊断" description="本地桌面核心与 Pi 的连接状态。" />

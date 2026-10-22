@@ -126,6 +126,14 @@ pub struct WorkspaceCatalog {
     pub sessions: Vec<SessionInfo>,
     pub general_cwd: String,
     pub selection: Selection,
+    pub session_preferences: std::collections::HashMap<String, SessionPreference>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionPreference {
+    pub pinned: bool,
+    pub archived: bool,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -221,6 +229,7 @@ fn export_frontend_types() {
         SessionSearchResult::decl(),
         ProjectInfo::decl(),
         Selection::decl(),
+        SessionPreference::decl(),
         WorkspaceCatalog::decl(),
         ProjectInstructions::decl(),
         RuntimeSnapshot::decl(),

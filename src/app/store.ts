@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type { Attachment, ProjectInfo, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 import { releaseAttachments } from '@/lib/attachments'
-import { loadCatalog, addProject } from '@/lib/workspace'
+import { loadCatalog, addProject, updateSessionPreference } from '@/lib/workspace'
 import { useConversationStore } from '@/features/conversation/store'
+import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
 
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -11,6 +12,12 @@ interface WorkspaceState {
   sessions: SessionInfo[]
   generalCwd: string | null
   selectedSessionPath: string | null
+  sessionPreferences: SessionPreferences
+  sessionActionPending: string | null
+  expandedProjects: Record<string, boolean>
+  setProjectExpanded: (path: string, open: boolean) => void
+  toggleSessionPinned: (session: SessionInfo) => Promise<void>
+  setSessionArchived: (session: SessionInfo, archived: boolean) => Promise<boolean>
   initialized: boolean
   loading: boolean
   error: string | null
@@ -41,8 +48,42 @@ const samePath = (a: string | null | undefined, b: string | null | undefined) =>
   a?.replaceAll('\\', '/').toLowerCase() === b?.replaceAll('\\', '/').toLowerCase()
 const busy = () => ['running', 'stopping'].includes(useConversationStore.getState().status)
 let navigation = 0
+let sessionRevision = 0
 function catalogState(catalog: WorkspaceCatalog) {
-  return { projects: catalog.projects, sessions: catalog.sessions, generalCwd: catalog.generalCwd }
+  return {
+    projects: catalog.projects,
+    sessions: catalog.sessions,
+    generalCwd: catalog.generalCwd,
+    sessionPreferences: catalog.sessionPreferences ?? {},
+  }
+}
+
+function expandProject(expanded: Record<string, boolean>, path: string | null) {
+  return path ? { ...expanded, [sessionKey(path)!]: true } : expanded
+}
+
+async function changeSessionPreference(
+  session: SessionInfo,
+  change: { pinned?: boolean; archived?: boolean },
+) {
+  const workspace = useWorkspaceStore.getState()
+  if (workspace.sessionActionPending) return false
+  sessionRevision++
+  useWorkspaceStore.setState({ sessionActionPending: session.path, error: null })
+  try {
+    const preference = {
+      ...sessionPreference(workspace.sessionPreferences, session.path),
+      ...change,
+    }
+    const sessionPreferences = await updateSessionPreference(session.path, preference)
+    useWorkspaceStore.setState({ sessionPreferences })
+    return true
+  } catch (reason) {
+    useWorkspaceStore.setState({ error: String(reason) })
+    return false
+  } finally {
+    useWorkspaceStore.setState({ sessionActionPending: null })
+  }
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -50,6 +91,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   sessions: [],
   generalCwd: null,
   selectedSessionPath: null,
+  sessionPreferences: {},
+  sessionActionPending: null,
+  expandedProjects: {},
+  setProjectExpanded: (path, open) =>
+    set((state) => ({
+      expandedProjects: { ...state.expandedProjects, [sessionKey(path)!]: open },
+    })),
+  toggleSessionPinned: async (session) => {
+    const preference = sessionPreference(get().sessionPreferences, session.path)
+    await changeSessionPreference(session, { pinned: !preference.pinned })
+  },
+  setSessionArchived: async (session, archived) => {
+    if (archived && busy() && samePath(session.path, useConversationStore.getState().sessionFile))
+      return false
+    if (!(await changeSessionPreference(session, { archived }))) return false
+    if (archived && samePath(session.path, useConversationStore.getState().sessionFile)) {
+      await get().newConversation(get().projectPath)
+    }
+    return true
+  },
   initialized: false,
   loading: false,
   error: null,
@@ -70,7 +131,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   sidebarOpen: true,
   inspectorOpen: false,
   theme: 'system',
-  setProject: (projectPath) => set({ projectPath }),
+  setProject: (projectPath) =>
+    set((state) => ({
+      projectPath,
+      expandedProjects: expandProject(state.expandedProjects, projectPath),
+    })),
   setDraft: (draft) => set({ draft }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
@@ -85,8 +150,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         set({ ...catalogState(catalog), initialized: true })
         return
       }
-      const session = catalog.sessions.find((session) =>
-        samePath(session.path, catalog.selection.sessionPath),
+      const session = catalog.sessions.find(
+        (session) =>
+          samePath(session.path, catalog.selection.sessionPath) &&
+          !sessionPreference(catalog.sessionPreferences ?? {}, session.path).archived,
       )
       const projectPath = session
         ? samePath(session.cwd, catalog.generalCwd)
@@ -97,6 +164,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({
         ...catalogState(catalog),
         projectPath,
+        expandedProjects: expandProject(get().expandedProjects, projectPath),
         selectedSessionPath: session?.path ?? null,
         initialized: true,
       })
@@ -110,13 +178,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   refresh: async () => {
-    if (get().loading || !get().initialized || useConversationStore.getState().settingsPending)
+    if (
+      get().loading ||
+      !get().initialized ||
+      get().sessionActionPending ||
+      useConversationStore.getState().settingsPending
+    )
       return
     const request = navigation
+    const revision = sessionRevision
     const before = useConversationStore.getState()
     set({ loading: true })
     try {
       const catalog = await loadCatalog()
+      if (revision !== sessionRevision) return
       const conversation = useConversationStore.getState()
       if (conversation.settingsPending) return
       const path = conversation.sessionFile
@@ -163,14 +238,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     navigation++
     get().clearAttachments()
     const projectPath = samePath(session.cwd, get().generalCwd) ? null : session.cwd
-    set({ projectPath, selectedSessionPath: session.path, draft: '', error: null })
+    set({
+      projectPath,
+      selectedSessionPath: session.path,
+      draft: '',
+      error: null,
+      expandedProjects: expandProject(get().expandedProjects, projectPath),
+    })
     await useConversationStore.getState().connect(projectPath, session.path)
   },
   newConversation: async (projectPath) => {
     if (busy()) return
     const request = ++navigation
     get().clearAttachments()
-    set({ projectPath, selectedSessionPath: null, draft: '', error: null })
+    set({
+      projectPath,
+      selectedSessionPath: null,
+      draft: '',
+      error: null,
+      expandedProjects: expandProject(get().expandedProjects, projectPath),
+    })
     await useConversationStore.getState().connect(projectPath)
     if (request === navigation)
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })

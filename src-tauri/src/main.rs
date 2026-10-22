@@ -1,5 +1,8 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Bundled desktop builds should not open an extra console, including debug builds.
+#![cfg_attr(
+    any(not(debug_assertions), feature = "custom-protocol"),
+    windows_subsystem = "windows"
+)]
 
 fn main() {
     pi_hearth_lib::run()

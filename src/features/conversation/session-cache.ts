@@ -1,4 +1,7 @@
 import type { ConversationData } from './store'
+import { sessionKey } from '@/lib/session-preferences'
+
+export { sessionKey } from '@/lib/session-preferences'
 
 type SessionDisplay = Pick<
   ConversationData,
@@ -19,10 +22,6 @@ export type SessionCache = ReadonlyMap<string, CachedSession>
 const MAX_SESSIONS = 8
 // Bound retained text and inline media as well as the number of conversations.
 const MAX_CHARACTERS = 16_000_000
-
-export function sessionKey(path: string | null | undefined) {
-  return path?.replaceAll('\\', '/').toLowerCase() ?? null
-}
 
 export function sessionDisplay(state: ConversationData): SessionDisplay {
   return {

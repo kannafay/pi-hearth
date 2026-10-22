@@ -16,6 +16,9 @@ crate-type = ["rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"

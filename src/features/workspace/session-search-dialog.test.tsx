@@ -48,6 +48,21 @@ test('body search highlights the snippet and Enter opens its exact native sessio
   expect(onClose).toHaveBeenCalledOnce()
 })
 
+test('archived conversations are absent from recents and stale search responses', async () => {
+  useWorkspaceStore.setState({
+    sessions: [result.session],
+    sessionPreferences: { [result.session.path]: { pinned: false, archived: true } },
+  })
+  vi.mocked(searchSessions).mockResolvedValue([result])
+  const user = userEvent.setup()
+  render(<SessionSearchDialog onClose={vi.fn()} />)
+  expect(screen.queryByRole('option', { name: /设计讨论/ })).not.toBeInTheDocument()
+  await user.type(screen.getByRole('combobox'), '关键词')
+  await waitFor(() => expect(searchSessions).toHaveBeenCalledWith('关键词'))
+  await screen.findByText('没有匹配的会话，试试其他关键词')
+  expect(screen.queryByRole('option', { name: /设计讨论/ })).not.toBeInTheDocument()
+})
+
 test('a slow old search cannot overwrite newer results, and Escape closes the dialog', async () => {
   let oldResult!: (result: SessionSearchResult[]) => void
   vi.mocked(searchSessions).mockImplementation((query) =>

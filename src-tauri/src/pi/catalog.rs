@@ -7,6 +7,7 @@ use super::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, Instant},
@@ -57,6 +58,7 @@ impl WorkspaceManager {
 struct Preferences {
     projects: Vec<ProjectInfo>,
     selection: Selection,
+    session_preferences: HashMap<String, SessionPreference>,
 }
 
 fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -208,6 +210,7 @@ pub async fn load_catalog(data: &Path) -> Result<WorkspaceCatalog, String> {
         sessions,
         general_cwd: general.to_string_lossy().into(),
         selection: prefs.selection,
+        session_preferences: prefs.session_preferences,
     })
 }
 
@@ -218,6 +221,54 @@ pub fn same_path(a: &str, b: &str) -> bool {
     } else {
         a == b
     }
+}
+
+pub fn session_key(path: &str) -> String {
+    let path = path.replace('\\', "/");
+    if cfg!(windows) {
+        path.to_lowercase()
+    } else {
+        path
+    }
+}
+
+fn update_session_preference(prefs: &mut Preferences, path: &str, preference: SessionPreference) {
+    if preference.archived
+        && prefs
+            .selection
+            .session_path
+            .as_deref()
+            .is_some_and(|selected| same_path(selected, path))
+    {
+        prefs.selection.session_path = None;
+    }
+    let key = session_key(path);
+    if preference.pinned || preference.archived {
+        prefs.session_preferences.insert(key, preference);
+    } else {
+        prefs.session_preferences.remove(&key);
+    }
+}
+
+#[tauri::command]
+pub async fn workspace_update_session(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    path: String,
+    preference: SessionPreference,
+) -> Result<HashMap<String, SessionPreference>, String> {
+    let _lock = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let mut prefs = preferences(&data).await?;
+    let sessions = list(&data, &prefs).await?;
+    let session = sessions
+        .iter()
+        .find(|session| same_path(&session.path, &path))
+        .ok_or("会话文件不存在，请刷新列表。")?;
+    update_session_preference(&mut prefs, &session.path, preference);
+    save(&data, &prefs).await?;
+    workspace.search.lock().await.catalog = None;
+    Ok(prefs.session_preferences)
 }
 
 #[tauri::command]
@@ -498,7 +549,12 @@ pub async fn pi_open(
         let mut prefs = preferences(&data).await?;
         prefs.selection = Selection {
             project_path,
-            session_path: snapshot.session_file.clone(),
+            session_path: snapshot.session_file.clone().filter(|path| {
+                !prefs
+                    .session_preferences
+                    .get(&session_key(path))
+                    .is_some_and(|entry| entry.archived)
+            }),
         };
         save(&data, &prefs).await?;
         Ok(snapshot)
@@ -513,6 +569,58 @@ pub async fn pi_open(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn session_preferences_persist_without_modifying_native_history() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/session-preferences-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let history = root.join("chat.jsonl");
+        let original = "{\"type\":\"session\",\"id\":\"original\"}\n";
+        tokio::fs::write(&history, original).await.unwrap();
+        let path = history.to_string_lossy().into_owned();
+        let mut prefs: Preferences =
+            serde_json::from_str(r#"{"projects":[],"selection":{}}"#).unwrap();
+        assert!(prefs.session_preferences.is_empty());
+        prefs.selection.session_path = Some(path.clone());
+        update_session_preference(
+            &mut prefs,
+            &path,
+            SessionPreference {
+                pinned: true,
+                archived: true,
+            },
+        );
+        save(&root, &prefs).await.unwrap();
+        let mut restored = preferences(&root).await.unwrap();
+        assert!(restored.selection.session_path.is_none());
+        assert!(restored.session_preferences[&session_key(&path)].pinned);
+        assert!(restored.session_preferences[&session_key(&path)].archived);
+        update_session_preference(
+            &mut restored,
+            &path,
+            SessionPreference {
+                pinned: true,
+                archived: false,
+            },
+        );
+        assert!(!restored.session_preferences[&session_key(&path)].archived);
+        save(&root, &restored).await.unwrap();
+        assert!(
+            !preferences(&root).await.unwrap().session_preferences[&session_key(&path)].archived
+        );
+        update_session_preference(&mut restored, &path, SessionPreference::default());
+        assert!(restored.session_preferences.is_empty());
+        save(&root, &restored).await.unwrap();
+        assert!(
+            preferences(&root)
+                .await
+                .unwrap()
+                .session_preferences
+                .is_empty()
+        );
+        assert_eq!(tokio::fs::read_to_string(history).await.unwrap(), original);
+    }
     #[tokio::test]
     async fn a_new_open_cancels_previous_and_queued_requests() {
         let workspace = WorkspaceManager::default();
