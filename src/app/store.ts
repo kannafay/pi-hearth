@@ -1,7 +1,12 @@
 import { create } from 'zustand'
 import type { Attachment, ProjectInfo, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 import { releaseAttachments } from '@/lib/attachments'
-import { loadCatalog, addProject, updateSessionPreference } from '@/lib/workspace'
+import {
+  loadCatalog,
+  addProject,
+  updateSessionPreference,
+  deleteArchivedSessions,
+} from '@/lib/workspace'
 import { useConversationStore } from '@/features/conversation/store'
 import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
 
@@ -18,6 +23,7 @@ interface WorkspaceState {
   setProjectExpanded: (path: string, open: boolean) => void
   toggleSessionPinned: (session: SessionInfo) => Promise<void>
   setSessionArchived: (session: SessionInfo, archived: boolean) => Promise<boolean>
+  deleteArchivedSessions: (paths: string[]) => Promise<boolean>
   initialized: boolean
   loading: boolean
   error: string | null
@@ -110,6 +116,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       await get().newConversation(get().projectPath)
     }
     return true
+  },
+  deleteArchivedSessions: async (paths) => {
+    if (!paths.length || get().sessionActionPending) return false
+    sessionRevision++
+    set({ sessionActionPending: paths[0], error: null })
+    const applyCatalog = (catalog: WorkspaceCatalog) => {
+      const remaining = new Set(catalog.sessions.map((session) => sessionKey(session.path)))
+      set({
+        ...catalogState(catalog),
+        selectedSessionPath: remaining.has(sessionKey(get().selectedSessionPath))
+          ? get().selectedSessionPath
+          : null,
+      })
+      useConversationStore.setState((state) => {
+        const sessionCache = new Map(state.sessionCache)
+        for (const path of paths) {
+          const key = sessionKey(path)!
+          if (!remaining.has(key)) sessionCache.delete(key)
+        }
+        return { sessionCache }
+      })
+    }
+    try {
+      const catalog = await deleteArchivedSessions(paths)
+      applyCatalog(catalog)
+      return true
+    } catch (reason) {
+      // A filesystem error may occur after some files have already been removed.
+      try {
+        applyCatalog(await loadCatalog())
+      } catch {
+        // Preserve the deletion error so the user can retry after refreshing.
+      }
+      set({ error: String(reason) })
+      return false
+    } finally {
+      set({ sessionActionPending: null })
+    }
   },
   initialized: false,
   loading: false,

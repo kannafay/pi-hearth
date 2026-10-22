@@ -1,7 +1,13 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from './store'
 import { useConversationStore } from '@/features/conversation/store'
-import { loadCatalog, addProject, updateSessionPreference } from '@/lib/workspace'
+import {
+  loadCatalog,
+  addProject,
+  updateSessionPreference,
+  deleteArchivedSessions,
+} from '@/lib/workspace'
+import { rememberSession } from '@/features/conversation/session-cache'
 import { sessionKey } from '@/lib/session-preferences'
 import type { PiEvent, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 
@@ -9,6 +15,7 @@ vi.mock('@/lib/workspace', () => ({
   loadCatalog: vi.fn(),
   addProject: vi.fn(),
   updateSessionPreference: vi.fn(),
+  deleteArchivedSessions: vi.fn(),
 }))
 const session: SessionInfo = {
   path: 'history.jsonl',
@@ -35,6 +42,37 @@ beforeEach(() => {
     ...useWorkspaceStore.getState().sessionPreferences,
     [sessionKey(path)!]: preference,
   }))
+})
+
+test('deleting archived sessions removes their catalog entries and cached transcripts', async () => {
+  useWorkspaceStore.setState({ sessions: [session], selectedSessionPath: session.path })
+  useConversationStore.setState({ sessionFile: session.path, instanceId: 'cached' })
+  useConversationStore.setState({
+    sessionCache: rememberSession(new Map(), useConversationStore.getState()),
+  })
+  expect(useConversationStore.getState().sessionCache.has(sessionKey(session.path)!)).toBe(true)
+  vi.mocked(deleteArchivedSessions).mockResolvedValue({ ...catalog, sessions: [] })
+
+  expect(await useWorkspaceStore.getState().deleteArchivedSessions([session.path])).toBe(true)
+  expect(deleteArchivedSessions).toHaveBeenCalledExactlyOnceWith([session.path])
+  expect(useWorkspaceStore.getState().sessions).toEqual([])
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBeNull()
+  expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
+  expect(useConversationStore.getState().sessionCache.has(sessionKey(session.path)!)).toBe(false)
+})
+
+test('a partially failed deletion reloads the remaining catalog and releases the action lock', async () => {
+  const remaining = { ...session, path: 'remaining.jsonl' }
+  useWorkspaceStore.setState({ sessions: [session, remaining] })
+  vi.mocked(deleteArchivedSessions).mockRejectedValue('部分文件无法删除')
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [remaining] })
+
+  expect(
+    await useWorkspaceStore.getState().deleteArchivedSessions([session.path, remaining.path]),
+  ).toBe(false)
+  expect(useWorkspaceStore.getState().sessions).toEqual([remaining])
+  expect(useWorkspaceStore.getState().error).toBe('部分文件无法删除')
+  expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
 })
 
 test('startup permits a general conversation and initializes only once', async () => {

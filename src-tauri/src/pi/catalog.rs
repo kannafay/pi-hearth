@@ -7,7 +7,7 @@ use super::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, Instant},
@@ -278,6 +278,86 @@ pub async fn workspace_catalog(
 ) -> Result<WorkspaceCatalog, String> {
     let _lock = workspace.gate.lock().await;
     load_catalog(&app_data(&app)?).await
+}
+
+async fn delete_archived(
+    data: &Path,
+    prefs: &mut Preferences,
+    sessions: &[SessionInfo],
+    paths: &[String],
+) -> Result<usize, String> {
+    if paths.is_empty() {
+        return Err("请先选择要删除的归档会话。".into());
+    }
+    let mut selected = Vec::new();
+    let mut seen = HashSet::new();
+    // Validate the whole selection before removing any native history files.
+    for path in paths {
+        if !seen.insert(session_key(path)) {
+            continue;
+        }
+        let session = sessions
+            .iter()
+            .find(|session| same_path(&session.path, path))
+            .ok_or("会话文件不存在，请刷新列表。")?;
+        if !prefs
+            .session_preferences
+            .get(&session_key(&session.path))
+            .is_some_and(|preference| preference.archived)
+        {
+            return Err("只能删除已归档的会话。".into());
+        }
+        selected.push(session);
+    }
+    let mut deleted = 0;
+    let mut failed = 0;
+    for session in selected {
+        match tokio::fs::remove_file(&session.path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        }
+        prefs
+            .session_preferences
+            .remove(&session_key(&session.path));
+        if prefs
+            .selection
+            .session_path
+            .as_deref()
+            .is_some_and(|path| same_path(path, &session.path))
+        {
+            prefs.selection.session_path = None;
+        }
+        deleted += 1;
+    }
+    if deleted > 0 {
+        save(data, prefs).await?;
+    }
+    if failed > 0 {
+        return Err(format!(
+            "已删除 {deleted} 个会话，{failed} 个未能删除，请重试。"
+        ));
+    }
+    Ok(deleted)
+}
+
+#[tauri::command]
+pub async fn workspace_delete_archived(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    paths: Vec<String>,
+) -> Result<WorkspaceCatalog, String> {
+    let _lock = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let mut prefs = preferences(&data).await?;
+    let sessions = list(&data, &prefs).await?;
+    let result = delete_archived(&data, &mut prefs, &sessions, &paths).await;
+    workspace.search.lock().await.catalog = None;
+    result?;
+    load_catalog(&data).await
 }
 
 #[tauri::command]
@@ -569,6 +649,120 @@ pub async fn pi_open(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn archived_fixture() -> (PathBuf, Preferences, Vec<SessionInfo>) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/archive-delete-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let mut prefs = Preferences::default();
+        let mut sessions = Vec::new();
+        for index in 0..3 {
+            let file = root.join(format!("{index}.jsonl"));
+            tokio::fs::write(&file, "native history\n").await.unwrap();
+            let path = file.to_string_lossy().into_owned();
+            prefs.session_preferences.insert(
+                session_key(&path),
+                SessionPreference {
+                    archived: index < 2,
+                    pinned: true,
+                },
+            );
+            sessions.push(SessionInfo {
+                path,
+                id: index.to_string(),
+                cwd: root.to_string_lossy().into_owned(),
+                title: format!("session {index}"),
+                modified: 1,
+                message_count: 1,
+            });
+        }
+        save(&root, &prefs).await.unwrap();
+        (root, prefs, sessions)
+    }
+
+    #[tokio::test]
+    async fn archived_deletion_removes_only_selected_histories_and_preferences() {
+        let (root, mut prefs, sessions) = archived_fixture().await;
+        prefs.selection.session_path = Some(sessions[0].path.clone());
+        let paths = vec![
+            sessions[0].path.clone(),
+            sessions[1].path.clone(),
+            sessions[0].path.clone(),
+        ];
+        assert_eq!(
+            delete_archived(&root, &mut prefs, &sessions, &paths)
+                .await
+                .unwrap(),
+            2
+        );
+        assert!(!Path::new(&sessions[0].path).exists());
+        assert!(!Path::new(&sessions[1].path).exists());
+        assert_eq!(
+            tokio::fs::read_to_string(&sessions[2].path).await.unwrap(),
+            "native history\n"
+        );
+        let saved = preferences(&root).await.unwrap();
+        assert!(saved.selection.session_path.is_none());
+        assert_eq!(saved.session_preferences.len(), 1);
+        assert!(saved.session_preferences[&session_key(&sessions[2].path)].pinned);
+    }
+
+    #[tokio::test]
+    async fn archived_deletion_validates_all_paths_before_removing_any_history() {
+        let (root, mut prefs, sessions) = archived_fixture().await;
+        let unknown = root.join("unknown.jsonl");
+        tokio::fs::write(&unknown, "unlisted history")
+            .await
+            .unwrap();
+        let unknown = unknown.to_string_lossy().into_owned();
+        for rejected in [sessions[2].path.clone(), unknown.clone()] {
+            assert!(
+                delete_archived(
+                    &root,
+                    &mut prefs,
+                    &sessions,
+                    &[sessions[0].path.clone(), rejected]
+                )
+                .await
+                .is_err()
+            );
+            assert!(Path::new(&sessions[0].path).is_file());
+        }
+        assert!(Path::new(&unknown).is_file());
+        assert!(
+            delete_archived(&root, &mut prefs, &sessions, &[])
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn archived_deletion_preserves_failed_entries_and_reports_partial_completion() {
+        let (root, mut prefs, sessions) = archived_fixture().await;
+        // Simulate a target being replaced after catalog discovery.
+        tokio::fs::remove_file(&sessions[1].path).await.unwrap();
+        tokio::fs::create_dir(&sessions[1].path).await.unwrap();
+        let error = delete_archived(
+            &root,
+            &mut prefs,
+            &sessions,
+            &[sessions[0].path.clone(), sessions[1].path.clone()],
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("已删除 1 个会话，1 个未能删除"));
+        assert!(!Path::new(&sessions[0].path).exists());
+        assert!(Path::new(&sessions[1].path).is_dir());
+        let saved = preferences(&root).await.unwrap();
+        assert!(
+            !saved
+                .session_preferences
+                .contains_key(&session_key(&sessions[0].path))
+        );
+        assert!(saved.session_preferences[&session_key(&sessions[1].path)].archived);
+    }
+
     #[tokio::test]
     async fn session_preferences_persist_without_modifying_native_history() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
