@@ -3,8 +3,12 @@ use image::{Rgba, RgbaImage, imageops::FilterType};
 use tauri::{
     App, AppHandle, Manager,
     image::Image,
-    menu::{IconMenuItem, Menu, MenuEvent, PredefinedMenuItem},
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
+
+#[path = "styled.rs"]
+mod styled;
+pub use styled::install as apply_style;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
@@ -25,36 +29,10 @@ impl Action {
 }
 
 pub fn create(app: &mut App) -> tauri::Result<Menu<tauri::Wry>> {
-    let scale = app
-        .get_webview_window("main")
-        .and_then(|window| window.scale_factor().ok())
-        .unwrap_or(1.0);
-    let size = (16.0 * scale).round().max(16.0) as u32;
-    let show = IconMenuItem::with_id(
-        app,
-        "tray-show",
-        "界面",
-        true,
-        Some(icon(Action::Show, size)),
-        None::<&str>,
-    )?;
-    let restart = IconMenuItem::with_id(
-        app,
-        "tray-restart",
-        "重启",
-        true,
-        Some(icon(Action::Restart, size)),
-        None::<&str>,
-    )?;
+    let show = MenuItem::with_id(app, "tray-show", "界面", true, None::<&str>)?;
+    let restart = MenuItem::with_id(app, "tray-restart", "重启", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = IconMenuItem::with_id(
-        app,
-        "tray-quit",
-        "退出",
-        true,
-        Some(icon(Action::Quit, size)),
-        None::<&str>,
-    )?;
+    let quit = MenuItem::with_id(app, "tray-quit", "退出", true, None::<&str>)?;
     Menu::with_items(app, &[&show, &restart, &separator, &quit])
 }
 
@@ -72,53 +50,49 @@ pub fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-fn icon(action: Action, size: u32) -> Image<'static> {
-    // Neutral gray stays legible in either Windows menu theme. Draw at 4x the
-    // target size so native bitmap icons retain smooth, transparent edges.
-    let color = if action == Action::Quit {
-        [239, 68, 68, 255]
-    } else {
-        [112, 112, 112, 255]
-    };
+fn icon(action: Action, size: u32, foreground: [u8; 3]) -> Image<'static> {
+    // Supersampling keeps the original line icons smooth at each monitor's DPI.
+    let color = [foreground[0], foreground[1], foreground[2], 255];
     let mut image = RgbaImage::new(size * 4, size * 4);
     let mut paths: Vec<Vec<(f32, f32)>> = match action {
         Action::Show => vec![
             vec![
-                (5.0, 4.0),
-                (19.0, 4.0),
-                (20.0, 5.0),
-                (20.0, 19.0),
-                (19.0, 20.0),
-                (5.0, 20.0),
-                (4.0, 19.0),
-                (4.0, 5.0),
-                (5.0, 4.0),
+                (4.0, 4.0),
+                (20.0, 4.0),
+                (22.0, 6.0),
+                (22.0, 18.0),
+                (20.0, 20.0),
+                (4.0, 20.0),
+                (2.0, 18.0),
+                (2.0, 6.0),
+                (4.0, 4.0),
             ],
-            vec![(4.0, 9.0), (20.0, 9.0)],
-            vec![(8.0, 6.5), (8.0, 6.5)],
-            vec![(11.0, 6.5), (11.0, 6.5)],
+            vec![(2.0, 8.0), (22.0, 8.0)],
+            vec![(6.0, 4.0), (6.0, 8.0)],
+            vec![(10.0, 4.0), (10.0, 8.0)],
         ],
-        Action::Restart => vec![vec![(14.0, 4.0), (20.0, 4.0), (20.0, 10.0)]],
+        Action::Restart => vec![vec![(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]],
         Action::Quit => vec![
             vec![
-                (9.0, 4.0),
-                (5.0, 4.0),
-                (4.0, 5.0),
-                (4.0, 19.0),
-                (5.0, 20.0),
-                (9.0, 20.0),
+                (9.0, 3.0),
+                (5.0, 3.0),
+                (3.0, 5.0),
+                (3.0, 19.0),
+                (5.0, 21.0),
+                (9.0, 21.0),
             ],
-            vec![(10.0, 12.0), (21.0, 12.0)],
-            vec![(17.0, 8.0), (21.0, 12.0), (17.0, 16.0)],
+            vec![(9.0, 12.0), (21.0, 12.0)],
+            vec![(16.0, 7.0), (21.0, 12.0), (16.0, 17.0)],
         ],
     };
     if action == Action::Restart {
         paths.push(
-            (0..=40)
+            (0..=42)
                 .map(|step| {
-                    let angle = (40.0 + step as f32 * 7.75).to_radians();
-                    (12.0 + 8.0 * angle.cos(), 12.0 + 8.0 * angle.sin())
+                    let angle = (step as f32 * 7.5).to_radians();
+                    (12.0 + 9.0 * angle.cos(), 12.0 + 9.0 * angle.sin())
                 })
+                .chain([(21.0, 8.0)])
                 .collect(),
         );
     }

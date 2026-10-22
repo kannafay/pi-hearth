@@ -88,6 +88,8 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(crate::tray_menu::on_menu_event);
-    tray.build(app)?;
+    let _tray = tray.build(app)?;
+    #[cfg(windows)]
+    crate::tray_menu::apply_style(&_tray, &menu)?;
     Ok(())
 }
