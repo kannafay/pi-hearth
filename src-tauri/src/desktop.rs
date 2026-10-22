@@ -50,16 +50,6 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn toggle_window(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("main")
-        && window.is_visible()?
-        && !window.is_minimized()?
-    {
-        return window.hide();
-    }
-    show_window(app)
-}
-
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     crate::tray_menu::create(app)?;
     let icon = app.default_window_icon().ok_or("缺少应用图标。")?.clone();
@@ -76,7 +66,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     button_state: MouseButtonState::Up,
                     ..
                 } => {
-                    let _ = toggle_window(tray.app_handle());
+                    let _ = show_window(tray.app_handle());
                 }
                 TrayIconEvent::Click {
                     button: MouseButton::Right,

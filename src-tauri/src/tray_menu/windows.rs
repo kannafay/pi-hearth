@@ -32,7 +32,6 @@ thread_local! {
 }
 
 pub(super) fn foreground() -> usize {
-    // Read activation without changing the notification-area flyout's owner.
     unsafe { GetForegroundWindow() as usize }
 }
 
@@ -69,7 +68,8 @@ pub(super) fn configure(window: &WebviewWindow) -> Result<(), String> {
     window
         .run_on_main_thread(move || unsafe {
             let hwnd = hwnd as _;
-            // Apply the popup frame before using the non-activating show path.
+            // Keep the popup out of the taskbar while allowing foreground
+            // activation, so the shell can dismiss its notification-area flyout.
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
             SetWindowLongPtrW(
                 hwnd,
@@ -80,7 +80,7 @@ pub(super) fn configure(window: &WebviewWindow) -> Result<(), String> {
             SetWindowLongPtrW(
                 hwnd,
                 GWL_EXSTYLE,
-                ((extended & !WS_EX_APPWINDOW) | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW) as isize,
+                ((extended & !(WS_EX_APPWINDOW | WS_EX_NOACTIVATE)) | WS_EX_TOOLWINDOW) as isize,
             );
             SetWindowPos(
                 hwnd,
@@ -107,9 +107,7 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
                 let _ = dismiss(&popup, presentation.epoch);
                 return;
             }
-            // The shell flyout can become topmost after this hidden popup was
-            // created. Show and reinsert it at the top on every open, keeping
-            // the flyout's foreground activation and owner order intact.
+            // Reinsert the popup above the shell flyout before activation.
             if unsafe {
                 SetWindowPos(
                     hwnd as _,
@@ -126,6 +124,17 @@ pub(super) fn present(window: WebviewWindow, presentation: Presentation) -> Resu
                 let _ = dismiss(&popup, presentation.epoch);
                 return;
             }
+            // A tray context menu must own foreground activation. Leaving it
+            // with the shell strands the overflow flyout after our menu closes.
+            unsafe { SetForegroundWindow(hwnd as _) };
+            if foreground() != hwnd {
+                let _ = dismiss(&popup, presentation.epoch);
+                return;
+            }
+            let presentation = Presentation {
+                foreground: hwnd,
+                ..presentation
+            };
             if let Err(error) = watch(popup.clone(), presentation) {
                 eprintln!("Cannot monitor tray menu input: {error}");
                 let _ = dismiss(&popup, presentation.epoch);
