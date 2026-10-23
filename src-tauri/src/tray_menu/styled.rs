@@ -2,7 +2,6 @@ use super::{Action, icon};
 use std::{
     ffi::c_void,
     mem::size_of,
-    ptr::null,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -130,7 +129,7 @@ impl Style {
         let font_name: Vec<u16> = "Segoe UI\0".encode_utf16().collect();
         let font = unsafe {
             CreateFontW(
-                -(13.0 * scale).round() as i32,
+                -(12.0 * scale).round() as i32,
                 0,
                 0,
                 0,
@@ -199,6 +198,7 @@ struct Hover {
     from: [f32; 4],
     target: [f32; 4],
     started: Instant,
+    bounds: [Option<RECT>; 4],
 }
 
 impl Hover {
@@ -207,6 +207,7 @@ impl Hover {
             from: [0.0; 4],
             target: [0.0; 4],
             started: Instant::now(),
+            bounds: [None; 4],
         }
     }
     fn progress(&self, now: Instant, animate: bool) -> f32 {
@@ -220,6 +221,15 @@ impl Hover {
     fn values(&self, now: Instant, animate: bool) -> [f32; 4] {
         let t = self.progress(now, animate);
         std::array::from_fn(|index| self.from[index] + (self.target[index] - self.from[index]) * t)
+    }
+    fn repaint_regions(&self) -> [Option<RECT>; 4] {
+        std::array::from_fn(|index| {
+            if self.from[index] != self.target[index] {
+                self.bounds[index]
+            } else {
+                None
+            }
+        })
     }
     fn sample(&mut self, item: Item, selected: bool, now: Instant, animate: bool) -> (f32, bool) {
         let index = item.index();
@@ -580,13 +590,20 @@ unsafe extern "system" fn popup_proc(
         }
         WM_TIMER if wparam == HOVER_TIMER => {
             let frame = unsafe { (*raw).frame.clone() };
-            let fading = frame
+            let (fading, regions) = frame
                 .hover
                 .lock()
-                .map(|hover| hover.progress(Instant::now(), frame.style.animate) < 1.0)
-                .unwrap_or(false);
+                .map(|hover| {
+                    (
+                        hover.progress(Instant::now(), frame.style.animate) < 1.0,
+                        hover.repaint_regions(),
+                    )
+                })
+                .unwrap_or((false, [None; 4]));
             unsafe {
-                InvalidateRect(hwnd, null(), 0);
+                for rect in regions.into_iter().flatten() {
+                    InvalidateRect(hwnd, &rect, 0);
+                }
                 if !fading {
                     KillTimer(hwnd, HOVER_TIMER);
                 }
@@ -605,7 +622,102 @@ unsafe extern "system" fn popup_proc(
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 
+struct PaintBuffer {
+    hdc: HDC,
+    bitmap: HBITMAP,
+    previous: HGDIOBJ,
+    width: i32,
+    height: i32,
+}
+
+impl PaintBuffer {
+    fn new(target: HDC, width: i32, height: i32) -> Option<Self> {
+        if width <= 0 || height <= 0 {
+            return None;
+        }
+        unsafe {
+            let hdc = CreateCompatibleDC(target);
+            if hdc.is_null() {
+                return None;
+            }
+            // Use the target DC so the bitmap keeps its color format instead
+            // of inheriting the memory DC's initial monochrome bitmap.
+            let bitmap = CreateCompatibleBitmap(target, width, height);
+            if bitmap.is_null() {
+                DeleteDC(hdc);
+                return None;
+            }
+            let previous = SelectObject(hdc, bitmap);
+            if previous.is_null() || previous as isize == -1 {
+                DeleteObject(bitmap);
+                DeleteDC(hdc);
+                return None;
+            }
+            Some(Self {
+                hdc,
+                bitmap,
+                previous,
+                width,
+                height,
+            })
+        }
+    }
+
+    fn present(&self, target: HDC, x: i32, y: i32) -> bool {
+        unsafe {
+            BitBlt(
+                target,
+                x,
+                y,
+                self.width,
+                self.height,
+                self.hdc,
+                0,
+                0,
+                SRCCOPY,
+            ) != 0
+        }
+    }
+}
+
+impl Drop for PaintBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.hdc, self.previous);
+            DeleteObject(self.bitmap);
+            DeleteDC(self.hdc);
+        }
+    }
+}
+
 fn paint_item(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
+    if let Ok(mut hover) = frame.hover.lock() {
+        hover.bounds[item.index()] = Some(draw.rcItem);
+    }
+    let width = draw.rcItem.right - draw.rcItem.left;
+    let height = draw.rcItem.bottom - draw.rcItem.top;
+    if let Some(buffer) = PaintBuffer::new(draw.hDC, width, height) {
+        let buffered = DRAWITEMSTRUCT {
+            hDC: buffer.hdc,
+            rcItem: RECT {
+                left: 0,
+                top: 0,
+                right: width,
+                bottom: height,
+            },
+            ..*draw
+        };
+        // Clearing and repainting text directly on the menu exposes a blank
+        // frame during hover fades. Present only the completed row.
+        paint_item_contents(&buffered, item, frame);
+        if buffer.present(draw.hDC, draw.rcItem.left, draw.rcItem.top) {
+            return;
+        }
+    }
+    paint_item_contents(draw, item, frame);
+}
+
+fn paint_item_contents(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
     let style = &frame.style;
     let hdc = draw.hDC;
     let saved = unsafe { SaveDC(hdc) };
@@ -764,6 +876,78 @@ fn mix(from: [u8; 3], to: [u8; 3], amount: f32) -> [u8; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hover_repaints_only_the_incoming_and_outgoing_rows() {
+        let mut hover = Hover::new();
+        hover.bounds = std::array::from_fn(|index| {
+            Some(RECT {
+                top: index as i32 * 40,
+                bottom: (index as i32 + 1) * 40,
+                left: 0,
+                right: 184,
+            })
+        });
+        let start = Instant::now();
+        hover.sample(Item::Show, true, start, true);
+        let regions = hover.repaint_regions();
+        assert!(regions[Item::Show.index()].is_some());
+        assert!(regions[Item::Restart.index()].is_none());
+        assert!(regions[Item::Divider.index()].is_none());
+        assert!(regions[Item::Quit.index()].is_none());
+
+        hover.sample(Item::Show, false, start + FADE, true);
+        hover.sample(Item::Restart, true, start + FADE, true);
+        let regions = hover.repaint_regions();
+        assert!(regions[Item::Show.index()].is_some());
+        assert!(regions[Item::Restart.index()].is_some());
+        assert!(regions[Item::Divider.index()].is_none());
+        assert!(regions[Item::Quit.index()].is_none());
+    }
+
+    #[test]
+    fn partial_hover_frames_do_not_erase_visible_text() {
+        let screen = unsafe { GetDC(std::ptr::null_mut()) };
+        assert!(!screen.is_null());
+        let target = PaintBuffer::new(screen, 12, 12);
+        let frame = PaintBuffer::new(screen, 4, 4);
+        unsafe {
+            ReleaseDC(std::ptr::null_mut(), screen);
+        }
+        let target = target.expect("create destination surface");
+        let frame = frame.expect("create hover frame");
+        let before = rgb([255; 3]);
+        let after = rgb([245; 3]);
+        let ink = rgb([10; 3]);
+        let target_bounds = RECT {
+            left: 0,
+            top: 0,
+            right: 12,
+            bottom: 12,
+        };
+        let frame_bounds = RECT {
+            right: 4,
+            bottom: 4,
+            ..target_bounds
+        };
+        unsafe {
+            let brush = GetStockObject(DC_BRUSH);
+            SetDCBrushColor(target.hdc, before);
+            FillRect(target.hdc, &target_bounds, brush);
+            SetPixel(target.hdc, 4, 6, ink);
+
+            SetDCBrushColor(frame.hdc, after);
+            FillRect(frame.hdc, &frame_bounds, brush);
+            // The unfinished background pass must leave the old text intact.
+            assert_eq!(GetPixel(target.hdc, 4, 6), ink);
+            assert_eq!(GetPixel(target.hdc, 3, 5), before);
+            SetPixel(frame.hdc, 1, 1, ink);
+            assert!(frame.present(target.hdc, 3, 5));
+            assert_eq!(GetPixel(target.hdc, 4, 6), ink);
+            assert_eq!(GetPixel(target.hdc, 3, 5), after);
+            assert_eq!(GetPixel(target.hdc, 0, 0), before);
+        }
+    }
+
     #[test]
     fn hover_switches_continue_from_the_current_color() {
         let mut hover = Hover::new();
