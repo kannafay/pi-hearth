@@ -529,6 +529,42 @@ fn existing_project_directory(path: &Path) -> Result<PathBuf, String> {
     Ok(directory)
 }
 
+#[tauri::command]
+pub fn workspace_open_project_folder(path: String) -> Result<(), String> {
+    let directory = existing_project_directory(Path::new(&path))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+        let directory: Vec<u16> = directory.as_os_str().encode_wide().chain(Some(0)).collect();
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                directory.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        } as isize;
+        if result <= 32 {
+            return Err("无法在资源管理器中打开项目文件夹。".into());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new(if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        })
+        .arg(directory)
+        .spawn()
+        .map_err(|_| "无法在文件管理器中打开项目文件夹。")?;
+    }
+    Ok(())
+}
+
 async fn prepare_project(
     source: Option<&str>,
     name: Option<&str>,

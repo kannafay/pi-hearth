@@ -25,6 +25,11 @@ export async function selectProjectDirectory(title = '添加项目') {
   return typeof selected === 'string' ? selected : null
 }
 
+export async function openProjectFolder(path: string) {
+  requireDesktop()
+  await invoke<void>('workspace_open_project_folder', { path })
+}
+
 export async function controlWindow(action: 'minimize' | 'maximize' | 'close') {
   requireDesktop()
   const window = getCurrentWindow()

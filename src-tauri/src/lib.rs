@@ -94,6 +94,7 @@ pub fn run() {
             pi::catalog::workspace_update_project,
             pi::catalog::workspace_remove_project,
             pi::catalog::workspace_project_directory,
+            pi::catalog::workspace_open_project_folder,
             pi::catalog::project_instructions,
             pi::catalog::pi_open,
             pi::pi_connect,

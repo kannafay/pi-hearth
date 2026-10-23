@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
+import { openProjectFolder } from '@/lib/desktop'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import { sessionKey, sessionPreference, visibleSessions } from '@/lib/session-preferences'
 import { useNavigationTabs } from './use-navigation-tabs'
@@ -400,7 +401,7 @@ export function WorkspaceNavigation({
                             >
                               <MoreHorizontal className="size-3.5" />
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
+                            <DropdownMenuContent align="start" className="min-w-44">
                               <DropdownMenuItem
                                 disabled={!desktop}
                                 onClick={() => workspace.toggleProjectPinned(project)}
@@ -416,6 +417,17 @@ export function WorkspaceNavigation({
                               >
                                 <Settings className="size-3.5" />
                                 项目设置
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!desktop}
+                                onClick={() => {
+                                  void openProjectFolder(project.path).catch((reason: unknown) => {
+                                    useWorkspaceStore.setState({ error: String(reason) })
+                                  })
+                                }}
+                              >
+                                <FolderOpen className="size-3.5" />
+                                在资源管理器中打开
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 disabled={
