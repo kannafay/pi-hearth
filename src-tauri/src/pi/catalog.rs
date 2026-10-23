@@ -467,41 +467,6 @@ pub async fn workspace_select(
     save(&data, &prefs).await
 }
 
-fn valid_project_name(name: &str) -> bool {
-    let reserved = name.split('.').next().unwrap_or("").to_ascii_uppercase();
-    !name.trim().is_empty()
-        && name == name.trim()
-        && !name.ends_with('.')
-        && !name
-            .chars()
-            .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c))
-        && !matches!(
-            reserved.as_str(),
-            "CON"
-                | "PRN"
-                | "AUX"
-                | "NUL"
-                | "COM1"
-                | "COM2"
-                | "COM3"
-                | "COM4"
-                | "COM5"
-                | "COM6"
-                | "COM7"
-                | "COM8"
-                | "COM9"
-                | "LPT1"
-                | "LPT2"
-                | "LPT3"
-                | "LPT4"
-                | "LPT5"
-                | "LPT6"
-                | "LPT7"
-                | "LPT8"
-                | "LPT9"
-        )
-}
-
 #[tauri::command]
 pub fn workspace_project_directory(
     app: tauri::AppHandle,
@@ -577,20 +542,17 @@ async fn prepare_project(
     let directory = if let Some(source) = source {
         existing_project_directory(Path::new(source))?
     } else {
-        let name = name.ok_or("未添加源文件夹时，请填写项目名称。")?;
-        if !valid_project_name(name) {
-            return Err("项目名称不能包含路径分隔符、保留名称或末尾句点。".into());
-        }
+        name.ok_or("未添加源文件夹时，请填写项目名称。")?;
         if !parent.is_absolute() {
             return Err("项目保存目录必须是绝对路径。".into());
         }
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|_| "无法创建项目保存目录，请在设置中更改保存位置。")?;
-        let directory = existing_project_directory(parent)?.join(name);
+        let directory = existing_project_directory(parent)?.join(uuid::Uuid::new_v4().to_string());
         tokio::fs::create_dir(&directory)
             .await
-            .map_err(|_| "创建失败：同名文件夹已存在或目录无法写入。")?;
+            .map_err(|_| "无法创建项目目录，请检查保存位置是否可写。")?;
         directory
     };
     let mut project = project(&directory);
@@ -1052,14 +1014,23 @@ mod tests {
             .await
             .unwrap();
     }
-    #[test]
-    fn project_names_cannot_escape_the_parent() {
-        for name in [
-            "../x", "..", "CON", "con.txt", "a/b", "a\\b", " x", "x.", "x ", "",
-        ] {
-            assert!(!valid_project_name(name), "{name}");
+    #[tokio::test]
+    async fn display_names_cannot_determine_new_project_paths() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-create-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        for name in ["../x", "CON", "设计讨论：前端/体验", "x."] {
+            let created = prepare_project(None, Some(name), &root).await.unwrap();
+            assert_eq!(created.name, name);
+            let directory = Path::new(&created.path);
+            assert_eq!(
+                directory.parent().unwrap(),
+                dunce::canonicalize(&root).unwrap()
+            );
+            assert!(
+                uuid::Uuid::parse_str(directory.file_name().unwrap().to_str().unwrap()).is_ok()
+            );
         }
-        assert!(valid_project_name("中文 project"));
     }
 
     #[tokio::test]
@@ -1069,21 +1040,35 @@ mod tests {
             .join(uuid::Uuid::new_v4().to_string());
         assert!(prepare_project(None, None, &root).await.is_err());
         assert!(!root.exists());
-        assert!(
-            prepare_project(None, Some("../escape"), &root)
-                .await
-                .is_err()
-        );
+        for name in ["  ".to_string(), "bad\nname".to_string(), "x".repeat(129)] {
+            assert!(prepare_project(None, Some(&name), &root).await.is_err());
+        }
         assert!(!root.exists());
         let created = prepare_project(None, Some("新项目"), &root).await.unwrap();
         assert_eq!(created.name, "新项目");
+        let directory = Path::new(&created.path);
         assert_eq!(
-            Path::new(&created.path),
-            dunce::canonicalize(root.join("新项目")).unwrap()
+            directory.parent().unwrap(),
+            dunce::canonicalize(&root).unwrap()
         );
-        let marker = Path::new(&created.path).join("keep.txt");
+        assert!(uuid::Uuid::parse_str(directory.file_name().unwrap().to_str().unwrap()).is_ok());
+        assert!(!root.join("新项目").exists());
+        let marker = directory.join("keep.txt");
         tokio::fs::write(&marker, "existing project").await.unwrap();
-        assert!(prepare_project(None, Some("新项目"), &root).await.is_err());
+        let second = prepare_project(None, Some("新项目"), &root).await.unwrap();
+        assert_ne!(created.path, second.path);
+        assert_eq!(created.name, second.name);
+        save_project(&root, created.clone(), None, None)
+            .await
+            .unwrap();
+        save_project(&root, second.clone(), None, None)
+            .await
+            .unwrap();
+        let persisted = preferences(&root).await.unwrap().projects;
+        assert_eq!(persisted.len(), 2);
+        assert_eq!(persisted[0].path, created.path);
+        assert_eq!(persisted[1].path, second.path);
+        assert!(persisted.iter().all(|project| project.name == "新项目"));
         assert_eq!(
             tokio::fs::read_to_string(marker).await.unwrap(),
             "existing project"
@@ -1176,7 +1161,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(saved.path, created.path);
-        assert_eq!(source.file_name().unwrap(), "source");
+        assert!(uuid::Uuid::parse_str(source.file_name().unwrap().to_str().unwrap()).is_ok());
         assert_eq!(
             tokio::fs::read_to_string(&rules).await.unwrap(),
             "New rules"

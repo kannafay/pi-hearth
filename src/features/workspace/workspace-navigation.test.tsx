@@ -62,7 +62,7 @@ test('projects expand their sessions and their settings menu remains usable', as
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByRole('button', { name: '设计讨论' })).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Hearth 项目菜单' }))
-  await user.click(await screen.findByRole('menuitem', { name: '项目设置' }))
+  await user.click(await screen.findByRole('menuitem', { name: '编辑项目' }))
   expect(onInstructions).toHaveBeenCalledExactlyOnceWith(project)
   await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
   await user.click(trigger)

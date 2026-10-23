@@ -137,7 +137,7 @@ test('project settings edits the shared name and instructions form while preserv
     new Error('指令文件已被其他程序修改'),
   )
   render(<ProjectDialog project={project} onClose={onClose} />)
-  expect(screen.getByRole('dialog', { name: '项目设置' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: '编辑项目' })).toBeVisible()
   const name = screen.getByRole('textbox', { name: '项目名称' })
   await waitFor(() => expect(name).toBeEnabled())
   expect(name).toHaveValue('Alias')
@@ -146,7 +146,7 @@ test('project settings edits the shared name and instructions form while preserv
   await user.clear(name)
   await user.type(name, 'New alias')
   await user.clear(screen.getByRole('textbox', { name: '项目指令' }))
-  await user.click(screen.getByRole('button', { name: '保存设置' }))
+  await user.click(screen.getByRole('button', { name: '保存修改' }))
   expect(useWorkspaceStore.getState().updateProject).toHaveBeenCalledExactlyOnceWith({
     path: project.path,
     name: 'New alias',
@@ -156,7 +156,7 @@ test('project settings edits the shared name and instructions form while preserv
   expect(screen.getByRole('alert')).toHaveTextContent('指令文件已被其他程序修改')
   expect(name).toHaveValue('New alias')
   expect(onClose).not.toHaveBeenCalled()
-  await user.click(screen.getByRole('button', { name: '保存设置' }))
+  await user.click(screen.getByRole('button', { name: '保存修改' }))
   expect(onClose).toHaveBeenCalledOnce()
   expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
   expect(listenForProjectFolderDrop).not.toHaveBeenCalled()
@@ -166,7 +166,7 @@ test('unreadable existing instructions block saving instead of replacing them wi
   vi.mocked(readInstructions).mockRejectedValueOnce(new Error('无法读取项目指令文件'))
   render(<ProjectDialog project={{ name: 'Alias', path: 'D:/source' }} onClose={vi.fn()} />)
   expect(await screen.findByRole('alert')).toHaveTextContent('无法读取项目指令文件')
-  expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '保存修改' })).toBeDisabled()
   expect(screen.getByRole('textbox', { name: '项目指令' })).toBeDisabled()
   expect(useWorkspaceStore.getState().updateProject).not.toHaveBeenCalled()
 })

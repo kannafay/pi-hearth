@@ -207,7 +207,7 @@ export function ProjectDialog({
     >
       <DialogContent className="max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden sm:max-w-136">
         <DialogHeader>
-          <DialogTitle>{project ? '项目设置' : '新建项目'}</DialogTitle>
+          <DialogTitle>{project ? '编辑项目' : '新建项目'}</DialogTitle>
           <DialogDescription>
             {project
               ? '修改项目名称和指令，源文件夹保持原有位置。'
@@ -263,7 +263,7 @@ export function ProjectDialog({
                   <div
                     ref={sourceArea}
                     aria-label={project ? '项目源文件夹' : '源文件夹拖放区'}
-                    className={`overflow-hidden rounded-lg border transition-colors ${source ? 'border-solid' : 'border-dashed'} ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                    className={`overflow-hidden rounded-lg border border-solid transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
                     onDragOver={(event) => {
                       if (
                         !project &&
@@ -387,7 +387,7 @@ export function ProjectDialog({
               取消
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {saving ? (project ? '正在保存…' : '正在创建…') : project ? '保存设置' : '新建项目'}
+              {saving ? (project ? '正在保存…' : '正在创建…') : project ? '保存修改' : '新建项目'}
             </Button>
           </DialogFooter>
         </form>

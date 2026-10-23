@@ -415,8 +415,8 @@ export function WorkspaceNavigation({
                                 disabled={busy}
                                 onClick={() => onInstructions(project)}
                               >
-                                <Settings className="size-3.5" />
-                                项目设置
+                                <SquarePen className="size-3.5" />
+                                编辑项目
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 disabled={!desktop}
