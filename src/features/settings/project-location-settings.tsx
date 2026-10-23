@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { Folder, FolderCog, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -13,8 +14,8 @@ import { isDesktop, selectProjectDirectory } from '@/lib/desktop'
 import { resolveProjectDirectory } from '@/lib/project-directory'
 
 const locations = [
-  { value: 'default', label: '默认目录' },
-  { value: 'custom', label: '自定义目录' },
+  { value: 'default', label: '默认目录', icon: Folder },
+  { value: 'custom', label: '自定义目录', icon: FolderCog },
 ]
 
 export function ProjectLocationSettings() {
@@ -23,6 +24,7 @@ export function ProjectLocationSettings() {
   const [selecting, setSelecting] = useState(false)
   const [error, setError] = useState('')
   const desktop = isDesktop()
+  const { label: locationLabel, icon: LocationIcon } = locations[directory ? 1 : 0]
 
   useEffect(() => {
     if (!desktop) return
@@ -60,7 +62,7 @@ export function ProjectLocationSettings() {
   return (
     <div className="space-y-4 border-b py-5">
       <div className="flex items-center justify-between gap-5">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-normal">新项目保存位置</h3>
           <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
             未添加源文件夹时，在此目录下创建项目文件夹。
@@ -76,24 +78,31 @@ export function ProjectLocationSettings() {
           }}
         >
           <SelectTrigger aria-label="新项目保存位置" className="w-32 shrink-0">
-            <SelectValue />
+            <SelectValue>
+              <LocationIcon aria-hidden className="size-3.5 stroke-[1.6]" />
+              <span>{locationLabel}</span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {locations.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {locations.map(({ value, label, icon: Icon }) => (
+                <SelectItem key={value} value={value}>
+                  <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </div>
-      <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-xs leading-5 text-muted-foreground break-all">
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground break-all">
           {directory || defaultDirectory}
         </p>
         <Button
           variant="outline"
           size="sm"
+          className="shrink-0"
           disabled={!desktop || selecting}
           onClick={() => void chooseDirectory()}
         >
