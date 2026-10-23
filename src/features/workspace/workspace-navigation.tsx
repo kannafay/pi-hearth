@@ -31,6 +31,12 @@ import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import { sessionKey, sessionPreference, visibleSessions } from '@/lib/session-preferences'
 import { useNavigationTabs } from './use-navigation-tabs'
 
+const navigationFilters = [
+  ['all', '全部', LayoutGrid],
+  ['projects', '项目', Folder],
+  ['chats', '聊天', MessageSquare],
+] as const
+
 const samePath = (a: string, b: string | null) =>
   a.replaceAll('\\', '/').toLowerCase() === b?.replaceAll('\\', '/').toLowerCase()
 
@@ -204,13 +210,7 @@ export function WorkspaceNavigation({
             aria-label="会话分类"
             className="sidebar-tabs relative isolate grid h-8 min-w-0 flex-1 grid-cols-3 items-center rounded-lg p-0.5"
           >
-            {(
-              [
-                ['all', '全部', LayoutGrid],
-                ['projects', '项目', Folder],
-                ['chats', '聊天', MessageSquare],
-              ] as const
-            ).map(([value, label, Icon]) => (
+            {navigationFilters.map(([value, label, Icon]) => (
               <Tabs.Tab
                 key={value}
                 value={value}
@@ -220,7 +220,12 @@ export function WorkspaceNavigation({
                 {label}
               </Tabs.Tab>
             ))}
-            <Tabs.Indicator className="sidebar-tab-indicator absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-sidebar-accent shadow-xs" />
+            <Tabs.Indicator
+              style={{
+                translate: `${navigationFilters.findIndex(([value]) => value === filter) * 100}%`,
+              }}
+              className="sidebar-tab-indicator absolute inset-y-0.5 left-0.5 w-[calc((100%-4px)/3)] rounded-md bg-sidebar-accent shadow-xs"
+            />
           </Tabs.List>
         </div>
         <Tabs.Panel value={filter} aria-busy={leaving} className="flex min-h-0 flex-1 flex-col">

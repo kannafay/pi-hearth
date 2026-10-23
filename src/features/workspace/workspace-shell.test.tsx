@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useImperativeHandle, type HTMLAttributes, type ReactNode, type Ref } from 'react'
+import type { PanelImperativeHandle } from 'react-resizable-panels'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -7,6 +8,8 @@ import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
 import { controlWindow } from '@/lib/desktop'
 import { WorkspaceShell } from './workspace-shell'
+
+const { resizePanel } = vi.hoisted(() => ({ resizePanel: vi.fn() }))
 
 vi.mock('@/lib/desktop', () => ({
   isDesktop: () => true,
@@ -21,11 +24,34 @@ vi.mock('@/lib/project-directory', () => ({
   listenForProjectFolderDrop: vi.fn().mockResolvedValue(() => {}),
 }))
 
-// Layout measurement and the conversation runtime are unrelated to dialog interaction.
+// Keep panel controls observable without requiring browser layout measurement.
 vi.mock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ResizableHandle: () => null,
+  ResizablePanel: ({
+    id,
+    panelRef,
+    children,
+  }: {
+    id?: string
+    panelRef?: Ref<PanelImperativeHandle | null>
+    children: ReactNode
+  }) => {
+    useImperativeHandle(panelRef, () => ({
+      collapse: () => {},
+      expand: () => {},
+      resize: (size) => resizePanel(id, size),
+      getSize: () => ({ inPixels: 0, asPercentage: 0 }),
+      isCollapsed: () => false,
+    }))
+    return <div>{children}</div>
+  },
+  ResizableHandle: ({
+    disableDoubleClick: _disableDoubleClick,
+    disabled,
+    ...props
+  }: HTMLAttributes<HTMLDivElement> & { disableDoubleClick?: boolean; disabled?: boolean }) => (
+    <div role="separator" aria-disabled={disabled} {...props} />
+  ),
 }))
 vi.mock('@/features/conversation/conversation-panel', () => ({
   ConversationPanel: () => <textarea aria-label="消息" />,
@@ -38,6 +64,7 @@ beforeEach(() => {
   useConversationStore.setState({ status: 'ready' })
   vi.mocked(useMediaQuery).mockReturnValue(false)
   vi.mocked(controlWindow).mockClear()
+  resizePanel.mockClear()
 })
 
 test('header search remains available when the sidebar is collapsed', async () => {
@@ -86,6 +113,19 @@ test('repeated sidebar toggles preserve its filter and the mounted conversation 
   expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('textbox', { name: '消息' })).toBe(draft)
   expect(draft).toHaveValue('保留正在编辑的内容')
+})
+
+test('double-clicking the sidebar separator resets its saved width and reopening preserves it', async () => {
+  useWorkspaceStore.setState({ navigationWidth: 352 })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.dblClick(screen.getByRole('separator', { name: '调整侧栏宽度' }))
+  expect(resizePanel).toHaveBeenCalledExactlyOnceWith('navigation', '300px')
+  expect(useWorkspaceStore.getState().navigationWidth).toBe(300)
+  await user.click(screen.getByRole('button', { name: '收起侧栏' }))
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  expect(useWorkspaceStore.getState().sidebarOpen).toBe(true)
+  expect(useWorkspaceStore.getState().navigationWidth).toBe(300)
 })
 
 test('the docked inspector preserves its selected tab when closed and reopened', async () => {

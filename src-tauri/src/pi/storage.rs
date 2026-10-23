@@ -627,7 +627,7 @@ mod tests {
             tokio::join!(settings(&root), preferences(&root), settings(&root));
         assert!(first.unwrap().sidebar_open);
         assert!(second.unwrap().projects.is_empty());
-        assert_eq!(third.unwrap().navigation_width, 260.0);
+        assert_eq!(third.unwrap().navigation_width, 300.0);
     }
 
     #[tokio::test]

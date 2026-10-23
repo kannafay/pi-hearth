@@ -409,7 +409,7 @@ select {
 }
 
 .sidebar-tab-indicator {
-  transition-property: translate, width;
+  transition-property: translate;
   transition-duration: var(--sidebar-motion-duration);
   transition-timing-function: var(--sidebar-motion-ease);
 }

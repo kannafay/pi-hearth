@@ -169,7 +169,7 @@ impl Default for AppSettings {
             theme: AppTheme::System,
             sidebar_open: true,
             inspector_open: false,
-            navigation_width: 260.0,
+            navigation_width: 300.0,
             inspector_width: 400.0,
             expanded_projects: Default::default(),
             thinking_level: None,

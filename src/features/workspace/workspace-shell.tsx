@@ -225,9 +225,17 @@ export function WorkspaceShell() {
             </div>
           </ResizablePanel>
           <ResizableHandle
-            className="workspace-panel-separator z-10 w-0 bg-transparent"
+            aria-label="调整侧栏宽度"
+            className="workspace-panel-separator z-10 w-0 bg-transparent after:w-2.5"
             data-panel-open={sidebarOpen}
             disabled={!sidebarOpen}
+            disableDoubleClick
+            onDoubleClick={() => {
+              if (!sidebarOpen) return
+              const width = useWorkspaceStore.getInitialState().navigationWidth
+              navigationPanel.panelRef.current?.resize(`${width}px`)
+              setNavigationWidth(width)
+            }}
           />
           <ResizablePanel id="content" minSize="400px">
             <div className="workspace-content-inset h-full min-w-0 flex-1">

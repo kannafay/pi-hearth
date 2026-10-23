@@ -198,7 +198,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   sidebarOpen: true,
   inspectorOpen: false,
-  navigationWidth: 260,
+  navigationWidth: 300,
   inspectorWidth: 400,
   setNavigationWidth: (width) =>
     set({ navigationWidth: Math.min(400, Math.max(220, Math.round(width))) }),
