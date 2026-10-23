@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { TabsTabActivationDirection } from '@base-ui/react/tabs'
 
 const reducedMotionQuery = '(prefers-reduced-motion: reduce)'
 
@@ -20,7 +21,7 @@ export function useNavigationTabs() {
   const displayed = useRef('all')
   const requested = useRef('all')
   const animation = useRef<Animation | null>(null)
-  const enterPending = useRef(false)
+  const enterPending = useRef<Keyframe | null>(null)
 
   function rememberScroll() {
     if (viewportRef.current) positions.current[displayed.current] = viewportRef.current.scrollTop
@@ -45,9 +46,10 @@ export function useNavigationTabs() {
       if (viewportRef.current) viewportRef.current.scrollTop = positions.current[contentFilter] ?? 0
     }
     if (enterPending.current && viewportRef.current) {
-      enterPending.current = false
+      const from = enterPending.current
+      enterPending.current = null
       animation.current?.cancel()
-      enter(viewportRef.current, { opacity: 0, transform: 'translateY(4px)' })
+      enter(viewportRef.current, from)
     }
   }, [contentFilter])
 
@@ -58,7 +60,7 @@ export function useNavigationTabs() {
       rememberScroll()
       animation.current?.cancel()
       animation.current = null
-      enterPending.current = false
+      enterPending.current = null
       setContentFilter(requested.current)
     }
     media.addEventListener('change', skipMotion)
@@ -69,7 +71,7 @@ export function useNavigationTabs() {
     }
   }, [])
 
-  function selectFilter(next: string) {
+  function selectFilter(next: string, direction: TabsTabActivationDirection) {
     if (requested.current === next) return
     rememberScroll()
     requested.current = next
@@ -79,20 +81,25 @@ export function useNavigationTabs() {
     const from = { opacity: style?.opacity || '1', transform: style?.transform || 'none' }
     animation.current?.cancel()
     animation.current = null
-    enterPending.current = false
+    enterPending.current = null
 
     if (window.matchMedia(reducedMotionQuery).matches || !element?.animate) {
       setContentFilter(next)
     } else if (next === displayed.current) {
       enter(element, from)
     } else {
-      const outgoing = animate(element, [from, { ...from, opacity: 0 }], 60)
+      const offset = direction === 'right' ? 12 : direction === 'left' ? -12 : 0
+      const outgoing = animate(
+        element,
+        [from, { opacity: 0, transform: `translateX(${-offset}px)` }],
+        60,
+      )
       animation.current = outgoing
       void outgoing.finished.then(
         () => {
           if (animation.current !== outgoing || requested.current !== next) return
           rememberScroll()
-          enterPending.current = true
+          enterPending.current = { opacity: 0, transform: `translateX(${offset}px)` }
           setContentFilter(next)
         },
         () => {},

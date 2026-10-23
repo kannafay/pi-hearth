@@ -198,7 +198,9 @@ export function WorkspaceNavigation({
       </div>
       <Tabs.Root
         value={filter}
-        onValueChange={(value) => selectFilter(String(value))}
+        onValueChange={(value, { activationDirection }) =>
+          selectFilter(String(value), activationDirection)
+        }
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="mx-3 mt-3 mb-5 flex h-8 items-center">

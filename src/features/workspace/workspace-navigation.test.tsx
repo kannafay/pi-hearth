@@ -385,6 +385,9 @@ describe('animated navigation filters', () => {
         onInstructions={vi.fn()}
       />,
     )
+    screen.getAllByRole('tab').forEach((tab, index) => {
+      vi.spyOn(tab, 'getBoundingClientRect').mockReturnValue(new DOMRect(index * 80, 0, 80, 28))
+    })
     return {
       ...rendered,
       viewport: rendered.container.querySelector<HTMLDivElement>('[data-scroll-area]')!,
@@ -393,8 +396,38 @@ describe('animated navigation filters', () => {
 
   const select = (name: string) => fireEvent.click(screen.getByRole('tab', { name }))
   const finish = async (index: number) => act(async () => animations[index].finish())
+  const keyframes = (index: number) =>
+    vi.mocked(Element.prototype.animate).mock.calls[index][0] as Keyframe[]
 
-  test('the tab responds immediately, content waits for fade-out and each tab keeps its scroll', async () => {
+  test('content slides horizontally in both tab directions', async () => {
+    renderFilters()
+    select('聊天')
+    expect(keyframes(0).at(-1)?.transform).toBe('translateX(-12px)')
+    await finish(0)
+    expect(keyframes(1)[0].transform).toBe('translateX(12px)')
+    await finish(1)
+
+    select('项目')
+    expect(keyframes(2).at(-1)?.transform).toBe('translateX(12px)')
+    await finish(2)
+    expect(keyframes(3)[0].transform).toBe('translateX(-12px)')
+  })
+
+  test('rapid reversal follows the latest tab movement before content has changed', async () => {
+    renderFilters()
+    select('聊天')
+    select('项目')
+    expect(animations[0].cancel).toHaveBeenCalled()
+    expect(keyframes(1).at(-1)?.transform).toBe('translateX(12px)')
+    await finish(0)
+    expect(screen.getByText('普通会话')).toBeInTheDocument()
+    await finish(1)
+    expect(keyframes(2)[0].transform).toBe('translateX(-12px)')
+    expect(screen.queryByText('普通会话')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '项目' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  test('the tab responds immediately, content waits for slide-out and each tab keeps its scroll', async () => {
     const { viewport } = renderFilters()
     viewport.scrollTop = 160
     fireEvent.scroll(viewport)
