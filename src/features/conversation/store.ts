@@ -245,15 +245,9 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
           : tool,
       )
   }
-  if (
-    [
-      'run_started',
-      'message_started',
-      'message_delta',
-      'message_completed',
-      'tool_changed',
-    ].includes(data.type)
-  ) {
+  if (['run_started', 'message_started', 'message_delta', 'tool_changed'].includes(data.type)) {
+    // Message completion precedes tool/run completion. Keep the current phase
+    // until that next event instead of briefly reverting to waiting for output.
     next.activity =
       next.status === 'stopping'
         ? '正在停止…'

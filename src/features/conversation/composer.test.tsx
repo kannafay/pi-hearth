@@ -51,6 +51,28 @@ beforeEach(() => {
   vi.mocked(stageFiles).mockResolvedValue([file])
 })
 
+test.each(['ready', 'connecting', 'running', 'stopping', 'disconnected'] as const)(
+  '%s conversations keep all notices above the input area',
+  (status) => {
+    useConversationStore.setState({
+      status,
+      activity: '等待回复…',
+      connectionTarget: { projectPath: null, sessionPath: null },
+    })
+    render(<Composer onSendStart={() => {}} />)
+    const inputArea = screen.getByLabelText('消息输入区')
+    expect(inputArea.parentElement!.lastElementChild).toBe(inputArea)
+    expect(screen.queryByText('等待回复…')).not.toBeInTheDocument()
+    expect(screen.queryByText('请配置模型')).not.toBeInTheDocument()
+    if (status === 'disconnected') {
+      const retry = screen.getByRole('button', { name: '重新连接' })
+      expect(
+        retry.compareDocumentPosition(inputArea) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
+  },
+)
+
 test('native drops do not become chat attachments while a dialog makes the workspace inert', async () => {
   const { container } = render(
     <div inert>

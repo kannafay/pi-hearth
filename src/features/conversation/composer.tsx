@@ -43,8 +43,6 @@ export function Composer({
     error,
     readOnly,
     settingsPending,
-    activity,
-    model,
     openingSession,
     send,
     stop,
@@ -56,8 +54,6 @@ export function Composer({
       error: state.error,
       readOnly: state.readOnly,
       settingsPending: state.settingsPending,
-      activity: state.activity,
-      model: state.model,
       openingSession: Boolean(state.connectionTarget?.sessionPath),
       send: state.send,
       stop: state.stop,
@@ -76,11 +72,9 @@ export function Composer({
   const busy = status === 'running' || status === 'stopping'
   const choosingProject = !hasMessages && !busy && !readOnly && !openingSession
   const desktop = isDesktop()
-  const connecting = status === 'connecting' || status === 'disconnected'
   const sessionUpdating = Boolean(
     sessionActionPending && sessionKey(sessionActionPending) === sessionKey(sessionFile),
   )
-  const statusText = connecting ? '' : activity || (!model ? '请配置模型' : '')
 
   async function receive(request: Promise<Attachment[]>) {
     const instanceId = useConversationStore.getState().instanceId
@@ -194,6 +188,7 @@ export function Composer({
           {readOnly}
         </p>
       )}
+      {status === 'disconnected' && <ConnectionNotice className="mb-2 px-1" />}
       <div
         className="composer-project-reveal"
         data-open={choosingProject}
@@ -327,13 +322,6 @@ export function Composer({
           )}
         </div>
       </div>
-      {status === 'disconnected' ? (
-        <ConnectionNotice className="mt-2 px-1" />
-      ) : statusText ? (
-        <p role="status" className="mt-2 truncate px-1 text-[11px] text-muted-foreground/80">
-          {statusText}
-        </p>
-      ) : null}
     </div>
   )
 }

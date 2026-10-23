@@ -33,10 +33,13 @@ export const ConversationTurn = memo(function ConversationTurn({
   const error = lastAssistant?.error
   const hasAssistant =
     active || process.length > 0 || reply || cancelled || error || user?.finishedAt !== undefined
-  const responseStatus = getResponseStatus(
-    lastAssistant,
-    process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : [])),
-  )
+  const activity = useConversationStore((state) => (active ? state.activity : ''))
+  const responseStatus =
+    activity ||
+    getResponseStatus(
+      lastAssistant,
+      process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : [])),
+    )
   const rewrite = useConversationStore((state) => state.rewrite)
   const canRewrite = useConversationStore(
     (state) =>
@@ -147,6 +150,11 @@ export const ConversationTurn = memo(function ConversationTurn({
             finishedAt={user?.finishedAt}
           />
           <div className="space-y-2">
+            {active && (
+              <p role="status" aria-atomic="true" className="text-[14px] text-muted-foreground/70">
+                {responseStatus}
+              </p>
+            )}
             {reply ? (
               <Streamdown
                 plugins={{ code }}
@@ -160,7 +168,6 @@ export const ConversationTurn = memo(function ConversationTurn({
                 {reply.text}
               </Streamdown>
             ) : null}
-            {active && <p className="text-[14px] text-muted-foreground/70">{responseStatus}</p>}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}
             {!active && (reply || cancelled || error) && (

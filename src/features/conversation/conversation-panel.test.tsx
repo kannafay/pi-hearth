@@ -338,8 +338,45 @@ test('a reply waits for output before showing thinking and generation states', (
   expect(reply.getByText('正在生成…')).toBeVisible()
   expect(screen.getByRole('status')).toHaveTextContent('正在生成…')
   receive(5, { type: 'message_completed', message: answer })
+  expect(screen.getByRole('status')).toHaveTextContent('正在生成…')
+  expect(reply.queryByText('等待回复…')).not.toBeInTheDocument()
   receive(6, { type: 'run_finished', status: 'complete', error: null })
   expect(reply.queryByText(/等待回复…|正在思考…|正在生成…/)).not.toBeInTheDocument()
+})
+
+test('streaming keeps one status above the answer until the run finishes', () => {
+  const { user, answer } = processFixture()
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
+  render(<ConversationPanel />)
+  receive(1, { type: 'run_started', message: user })
+  receive(2, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  const reply = within(screen.getByRole('article', { name: 'Pi 的回复' }))
+  const status = reply.getByRole('status')
+  for (let sequence = 3; sequence <= 52; sequence++) {
+    receive(sequence, {
+      type: 'message_delta',
+      messageId: answer.id,
+      contentIndex: sequence % 2,
+      kind: sequence % 2 ? 'text' : 'thinking',
+      delta: sequence % 2 ? '答' : '思',
+    })
+    expect(reply.getByRole('status')).toBe(status)
+    expect(status).toHaveTextContent('正在生成…')
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  }
+  const text = '答'.repeat(25)
+  expect(
+    status.compareDocumentPosition(reply.getByText(text)) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  receive(53, { type: 'message_completed', message: { ...answer, text } })
+  expect(reply.getByRole('status')).toBe(status)
+  expect(status).toHaveTextContent('正在生成…')
+  receive(54, { type: 'run_finished', status: 'complete', error: null })
+  expect(reply.queryByRole('status')).not.toBeInTheDocument()
+  expect(reply.getByText(text)).toBeVisible()
 })
 
 test('tool states take priority and completed tools return to waiting for the next response', () => {
@@ -536,12 +573,12 @@ test('cached history stays visible during connection and failures have an inline
   expect(screen.getByText(answer.text)).toBeVisible()
   expect(screen.getByRole('alert')).toHaveTextContent('助手启动失败')
   const notice = screen.getByRole('status')
-  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   await user.click(screen.getByRole('button', { name: '重新连接' }))
   expect(connect).toHaveBeenCalledWith('D:\\项目', 'history.jsonl')
 })
 
-test('a failed new conversation has one recovery action below the composer', async () => {
+test('a failed new conversation has one recovery action above the composer', async () => {
   const connect = vi.fn().mockResolvedValue(undefined)
   useConversationStore.setState({
     status: 'disconnected',
@@ -555,7 +592,7 @@ test('a failed new conversation has one recovery action below the composer', asy
   expect(screen.getAllByRole('button', { name: '重新连接' })).toHaveLength(1)
   const input = screen.getByRole('textbox', { name: '消息草稿' })
   const notice = screen.getByRole('status')
-  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   await user.click(screen.getByRole('button', { name: '重新连接' }))
   expect(connect).toHaveBeenCalledWith('D:\\项目', null)
 })
