@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Activity, Archive, HardDrive, Info, Palette, SlidersHorizontal } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
@@ -30,6 +30,32 @@ const sections = [
   { value: 'diagnostics', label: '运行诊断', icon: Activity },
   { value: 'about', label: '关于', icon: Info },
 ] as const
+
+function SettingsPanel({
+  value,
+  title,
+  description,
+  children,
+}: {
+  value: string
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <TabsContent value={value} className="settings-panel m-0 flex min-h-0 flex-col">
+      <div className="shrink-0 px-7 pt-7">
+        <SettingsPageHeader title={title} description={description} />
+      </div>
+      <ScrollArea
+        className="flex-1"
+        viewportClassName="h-full overflow-x-hidden overflow-y-auto px-7 pb-7"
+      >
+        {children}
+      </ScrollArea>
+    </TabsContent>
+  )
+}
 
 export function SettingsDialog({
   open,
@@ -90,104 +116,108 @@ export function SettingsDialog({
               ))}
             </TabsList>
           </div>
-          <ScrollArea
-            className="min-w-0 flex-1"
-            viewportClassName="h-full overflow-x-hidden overflow-y-auto px-7 py-7"
-          >
-            <div className="settings-panels">
-              <TabsContent value="appearance" className="settings-panel m-0">
-                <SettingsPageHeader title="外观" description="让工作台适合你的使用环境。" />
-                <div className="flex items-center justify-between gap-5 border-b py-5">
-                  <div>
-                    <h3 className="text-sm font-normal">界面主题</h3>
+          <div className="settings-panels min-h-0 min-w-0 flex-1">
+            <SettingsPanel value="appearance" title="外观" description="让工作台适合你的使用环境。">
+              <div className="flex items-center justify-between gap-5 border-b py-5">
+                <div>
+                  <h3 className="text-sm font-normal">界面主题</h3>
+                  <p className="mt-1.5 text-xs text-muted-foreground">选择浅色、深色或跟随系统。</p>
+                </div>
+                <Select
+                  items={themeOptions}
+                  value={theme}
+                  onValueChange={(value) => {
+                    if (value === 'system' || value === 'light' || value === 'dark') setTheme(value)
+                  }}
+                >
+                  <SelectTrigger aria-label="界面主题" className="w-32 shrink-0">
+                    <SelectValue>
+                      <ThemeIcon aria-hidden className="size-3.5 stroke-[1.6]" />
+                      <span>{themeLabel}</span>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {themeOptions.map(({ value, label, icon: Icon }) => (
+                        <SelectItem key={value} value={value}>
+                          <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+            </SettingsPanel>
+            <SettingsPanel
+              value="models"
+              title="模型与凭证"
+              description="使用本机 Pi 配置，兼容 CC Switch。"
+            >
+              <ModelSettings />
+            </SettingsPanel>
+            <SettingsPanel
+              value="storage"
+              title="存储"
+              description="管理本机文件和项目的保存位置。"
+            >
+              <ProjectLocationSettings />
+            </SettingsPanel>
+            <SettingsPanel
+              value="archived"
+              title="归档"
+              description="归档的项目和聊天会保留在本机，可随时恢复。"
+            >
+              <ArchivedSessions />
+            </SettingsPanel>
+            <SettingsPanel
+              value="diagnostics"
+              title="运行诊断"
+              description="本地桌面核心与 Pi 的连接状态。"
+            >
+              {!isDesktop() ? (
+                <p className="border-b py-5 text-sm text-muted-foreground">
+                  当前为浏览器预览，本地项目和桌面能力需在桌面应用中使用。
+                </p>
+              ) : error ? (
+                <p role="alert" className="border-b py-5 text-sm text-destructive">
+                  桌面核心连接失败：{error}
+                </p>
+              ) : (
+                <div className="divide-y border-b">
+                  <div className="py-5">
+                    <h3 className="text-sm font-normal">桌面核心</h3>
                     <p className="mt-1.5 text-xs text-muted-foreground">
-                      选择浅色、深色或跟随系统。
+                      {version ? `已连接桌面核心，版本 ${version}` : '正在连接桌面核心…'}
                     </p>
                   </div>
-                  <Select
-                    items={themeOptions}
-                    value={theme}
-                    onValueChange={(value) => {
-                      if (value === 'system' || value === 'light' || value === 'dark')
-                        setTheme(value)
-                    }}
-                  >
-                    <SelectTrigger aria-label="界面主题" className="w-32 shrink-0">
-                      <SelectValue>
-                        <ThemeIcon aria-hidden className="size-3.5 stroke-[1.6]" />
-                        <span>{themeLabel}</span>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {themeOptions.map(({ value, label, icon: Icon }) => (
-                          <SelectItem key={value} value={value}>
-                            <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </TabsContent>
-              <TabsContent value="models" className="settings-panel m-0">
-                <ModelSettings />
-              </TabsContent>
-              <TabsContent value="storage" className="settings-panel m-0">
-                <SettingsPageHeader title="存储" description="管理本机文件和项目的保存位置。" />
-                <ProjectLocationSettings />
-              </TabsContent>
-              <TabsContent value="archived" className="settings-panel m-0">
-                <ArchivedSessions />
-              </TabsContent>
-              <TabsContent value="diagnostics" className="settings-panel m-0">
-                <SettingsPageHeader title="运行诊断" description="本地桌面核心与 Pi 的连接状态。" />
-                {!isDesktop() ? (
-                  <p className="border-b py-5 text-sm text-muted-foreground">
-                    当前为浏览器预览，本地项目和桌面能力需在桌面应用中使用。
-                  </p>
-                ) : error ? (
-                  <p role="alert" className="border-b py-5 text-sm text-destructive">
-                    桌面核心连接失败：{error}
-                  </p>
-                ) : (
-                  <div className="divide-y border-b">
-                    <div className="py-5">
-                      <h3 className="text-sm font-normal">桌面核心</h3>
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        {version ? `已连接桌面核心，版本 ${version}` : '正在连接桌面核心…'}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-5 py-5 text-sm">
-                      <h3 className="text-sm font-normal">Pi RPC</h3>
-                      <span className="text-muted-foreground">
-                        {status === 'disconnected'
-                          ? '未连接'
-                          : status === 'running' || status === 'stopping'
-                            ? '任务执行中'
-                            : status === 'connecting'
-                              ? '正在连接'
-                              : '已就绪'}
-                      </span>
-                    </div>
+                  <div className="flex items-center justify-between gap-5 py-5 text-sm">
+                    <h3 className="text-sm font-normal">Pi RPC</h3>
+                    <span className="text-muted-foreground">
+                      {status === 'disconnected'
+                        ? '未连接'
+                        : status === 'running' || status === 'stopping'
+                          ? '任务执行中'
+                          : status === 'connecting'
+                            ? '正在连接'
+                            : '已就绪'}
+                    </span>
                   </div>
-                )}
-                <DeveloperModeSettings />
-              </TabsContent>
-              <TabsContent value="about" className="settings-panel m-0">
-                <SettingsPageHeader title="Pi Hearth" description="Pi Coding Agent 桌面工作台" />
-                <div className="flex items-center justify-between gap-5 border-b py-5 text-sm">
-                  <h3 className="text-sm font-normal">版本</h3>
-                  <span className="text-muted-foreground">{version ?? '开发预览'}</span>
                 </div>
-                <p className="mt-5 text-xs leading-6 text-muted-foreground">
-                  在本机管理项目、对话和工具执行，共享 Pi CLI 的会话。模型配置由 Pi 与 CC Switch
-                  管理。
-                </p>
-              </TabsContent>
-            </div>
-          </ScrollArea>
+              )}
+              <DeveloperModeSettings />
+            </SettingsPanel>
+            <SettingsPanel value="about" title="Pi Hearth" description="Pi Coding Agent 桌面工作台">
+              <div className="flex items-center justify-between gap-5 border-b py-5 text-sm">
+                <h3 className="text-sm font-normal">版本</h3>
+                <span className="text-muted-foreground">{version ?? '开发预览'}</span>
+              </div>
+              <p className="mt-5 text-xs leading-6 text-muted-foreground">
+                在本机管理项目、对话和工具执行，共享 Pi CLI 的会话。模型配置由 Pi 与 CC Switch
+                管理。
+              </p>
+            </SettingsPanel>
+          </div>
         </Tabs>
       </DialogContent>
     </WorkspaceDialog>

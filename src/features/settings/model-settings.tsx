@@ -4,7 +4,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
-import { SettingsPageHeader } from './settings-page-header'
 
 export function ModelSettings() {
   const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
@@ -22,7 +21,6 @@ export function ModelSettings() {
 
   return (
     <div>
-      <SettingsPageHeader title="模型与凭证" description="使用本机 Pi 配置，兼容 CC Switch。" />
       <div className="border-b py-5">
         <h3 className="text-sm font-normal">当前模型</h3>
         <p className="mt-1.5 text-xs text-muted-foreground">

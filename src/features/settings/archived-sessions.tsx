@@ -18,7 +18,6 @@ import { sessionPreference } from '@/lib/session-preferences'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import { hasPath, orderedProjects } from '@/lib/navigation-order'
 import { ProjectDeleteDialog } from '@/features/workspace/project-delete-dialog'
-import { SettingsPageHeader } from './settings-page-header'
 
 function ArchivedSessionTitle({ title }: { title: string }) {
   const ref = useRef<HTMLParagraphElement>(null)
@@ -129,11 +128,6 @@ export function ArchivedSessions() {
 
   return (
     <>
-      <SettingsPageHeader
-        title="归档"
-        description="归档的项目和聊天会保留在本机，可随时恢复。"
-        className="pb-4"
-      />
       {error && (
         <p role="alert" className="pt-4 text-xs text-destructive">
           {error}
