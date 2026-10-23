@@ -659,6 +659,16 @@ select {
   transform: translateX(8px);
 }
 
+:root[data-window-resizing]
+  :is(
+    .workspace-panel-group > [data-panel],
+    .workspace-content-inset,
+    .workspace-panel-content,
+    .sidebar-tab-indicator
+  ) {
+  transition: none !important;
+}
+
 .workspace-surface {
   overflow: hidden;
   border: 1px solid var(--workspace-border);

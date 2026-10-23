@@ -4,6 +4,7 @@ import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'l
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
 import { useMediaQuery } from '@/app/use-media-query'
+import { useWindowResizeMotion } from '@/app/use-window-resize-motion'
 import { IconButton } from '@/components/icon-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -24,6 +25,7 @@ import type { ProjectInfo } from '@/lib/generated/pi'
 import { sessionKey } from '@/lib/session-preferences'
 
 export function WorkspaceShell() {
+  useWindowResizeMotion()
   const workspace = useWorkspaceStore()
   const {
     projectPath,
