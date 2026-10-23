@@ -13,8 +13,24 @@ const scrollable = [
 // auto-follow continue to scroll the same element, including portalled menus.
 export function installScrollbars(root: HTMLElement) {
   const instances = new Map<HTMLElement, OverlayScrollbars>()
+  const contentOwners = new Map<Element, OverlayScrollbars>()
   let frame: number | null = null
   let disposed = false
+
+  // A fixed native viewport doesn't resize when its children expand or collapse.
+  // Observe its content boxes too, so handle proportions follow each layout frame.
+  const contentObserver =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver((entries) => {
+          if (disposed) return
+          const changed = new Set<OverlayScrollbars>()
+          for (const entry of entries) {
+            const instance = contentOwners.get(entry.target)
+            if (instance && !instance.state().destroyed) changed.add(instance)
+          }
+          for (const instance of changed) instance.update(true)
+        })
 
   function synchronize() {
     frame = null
@@ -58,6 +74,26 @@ export function installScrollbars(root: HTMLElement) {
       )
       instances.set(element, instance)
     }
+
+    if (contentObserver) {
+      const nextOwners = new Map<Element, OverlayScrollbars>()
+      for (const [element, instance] of instances) {
+        for (const child of element.children) {
+          if (child.matches('.os-scrollbar, .os-size-observer, .os-trinsic-observer')) continue
+          nextOwners.set(child, instance)
+        }
+      }
+      for (const [child, instance] of contentOwners) {
+        if (nextOwners.get(child) === instance) continue
+        contentObserver.unobserve(child)
+        contentOwners.delete(child)
+      }
+      for (const [child, instance] of nextOwners) {
+        if (contentOwners.has(child)) continue
+        contentOwners.set(child, instance)
+        contentObserver.observe(child)
+      }
+    }
   }
 
   const observer = new MutationObserver((records) => {
@@ -81,6 +117,8 @@ export function installScrollbars(root: HTMLElement) {
   return () => {
     disposed = true
     observer.disconnect()
+    contentObserver?.disconnect()
+    contentOwners.clear()
     if (frame !== null) cancelAnimationFrame(frame)
     for (const instance of instances.values()) instance.destroy()
     instances.clear()

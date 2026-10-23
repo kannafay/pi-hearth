@@ -16,6 +16,7 @@ beforeEach(() => {
 afterEach(() => {
   stop?.()
   root.remove()
+  vi.unstubAllGlobals()
 })
 
 function pane(tag = 'div') {
@@ -78,4 +79,87 @@ test('resizable input and chat viewports keep scrollbar elements outside their s
   element.textContent = ''
   await waitFor(() => expect(OverlayScrollbars(element)).toBe(instance))
   expect(slot.querySelectorAll('.os-scrollbar')).toHaveLength(2)
+})
+
+function contentResizeObserver() {
+  let callback!: ResizeObserverCallback
+  const observe = vi.fn()
+  const unobserve = vi.fn()
+  const disconnect = vi.fn()
+  const observer = { observe, unobserve, disconnect }
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe = observe
+      unobserve = unobserve
+      disconnect = disconnect
+      constructor(onResize: ResizeObserverCallback) {
+        callback = onResize
+      }
+    },
+  )
+  return {
+    observe,
+    unobserve,
+    disconnect,
+    resize: (...targets: Element[]) =>
+      callback(targets.map((target) => ({ target })) as ResizeObserverEntry[], observer),
+  }
+}
+
+test('content resizing updates its owning scrollbar on every frame and batches sibling boxes', () => {
+  const observer = contentResizeObserver()
+  const element = pane()
+  const first = document.createElement('section')
+  const second = document.createElement('section')
+  element.replaceChildren(first, second)
+  const other = pane()
+  other.append(document.createElement('section'))
+  root.append(element, other)
+  stop = installScrollbars(root)
+  const instance = OverlayScrollbars(element)!
+  const update = vi.spyOn(instance, 'update')
+  const otherUpdate = vi.spyOn(OverlayScrollbars(other)!, 'update')
+  expect(observer.observe).toHaveBeenCalledWith(first)
+  expect(observer.observe).toHaveBeenCalledWith(second)
+  expect(observer.observe).not.toHaveBeenCalledWith(instance.elements().scrollbarVertical.scrollbar)
+  observer.resize(first, second)
+  expect(update).toHaveBeenCalledOnce()
+  expect(update).toHaveBeenCalledWith(true)
+  expect(otherUpdate).not.toHaveBeenCalled()
+  observer.resize(first)
+  expect(update).toHaveBeenCalledTimes(2)
+  expect(instance.elements().viewport).toBe(element)
+})
+
+test('replaced and removed content boxes stop being observed and cleanup cancels pending notifications', async () => {
+  const observer = contentResizeObserver()
+  const element = pane()
+  const original = document.createElement('section')
+  original.textContent = '原内容'
+  element.replaceChildren(original)
+  root.append(element)
+  stop = installScrollbars(root)
+  const instance = OverlayScrollbars(element)!
+  const update = vi.spyOn(instance, 'update')
+  const replacement = document.createElement('section')
+  replacement.textContent = '新内容'
+  original.replaceWith(replacement)
+  await waitFor(() => expect(observer.observe).toHaveBeenCalledWith(replacement))
+  expect(observer.unobserve).toHaveBeenCalledWith(original)
+  update.mockClear()
+  observer.resize(original)
+  expect(update).not.toHaveBeenCalled()
+  observer.resize(replacement)
+  expect(update).toHaveBeenCalledOnce()
+  element.remove()
+  await waitFor(() => expect(instance.state().destroyed).toBe(true))
+  expect(observer.unobserve).toHaveBeenCalledWith(replacement)
+  update.mockClear()
+  observer.resize(replacement)
+  expect(update).not.toHaveBeenCalled()
+  stop()
+  expect(observer.disconnect).toHaveBeenCalledOnce()
+  observer.resize(replacement)
+  expect(update).not.toHaveBeenCalled()
 })
