@@ -65,6 +65,8 @@ export function WorkspaceNavigation({
     useNavigationTabs()
   const tooltipId = useId()
   const busy = ['running', 'stopping'].includes(status)
+  const projectExpanded = (path: string) =>
+    workspace.expandedProjects[sessionKey(path)!] ?? samePath(path, workspace.projectPath)
   const sessions = visibleSessions(workspace.sessions, workspace.sessionPreferences)
   const rows = (sessions: SessionInfo[]) =>
     sessions.map((session) => {
@@ -266,10 +268,7 @@ export function WorkspaceNavigation({
                   {workspace.projects.map((project) => (
                     <Collapsible
                       key={project.path}
-                      open={
-                        workspace.expandedProjects[sessionKey(project.path)!] ??
-                        samePath(project.path, workspace.projectPath)
-                      }
+                      open={projectExpanded(project.path)}
                       onOpenChange={(open) => workspace.setProjectExpanded(project.path, open)}
                       className="flex flex-col"
                     >
@@ -288,7 +287,11 @@ export function WorkspaceNavigation({
                               />
                             }
                           >
-                            <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
+                            {projectExpanded(project.path) ? (
+                              <FolderOpen className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
+                            ) : (
+                              <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
+                            )}
                             <span className="sidebar-row-title min-w-0 flex-1 truncate">
                               {project.name}
                             </span>
