@@ -157,7 +157,7 @@ export const ConversationTurn = memo(function ConversationTurn({
               </Streamdown>
             ) : null}
             {active && (
-              <p className="text-[13px] text-muted-foreground/70">
+              <p className="text-[14px] text-muted-foreground/70">
                 {lastProcess?.kind === 'tool' && lastProcess.tool.status === 'awaiting_approval'
                   ? '等待工具调用确认…'
                   : lastProcess?.kind === 'tool' && lastProcess.tool.status === 'running'
