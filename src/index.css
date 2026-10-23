@@ -386,10 +386,6 @@ select {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-.workspace-navigation .os-scrollbar-vertical {
-  right: 4px;
-}
-
 .sidebar-tabs {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
