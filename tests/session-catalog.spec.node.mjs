@@ -3,7 +3,13 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { catalog, history, searchDocuments, sessionDirectory } from '../runtime/session-catalog.mjs'
+import {
+  catalog,
+  history,
+  renameSession,
+  searchDocuments,
+  sessionDirectory,
+} from '../runtime/session-catalog.mjs'
 
 await mkdir('work', { recursive: true })
 const root = await mkdtemp(path.resolve('work', 'session-test-'))
@@ -110,4 +116,27 @@ test('custom project session locations and environment overrides follow Pi stora
   process.env.PI_CODING_AGENT_SESSION_DIR = legacy
   assert.equal(await sessionDirectory(second, agent, sdk), legacy)
   delete process.env.PI_CODING_AGENT_SESSION_DIR
+})
+
+test('renaming appends native metadata, preserves history and survives reload and later messages', async () => {
+  const manager = session(first, 'original title')
+  const file = manager.getSessionFile()
+  const before = await readFile(file, 'utf8')
+  const transcript = await history(file, sdk)
+  const beforeCatalog = (await catalog({ legacyDir: legacy, projects: [first] }, sdk, agent)).find(
+    (item) => item.path === file,
+  )
+  assert.equal(await renameSession(file, '新的会话标题', sdk), '新的会话标题')
+  const after = await readFile(file, 'utf8')
+  assert.ok(after.startsWith(before))
+  assert.equal(sdk.SessionManager.open(file).getSessionName(), '新的会话标题')
+  assert.deepEqual(await history(file, sdk), transcript)
+  const renamed = (await catalog({ legacyDir: legacy, projects: [first] }, sdk, agent)).find(
+    (item) => item.path === file,
+  )
+  assert.deepEqual(renamed, { ...beforeCatalog, title: '新的会话标题' })
+  const resumed = sdk.SessionManager.open(file)
+  resumed.appendMessage({ role: 'user', content: '下一轮对话', timestamp: Date.now() })
+  assert.equal(sdk.SessionManager.open(file).getSessionName(), '新的会话标题')
+  await assert.rejects(renameSession(`${file}.missing`, '不存在的会话', sdk))
 })

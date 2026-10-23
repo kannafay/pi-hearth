@@ -14,6 +14,108 @@ beforeEach(() => {
   useConversationStore.setState({ status: 'ready' })
 })
 
+test.each([project.path, 'general'])(
+  'session %s can be renamed from its menu and cancelled without saving',
+  async (cwd) => {
+    const session = {
+      path: 'rename.jsonl',
+      id: 'rename',
+      cwd,
+      title: '原会话标题',
+      modified: 1,
+      messageCount: 2,
+    }
+    const renameSession = vi.fn(async (_session, title: string) => {
+      useWorkspaceStore.setState({ sessions: [{ ...session, title: title.trim() }] })
+    })
+    useWorkspaceStore.setState({
+      projects: [project],
+      projectPath: project.path,
+      generalCwd: 'general',
+      sessions: [session],
+      renameSession,
+    })
+    const user = userEvent.setup()
+    render(
+      <WorkspaceNavigation
+        desktop
+        onCreate={vi.fn()}
+        onSettings={vi.fn()}
+        onInstructions={vi.fn()}
+      />,
+    )
+    const open = async () => {
+      await user.click(screen.getByRole('button', { name: '原会话标题 会话菜单' }))
+      await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
+      return screen.findByRole('textbox', { name: '会话标题' })
+    }
+    let input = await open()
+    expect(input).toHaveValue(session.title)
+    await user.clear(input)
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(renameSession).not.toHaveBeenCalled()
+    input = await open()
+    expect(input).toHaveValue(session.title)
+    await user.clear(input)
+    await user.type(input, '新的会话标题{Enter}')
+    expect(renameSession).toHaveBeenCalledExactlyOnceWith(session, '新的会话标题')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '新的会话标题' })).toBeVisible()
+  },
+)
+
+test('a rename failure retains the draft for retry and an in-flight save cannot be dismissed or submitted twice', async () => {
+  const session = {
+    path: 'rename.jsonl',
+    id: 'rename',
+    cwd: project.path,
+    title: '原会话标题',
+    modified: 1,
+    messageCount: 2,
+  }
+  let finish!: () => void
+  const renameSession = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('无法保存标题'))
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+  useWorkspaceStore.setState({
+    projects: [project],
+    projectPath: project.path,
+    sessions: [session],
+    renameSession,
+  })
+  const user = userEvent.setup()
+  render(
+    <WorkspaceNavigation
+      desktop
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  await user.click(screen.getByRole('button', { name: '原会话标题 会话菜单' }))
+  await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
+  const input = await screen.findByRole('textbox', { name: '会话标题' })
+  await user.clear(input)
+  await user.type(input, '重试标题{Enter}')
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法保存标题')
+  expect(input).toHaveValue('重试标题')
+  await user.keyboard('{Enter}')
+  expect(screen.getByRole('button', { name: '正在保存…' })).toBeDisabled()
+  await user.keyboard('{Escape}{Enter}')
+  expect(screen.getByRole('dialog', { name: '重命名会话' })).toBeVisible()
+  expect(renameSession).toHaveBeenCalledTimes(2)
+  await act(async () => finish())
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
 test('the project add button opens creation directly without a menu', async () => {
   const onCreate = vi.fn()
   const user = userEvent.setup()

@@ -17,6 +17,7 @@ import {
   updateProject,
   removeProject,
   updateSessionPreference,
+  renameSession,
   deleteArchivedSessions,
   type CreateProjectOptions,
   type UpdateProjectOptions,
@@ -62,6 +63,7 @@ interface WorkspaceState {
   ) => boolean
   setProjectExpanded: (path: string, open: boolean) => void
   toggleSessionPinned: (session: SessionInfo) => Promise<void>
+  renameSession: (session: SessionInfo, title: string) => Promise<void>
   setSessionArchived: (session: SessionInfo, archived: boolean) => Promise<boolean>
   deleteArchivedSessions: (paths: string[]) => Promise<boolean>
   initialized: boolean
@@ -164,6 +166,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   selectedSessionPath: null,
   sessionPreferences: {},
   sessionActionPending: null,
+  renameSession: async (session, title) => {
+    const name = title.trim()
+    if (!name || name.length > 160 || /[\r\n]/.test(name))
+      throw new Error('请输入 1–160 个字符的会话标题。')
+    if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
+    if (busy() && samePath(session.path, useConversationStore.getState().sessionFile))
+      throw new Error('请等待当前回复结束后再重命名。')
+    sessionRevision++
+    set({ sessionActionPending: session.path, error: null })
+    try {
+      const saved = await renameSession(session.path, name)
+      set((state) => ({
+        sessions: state.sessions.map((item) =>
+          samePath(item.path, session.path) ? { ...item, title: saved } : item,
+        ),
+      }))
+    } finally {
+      set({ sessionActionPending: null })
+    }
+  },
   expandedProjects: {},
   projectOrder: [],
   sessionOrder: [],

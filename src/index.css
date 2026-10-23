@@ -413,6 +413,10 @@ select {
   transition: opacity 160ms ease-out;
 }
 
+.sidebar-session-row {
+  --sidebar-row-actions-width: 5.25rem;
+}
+
 .sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-progress {
   opacity: 0;
 }

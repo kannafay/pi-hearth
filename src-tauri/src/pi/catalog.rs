@@ -253,6 +253,31 @@ pub async fn workspace_update_session(
 }
 
 #[tauri::command]
+pub async fn workspace_rename_session(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    manager: State<'_, PiManager>,
+    path: String,
+    title: String,
+) -> Result<String, String> {
+    let title = title.trim();
+    if title.is_empty() || title.chars().count() > 160 || title.chars().any(char::is_control) {
+        return Err("会话标题须为 1–160 个字符，且不能包含换行。".into());
+    }
+    let _lock = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let prefs = preferences(&data).await?;
+    let sessions = list(&data, &prefs).await?;
+    let session = sessions
+        .iter()
+        .find(|session| same_path(&session.path, &path))
+        .ok_or("会话文件不存在，请刷新列表。")?;
+    manager.rename_session(&data, &session.path, title).await?;
+    workspace.search.lock().await.catalog = None;
+    Ok(title.into())
+}
+
+#[tauri::command]
 pub async fn workspace_catalog(
     app: tauri::AppHandle,
     workspace: State<'_, WorkspaceManager>,

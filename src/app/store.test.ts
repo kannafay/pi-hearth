@@ -6,6 +6,7 @@ import {
   addProject,
   updateProject,
   updateSessionPreference,
+  renameSession,
   deleteArchivedSessions,
 } from '@/lib/workspace'
 import { rememberSession } from '@/features/conversation/session-cache'
@@ -17,6 +18,7 @@ vi.mock('@/lib/workspace', () => ({
   addProject: vi.fn(),
   updateProject: vi.fn(),
   updateSessionPreference: vi.fn(),
+  renameSession: vi.fn(),
   deleteArchivedSessions: vi.fn(),
 }))
 const session: SessionInfo = {
@@ -40,10 +42,60 @@ beforeEach(() => {
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   useConversationStore.setState({ connect: vi.fn().mockResolvedValue(undefined), status: 'ready' })
   vi.mocked(loadCatalog).mockResolvedValue(structuredClone(catalog))
+  vi.mocked(renameSession).mockImplementation(async (_path, title) => title)
   vi.mocked(updateSessionPreference).mockImplementation(async (path, preference) => ({
     ...useWorkspaceStore.getState().sessionPreferences,
     [sessionKey(path)!]: preference,
   }))
+})
+
+test('renaming persists the native title and preserves transcript, selection and ordering metadata', async () => {
+  useWorkspaceStore.setState({ ...catalog, selectedSessionPath: session.path })
+  const messages = useConversationStore.getState().messages
+  await useWorkspaceStore.getState().renameSession(session, '  新标题  ')
+  expect(renameSession).toHaveBeenCalledExactlyOnceWith(session.path, '新标题')
+  expect(useWorkspaceStore.getState().sessions).toEqual([{ ...session, title: '新标题' }])
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe(session.path)
+  expect(useConversationStore.getState().messages).toBe(messages)
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
+})
+
+test('a failed rename preserves its old title and releases the action lock', async () => {
+  useWorkspaceStore.setState({ sessions: [session] })
+  vi.mocked(renameSession).mockRejectedValueOnce(new Error('保存失败'))
+  await expect(useWorkspaceStore.getState().renameSession(session, '新标题')).rejects.toThrow(
+    '保存失败',
+  )
+  expect(useWorkspaceStore.getState().sessions).toEqual([session])
+  expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
+  await useWorkspaceStore.getState().renameSession(session, '重试成功')
+  expect(useWorkspaceStore.getState().sessions[0].title).toBe('重试成功')
+})
+
+test('a stale catalog cannot overwrite a newly saved title', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true })
+  let finish!: (value: WorkspaceCatalog) => void
+  vi.mocked(loadCatalog).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  const refresh = useWorkspaceStore.getState().refresh()
+  await useWorkspaceStore.getState().renameSession(session, '保存的新标题')
+  finish(catalog)
+  await refresh
+  expect(useWorkspaceStore.getState().sessions[0].title).toBe('保存的新标题')
+})
+
+test('the responding session cannot be renamed while other session titles remain editable', async () => {
+  useConversationStore.setState({ status: 'running', sessionFile: session.path })
+  await expect(useWorkspaceStore.getState().renameSession(session, '新标题')).rejects.toThrow(
+    '回复结束',
+  )
+  expect(renameSession).not.toHaveBeenCalled()
+  await useWorkspaceStore.getState().renameSession({ ...session, path: 'other.jsonl' }, '其他会话')
+  expect(renameSession).toHaveBeenCalledExactlyOnceWith('other.jsonl', '其他会话')
 })
 
 test('deleting archived sessions removes their catalog entries and cached transcripts', async () => {

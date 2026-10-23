@@ -1043,6 +1043,34 @@ impl PiManager {
             .map(|client| client.session_directory.clone())
     }
 
+    pub async fn rename_session(&self, data: &Path, path: &str, name: &str) -> Result<(), String> {
+        // Keep opening another session serialized with the offline metadata write.
+        let runtime = self.runtime.lock().await;
+        if let Some(client) = runtime.as_ref() {
+            let snapshot = client.snapshot().await?;
+            if snapshot
+                .session_file
+                .as_deref()
+                .is_some_and(|file| super::catalog::same_path(file, path))
+            {
+                let _action = client
+                    .actions
+                    .try_lock()
+                    .map_err(|_| "请等待当前操作完成。")?;
+                let snapshot = client.snapshot().await?;
+                if snapshot.active_run_id.is_some() {
+                    return Err("请等待当前回复结束后再重命名。".into());
+                }
+                client
+                    .request(json!({"type":"set_session_name","name":name}), None)
+                    .await?;
+                return Ok(());
+            }
+        }
+        super::catalog::helper(data, json!({"action":"rename","path":path,"name":name})).await?;
+        Ok(())
+    }
+
     pub async fn client(&self, instance_id: &str) -> Result<Arc<PiClient>, String> {
         self.runtime
             .lock()
@@ -1225,6 +1253,33 @@ mod tests {
             runtime: Mutex::new(Some(initial.clone())),
             read_only: Mutex::new(None),
         };
+        manager
+            .rename_session(
+                &root.join("data"),
+                file.to_str().unwrap(),
+                "Native renamed title",
+            )
+            .await
+            .unwrap();
+        let renamed = std::fs::read_to_string(&file).unwrap();
+        assert!(renamed.starts_with(&original));
+        assert!(renamed.contains("Native renamed title"));
+        assert_eq!(
+            initial
+                .request(json!({"type":"get_messages"}), None)
+                .await
+                .unwrap(),
+            native
+        );
+        assert_eq!(
+            manager
+                .client(&before.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            initial.process_id
+        );
+        let original = renamed;
         assert_eq!(
             manager.session_directory(&project_path).await.as_ref(),
             Some(&sessions)
@@ -1291,6 +1346,26 @@ mod tests {
         assert_eq!(client.snapshot().await.unwrap().thinking_level, "high");
         assert!(old_received.try_recv().is_err());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        let active_action = client.actions.lock().await;
+        timeout(
+            Duration::from_secs(3),
+            manager.rename_session(
+                &root.join("data"),
+                file.to_str().unwrap(),
+                "Offline renamed title",
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        drop(active_action);
+        let offline = std::fs::read_to_string(&file).unwrap();
+        assert!(offline.starts_with(&original));
+        assert!(offline.contains("Offline renamed title"));
+        assert_eq!(
+            client.snapshot().await.unwrap().session_id,
+            previous.session_id
+        );
         println!(
             "Native Pi PID {} retained; cold {} ms; new sessions {:?} ms",
             initial.process_id,

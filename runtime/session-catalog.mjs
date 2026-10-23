@@ -62,6 +62,14 @@ export async function catalog(request, sdk, agentDir) {
   return sessions.sort((a, b) => b.modified - a.modified)
 }
 
+export async function renameSession(file, name, sdk) {
+  const entries = sdk.parseSessionEntries(await readFile(file, 'utf8'))
+  if (entries[0]?.type !== 'session') throw new Error('无效的 Pi 会话文件。')
+  const manager = sdk.SessionManager.open(file)
+  manager.appendSessionInfo(name)
+  return manager.getSessionName()
+}
+
 // Read the active branch without opening/migrating/writing the source file.
 export async function history(file, sdk) {
   const entries = sdk.parseSessionEntries(await readFile(file, 'utf8'))
@@ -145,6 +153,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     else if (request.action === 'directory')
       result = await sessionDirectory(request.cwd, agentDir, sdk)
     else if (request.action === 'history') result = await history(request.path, sdk)
+    else if (request.action === 'rename')
+      result = await renameSession(request.path, request.name, sdk)
     else if (request.action === 'search_documents')
       result = await searchDocuments(request.paths, sdk)
     else throw new Error('不支持的会话操作。')

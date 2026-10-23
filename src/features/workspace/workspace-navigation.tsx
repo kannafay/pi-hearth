@@ -36,6 +36,8 @@ import { useNavigationTabs } from './use-navigation-tabs'
 import { hasPath, orderedProjects, sessionGroup } from '@/lib/navigation-order'
 import { useNavigationSort } from './use-navigation-sort'
 import { ProjectDeleteDialog } from './project-delete-dialog'
+import { SessionRenameDialog } from './session-rename-dialog'
+import { useDialogPresence } from '@/components/use-dialog-presence'
 
 const navigationFilters = [
   ['all', '全部', LayoutGrid],
@@ -73,6 +75,8 @@ export function WorkspaceNavigation({
     useNavigationTabs()
   const tooltipId = useId()
   const [deleteProject, setDeleteProject] = useState<ProjectInfo | null>(null)
+  const [renameSession, setRenameSession] = useState<SessionInfo | null>(null)
+  const renamePresence = useDialogPresence(renameSession)
   const {
     rootRef: sortRootRef,
     descriptionId: sortDescriptionId,
@@ -217,6 +221,30 @@ export function WorkspaceNavigation({
               </TooltipTrigger>
               <TooltipContent showArrow={false}>归档</TooltipContent>
             </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="sidebar-session-action size-6 text-muted-foreground/60 hover:text-foreground"
+                    aria-label={`${session.title} 会话菜单`}
+                    disabled={!desktop || Boolean(workspace.sessionActionPending)}
+                  />
+                }
+              >
+                <MoreHorizontal className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-36">
+                <DropdownMenuItem
+                  disabled={busy && selected}
+                  onClick={() => setRenameSession(session)}
+                >
+                  <SquarePen className="size-3.5" />
+                  重命名
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )
@@ -522,6 +550,15 @@ export function WorkspaceNavigation({
         设置
       </Button>
       <ProjectDeleteDialog project={deleteProject} onClose={() => setDeleteProject(null)} />
+      {renamePresence.value && (
+        <SessionRenameDialog
+          key={renamePresence.value.path}
+          session={renamePresence.value}
+          open={renameSession !== null}
+          onClose={() => setRenameSession(null)}
+          onOpenChangeComplete={renamePresence.onOpenChangeComplete}
+        />
+      )}
     </nav>
   )
 }
