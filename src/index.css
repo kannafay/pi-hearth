@@ -395,14 +395,14 @@ select {
 }
 
 .sidebar-tabs [role='tab'] {
-  transition-duration: 160ms;
+  transition-duration: 140ms;
   transition-timing-function: var(--sidebar-motion-ease);
 }
 
 .sidebar-tab-indicator {
   transition:
-    translate 240ms var(--sidebar-motion-ease),
-    width 240ms var(--sidebar-motion-ease);
+    translate 200ms var(--sidebar-motion-ease),
+    width 200ms var(--sidebar-motion-ease);
 }
 
 .dark .sidebar-tab-indicator {
@@ -417,8 +417,8 @@ select {
   overflow: hidden;
   opacity: 1;
   transition:
-    height 260ms var(--sidebar-motion-ease),
-    opacity 160ms var(--sidebar-motion-ease);
+    height 220ms var(--sidebar-motion-ease),
+    opacity 140ms var(--sidebar-motion-ease);
 }
 
 .sidebar-project-sessions .sidebar-session-link {
@@ -432,7 +432,7 @@ select {
 }
 
 .sidebar-project-sessions[data-ending-style] {
-  transition-duration: 200ms, 120ms;
+  transition-duration: 170ms, 100ms;
 }
 
 .execution-process-content,
