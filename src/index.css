@@ -236,7 +236,7 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);
-  --sidebar-motion-ease: cubic-bezier(0.58, 0, 0.42, 1);
+  --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
 
 .dark .workspace-navigation {
@@ -402,7 +402,7 @@ select {
 .sidebar-tab-indicator {
   transition-property: translate, width;
   transition-duration: 240ms;
-  transition-timing-function: cubic-bezier(0.26, 0, 0.18, 1);
+  transition-timing-function: var(--sidebar-motion-ease);
 }
 
 .dark .sidebar-tab-indicator {
