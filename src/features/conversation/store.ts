@@ -54,6 +54,7 @@ export interface ConversationData {
 
 interface ConversationState extends ConversationData {
   sessionCache: SessionCache
+  connectionTarget: { projectPath: string | null; sessionPath: string | null } | null
   connect: (
     projectPath: string | null,
     sessionPath?: string | null,
@@ -272,14 +273,30 @@ function enqueue(event: PiEvent) {
   }, 16)
 }
 
+export function canReuseNewConversation(state: ConversationState, projectPath: string | null) {
+  return Boolean(
+    state.connectionTarget &&
+    state.connectionTarget.sessionPath === null &&
+    sessionKey(state.connectionTarget.projectPath) === sessionKey(projectPath) &&
+    (state.status === 'connecting' || (state.status === 'ready' && state.instanceId)) &&
+    !state.readOnly &&
+    !state.error &&
+    !state.messages.length &&
+    !state.tools.length &&
+    !state.timeline.length,
+  )
+}
+
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
   sessionCache: new Map(),
+  connectionTarget: null,
   receive: (events) => set((state) => events.reduce(reducePiEvent, state)),
   connect: async (projectPath, sessionPath, options) => {
     const current = get()
     if (['running', 'stopping'].includes(current.status)) return
     const key = sessionKey(sessionPath)
+    if (!options?.force && !key && canReuseNewConversation(current, projectPath)) return
     if (
       !options?.force &&
       key &&
@@ -315,6 +332,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...settings,
       sessionCache,
       requestedThinkingLevel,
+      connectionTarget: { projectPath, sessionPath: sessionPath ?? null },
       sessionFile: sessionPath ?? null,
       status: 'connecting',
       connectionStartedAt: Date.now(),
@@ -372,6 +390,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       activity: '',
       error: null,
       connectionStartedAt: null,
+      connectionTarget: null,
     })
     try {
       await disconnectPi()

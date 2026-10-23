@@ -191,7 +191,7 @@ export function WorkspaceNavigation({
           onClick={() => void workspace.newConversation(null)}
         >
           <SquarePen className="size-4 stroke-[1.6]" />
-          新建聊天
+          新对话
         </Button>
       </div>
       <Tabs.Root
@@ -249,7 +249,7 @@ export function WorkspaceNavigation({
                       </DropdownMenuItem>
                       <DropdownMenuItem disabled={!desktop || busy} onClick={onCreate}>
                         <FolderPlus />
-                        创建项目
+                        新建项目
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -315,7 +315,7 @@ export function WorkspaceNavigation({
                             size="icon-xs"
                             variant="ghost"
                             className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
-                            aria-label={`在 ${project.name} 中新建会话`}
+                            aria-label={`在 ${project.name} 中新建对话`}
                             disabled={!desktop || busy}
                             onClick={() => void workspace.newConversation(project.path)}
                           >
@@ -345,7 +345,7 @@ export function WorkspaceNavigation({
                                 disabled={!desktop || busy}
                                 onClick={() => void workspace.newConversation(project.path)}
                               >
-                                新建会话
+                                新对话
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -380,7 +380,7 @@ export function WorkspaceNavigation({
                 <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">聊天</h2>
                   <Button
-                    aria-label="新建普通聊天"
+                    aria-label="新建普通对话"
                     size="icon-xs"
                     variant="ghost"
                     disabled={!desktop || busy}
@@ -391,7 +391,7 @@ export function WorkspaceNavigation({
                 </div>
                 <div className="flex flex-col gap-1">{rows(chats)}</div>
                 {!chats.length && (
-                  <p className="px-2 py-2 text-xs text-muted-foreground">直接开始一段新聊天</p>
+                  <p className="px-2 py-2 text-xs text-muted-foreground">直接开始一段新对话</p>
                 )}
               </section>
             )}

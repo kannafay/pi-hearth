@@ -27,7 +27,7 @@ test('project menu actions fire and close the menu', async () => {
     />,
   )
   await user.click(screen.getByRole('button', { name: '项目操作' }))
-  await user.click(await screen.findByRole('menuitem', { name: '创建项目' }))
+  await user.click(await screen.findByRole('menuitem', { name: '新建项目' }))
   expect(onCreate).toHaveBeenCalledOnce()
   await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
 })
@@ -117,7 +117,7 @@ test('sliding filters and session navigation stay usable while a session is conn
   expect(openSession).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('tab', { name: '项目' }))
   expect(screen.queryByRole('button', { name: /普通会话/ })).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '新建聊天' }))
+  await user.click(screen.getByRole('button', { name: '新对话' }))
   expect(newConversation).toHaveBeenCalledWith(null)
 })
 

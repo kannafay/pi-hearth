@@ -5,8 +5,9 @@ import { isDesktop } from '@/lib/desktop'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConnectionNotice } from './connection-notice'
 import { useConversationStore } from './store'
+import { ConversationProjectPicker } from './conversation-project-picker'
 
-export function ConversationWelcome() {
+export function ConversationWelcome({ onCreateProject }: { onCreateProject?: () => void }) {
   const { projectPath } = useWorkspaceStore()
   const { status, sessionFile, error } = useConversationStore(
     useShallow((state) => ({
@@ -49,7 +50,7 @@ export function ConversationWelcome() {
             <img src="/pi.svg" alt="" draggable={false} className="size-9" />
           )}
         </div>
-        {projectName && (
+        {projectName && error && (
           <p className="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <FolderOpen aria-hidden className="size-3.5 shrink-0" />
             <Tooltip>
@@ -61,15 +62,16 @@ export function ConversationWelcome() {
           </p>
         )}
         <h1 className="text-2xl leading-9 font-medium tracking-tight">
-          {error ? '连接未完成' : '开始一段新聊天'}
+          {error ? '连接未完成' : '开始一段新对话'}
         </h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {error
             ? '请重试连接，也可以从侧栏打开其他会话。'
             : projectPath
               ? '围绕当前项目提问，或添加文件一起处理。'
-              : '从一个问题开始，也可以粘贴图片或添加文件。'}
+              : '从一个问题开始，也可以选择项目或添加文件。'}
         </p>
+        {!error && <ConversationProjectPicker onCreateProject={onCreateProject} />}
         <ConnectionNotice className="mt-5" />
         {!desktop && (
           <p className="mt-4 text-xs text-muted-foreground">浏览器预览 · 对话需在桌面应用中使用</p>

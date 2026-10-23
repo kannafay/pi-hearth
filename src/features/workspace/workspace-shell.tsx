@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
@@ -48,6 +48,7 @@ export function WorkspaceShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
+  const createProject = useCallback(() => setProjectDialog('create'), [])
   const [error, setError] = useState<string | null>(null)
   const projectPresence = useDialogPresence(projectDialog)
   const compact = useMediaQuery('(max-width: 1199px)')
@@ -225,7 +226,7 @@ export function WorkspaceShell() {
               <WorkspaceNavigation
                 desktop={desktop}
                 onAdd={() => void addProject()}
-                onCreate={() => setProjectDialog('create')}
+                onCreate={createProject}
                 onSettings={() => setSettingsOpen(true)}
                 onInstructions={setProjectDialog}
               />
@@ -268,7 +269,7 @@ export function WorkspaceShell() {
                         {session?.title ?? conversation.firstUserText ?? '新对话'}
                       </span>
                     </div>
-                    <ConversationPanel />
+                    <ConversationPanel onCreateProject={createProject} />
                   </main>
                 </ResizablePanel>
                 <ResizableHandle

@@ -317,7 +317,7 @@ test('new chats retain model choices while clearing the old runtime and history 
   expect(sendPiMessage).not.toHaveBeenCalled()
   const obsoleteHydrate = hydrate
   const finishOld = finish
-  const latest = useConversationStore.getState().connect('project')
+  const latest = useConversationStore.getState().connect('other-project')
   expect(useConversationStore.getState().models).toBe(models)
   obsoleteHydrate(sessionSnapshot('obsolete'))
   expect(useConversationStore.getState().instanceId).toBeNull()
@@ -340,6 +340,55 @@ test('new chats retain model choices while clearing the old runtime and history 
     model: fresh.model,
     messages: [],
   })
+})
+
+test('repeated new-chat requests reuse the pending and ready empty session without resetting its UI', async () => {
+  let hydrate!: (value: RuntimeSnapshot) => void
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementation((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  })
+  const pending = useConversationStore.getState().connect('D:/Project')
+  const connecting = useConversationStore.getState()
+  for (let index = 0; index < 10; index++) {
+    await useConversationStore.getState().connect('d:\\project')
+  }
+  expect(connectPi).toHaveBeenCalledTimes(1)
+  expect(useConversationStore.getState()).toBe(connecting)
+
+  const fresh = { ...snapshot, sessionFile: 'empty.jsonl' }
+  vi.mocked(setPiThinkingLevel).mockResolvedValue(fresh)
+  hydrate(fresh)
+  finish()
+  await pending
+  const ready = useConversationStore.getState()
+  await useConversationStore.getState().connect('D:/Project')
+  expect(connectPi).toHaveBeenCalledTimes(1)
+  expect(useConversationStore.getState()).toBe(ready)
+
+  useConversationStore.setState({
+    messages: [{ ...message, text: '已经发送', status: 'complete' }],
+  })
+  vi.mocked(connectPi).mockImplementation(async (_project, onSnapshot) => onSnapshot(fresh))
+  await useConversationStore.getState().connect('D:/Project')
+  expect(connectPi).toHaveBeenCalledTimes(2)
+  await useConversationStore.getState().connect('another-project')
+  expect(connectPi).toHaveBeenCalledTimes(3)
+  await useConversationStore.getState().connect('another-project', null, { force: true })
+  expect(connectPi).toHaveBeenCalledTimes(4)
+})
+
+test('a failed new-chat request remains retryable for the same project', async () => {
+  vi.mocked(connectPi).mockRejectedValueOnce(new Error('连接失败'))
+  await useConversationStore.getState().connect(null)
+  expect(useConversationStore.getState().status).toBe('disconnected')
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => hydrate(snapshot))
+  await useConversationStore.getState().connect(null)
+  expect(connectPi).toHaveBeenCalledTimes(2)
+  expect(useConversationStore.getState().status).toBe('ready')
 })
 
 test('navigating away during a forced refresh keeps the latest local transcript in cache', async () => {

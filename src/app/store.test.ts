@@ -120,6 +120,66 @@ test('external CLI changes refresh idle history and never reopen a running task'
   expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
 })
 
+test.each(['connecting', 'ready'] as const)(
+  'repeated new-chat clicks preserve the %s session, selection, draft and attachments',
+  async (status) => {
+    const attachments = [
+      {
+        id: 'image',
+        name: 'photo.png',
+        kind: 'image',
+        mimeType: 'image/png',
+        size: 1,
+        preview: null,
+      },
+    ]
+    useWorkspaceStore.setState({
+      projectPath: session.cwd,
+      selectedSessionPath: 'new.jsonl',
+      draft: '保留正在输入的内容',
+      draftAttachments: attachments,
+    })
+    useConversationStore.setState({
+      connectionTarget: { projectPath: session.cwd, sessionPath: null },
+      instanceId: status === 'ready' ? 'new-runtime' : null,
+      sessionFile: status === 'ready' ? 'new.jsonl' : null,
+      status,
+    })
+    const before = useWorkspaceStore.getState()
+    await useWorkspaceStore.getState().newConversation(session.cwd.toLowerCase())
+    expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+    expect(useWorkspaceStore.getState()).toBe(before)
+  },
+)
+
+test('choosing another project preserves the unsent draft and attachments', async () => {
+  const attachments = [
+    { id: 'file', name: 'notes.txt', kind: 'text', mimeType: 'text/plain', size: 1, preview: null },
+  ]
+  useWorkspaceStore.setState({ draft: '分析这个项目', draftAttachments: attachments })
+  useConversationStore.setState({
+    connectionTarget: { projectPath: null, sessionPath: null },
+    instanceId: 'new-runtime',
+    status: 'ready',
+  })
+  await useWorkspaceStore.getState().newConversation(session.cwd, { preserveDraft: true })
+  expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
+  expect(useWorkspaceStore.getState().draft).toBe('分析这个项目')
+  expect(useWorkspaceStore.getState().draftAttachments).toBe(attachments)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+})
+
+test('an empty saved conversation still creates a separate new chat', async () => {
+  useWorkspaceStore.setState({ projectPath: session.cwd })
+  useConversationStore.setState({
+    connectionTarget: { projectPath: session.cwd, sessionPath: session.path },
+    instanceId: 'saved-runtime',
+    status: 'ready',
+  })
+  await useWorkspaceStore.getState().newConversation(session.cwd)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+})
+
 function finishLocalReply() {
   const message = {
     id: 'local-run-user',

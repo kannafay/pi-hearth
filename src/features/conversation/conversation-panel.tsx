@@ -45,9 +45,11 @@ const ConversationRow = memo(function ConversationRow({
 const ConversationMessages = memo(function ConversationMessages({
   controller,
   onActionStart,
+  onCreateProject,
 }: {
   controller: RefObject<ScrollController | null>
   onActionStart: () => void
+  onCreateProject?: () => void
 }) {
   const ids = useConversationStore((state) => selectView(state).ids)
   const viewport = useRef<HTMLDivElement>(null)
@@ -147,15 +149,23 @@ const ConversationMessages = memo(function ConversationMessages({
         </div>
       ) : (
         <div className="h-full py-8">
-          <ConversationWelcome />
+          <ConversationWelcome onCreateProject={onCreateProject} />
         </div>
       )}
     </ScrollArea>
   )
 })
 
-export const ConversationPanel = memo(function ConversationPanel() {
-  const session = useConversationStore((state) => state.sessionFile)
+export const ConversationPanel = memo(function ConversationPanel({
+  onCreateProject,
+}: {
+  onCreateProject?: () => void
+}) {
+  const session = useConversationStore((state) =>
+    state.connectionTarget?.sessionPath === null && !state.messages.length && !state.tools.length
+      ? null
+      : state.sessionFile,
+  )
   const controller = useRef<ScrollController | null>(null)
   const toEnd = useCallback(() => controller.current?.toEnd(), [])
   return (
@@ -165,6 +175,7 @@ export const ConversationPanel = memo(function ConversationPanel() {
           key={session ?? 'new'}
           controller={controller}
           onActionStart={toEnd}
+          onCreateProject={onCreateProject}
         />
       </ConversationLocalState>
       <Composer onSendStart={toEnd} />

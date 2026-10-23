@@ -17,7 +17,7 @@ import {
   updateSessionPreference,
   deleteArchivedSessions,
 } from '@/lib/workspace'
-import { useConversationStore } from '@/features/conversation/store'
+import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
 import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
 
 export type Theme = AppTheme
@@ -62,7 +62,10 @@ interface WorkspaceState {
   initialize: () => Promise<void>
   refresh: () => Promise<void>
   openSession: (session: SessionInfo) => Promise<void>
-  newConversation: (projectPath: string | null) => Promise<void>
+  newConversation: (
+    projectPath: string | null,
+    options?: { preserveDraft?: boolean },
+  ) => Promise<void>
   addProject: (path: string, name?: string | null) => Promise<void>
   reloadCurrent: () => Promise<void>
 }
@@ -339,14 +342,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     })
     await useConversationStore.getState().connect(projectPath, session.path)
   },
-  newConversation: async (projectPath) => {
+  newConversation: async (projectPath, options) => {
     if (busy()) return
+    if (canReuseNewConversation(useConversationStore.getState(), projectPath)) return
     const request = ++navigation
-    get().clearAttachments()
+    if (!options?.preserveDraft) get().clearAttachments()
     set({
       projectPath,
       selectedSessionPath: null,
-      draft: '',
+      ...(options?.preserveDraft ? {} : { draft: '' }),
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
@@ -355,12 +359,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },
   addProject: async (path, name = null) => {
+    const preserveDraft = canReuseNewConversation(
+      useConversationStore.getState(),
+      get().projectPath,
+    )
     const project = await addProject(path, name)
     const projects = get().projects.some((item) => samePath(item.path, project.path))
       ? get().projects
       : [...get().projects, project]
     set({ projects })
-    await get().newConversation(project.path)
+    await get().newConversation(project.path, { preserveDraft })
   },
   reloadCurrent: async () => {
     if (busy()) return

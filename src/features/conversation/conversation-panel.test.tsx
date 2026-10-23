@@ -88,6 +88,29 @@ test('sent attachments sit outside and before the text bubble and still open pre
   expect(useWorkspaceStore.getState().attachmentPreview).toEqual(image)
 })
 
+test('preparing an empty new conversation and choosing its project keep the welcome screen mounted', () => {
+  useConversationStore.setState({
+    status: 'connecting',
+    connectionTarget: { projectPath: null, sessionPath: null },
+    sessionFile: null,
+  })
+  render(<ConversationPanel />)
+  const welcome = screen.getByRole('heading', { name: '开始一段新对话' })
+  const picker = screen.getByRole('button', { name: '选择对话项目' })
+  act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'new.jsonl' }))
+  expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
+  act(() =>
+    useConversationStore.setState({
+      status: 'connecting',
+      connectionTarget: { projectPath: 'D:/project', sessionPath: null },
+      sessionFile: null,
+    }),
+  )
+  act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'project-new.jsonl' }))
+  expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
+  expect(screen.getByRole('button', { name: '选择对话项目' })).toBe(picker)
+})
+
 test('an attachment-only message has a clickable file without an empty text bubble', async () => {
   const file = {
     id: 'file',
