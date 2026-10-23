@@ -22,6 +22,7 @@ const saved: AppSettings = {
   thinkingLevel: 'xhigh',
   projectsDirectory: 'D:/saved-projects',
   customProjectsDirectory: 'D:/saved-projects',
+  developerMode: true,
 }
 
 beforeEach(() => {

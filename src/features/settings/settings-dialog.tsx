@@ -20,6 +20,7 @@ import { ModelSettings } from './model-settings'
 import { SettingsPageHeader } from './settings-page-header'
 import { ArchivedSessions } from './archived-sessions'
 import { ProjectLocationSettings } from './project-location-settings'
+import { DeveloperModeSettings } from './developer-mode-settings'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
@@ -172,6 +173,7 @@ export function SettingsDialog({
                     </div>
                   </div>
                 )}
+                <DeveloperModeSettings />
               </TabsContent>
               <TabsContent value="about" className="settings-panel m-0">
                 <SettingsPageHeader title="Pi Hearth" description="Pi Coding Agent 桌面工作台" />

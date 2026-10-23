@@ -687,6 +687,13 @@ pub async fn pi_open(
     session_path: Option<String>,
     on_event: Channel<PiEvent>,
 ) -> Result<RuntimeSnapshot, String> {
+    let trace = crate::developer::Operation::start("切换会话", || {
+        format!(
+            "project={} session={}",
+            project_path.as_deref().unwrap_or("聊天"),
+            session_path.as_deref().unwrap_or("新对话")
+        )
+    });
     let (request, mut cancelled) = workspace.begin_open();
     let operation = async {
         let _open_lock = workspace.open_gate.lock().await;
@@ -771,11 +778,13 @@ pub async fn pi_open(
         save(&data, &prefs).await?;
         Ok(snapshot)
     };
-    tokio::select! {
+    let result = tokio::select! {
         biased;
         _ = cancelled.wait_for(|generation| *generation != request) => Err("已切换到其他会话。".into()),
         result = timeout(Duration::from_secs(45), operation) => result.unwrap_or_else(|_| Err("连接超时，请重试；也可以从侧栏打开其他会话。".into())),
-    }
+    };
+    trace.finish(&result);
+    result
 }
 
 #[cfg(test)]

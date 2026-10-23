@@ -292,7 +292,7 @@ fn write_settings(connection: &Connection, settings: &serde_json::Value) -> Resu
     Ok(())
 }
 
-pub(super) async fn settings(data: &Path) -> Result<AppSettings, String> {
+pub(crate) async fn settings(data: &Path) -> Result<AppSettings, String> {
     with_database(data, |connection| read_settings(connection)).await
 }
 
@@ -327,7 +327,17 @@ pub async fn app_update_settings(
     patch: AppSettingsPatch,
 ) -> Result<AppSettings, String> {
     let data = app.path().app_local_data_dir().map_err(database_error)?;
-    update_settings(&data, patch).await
+    let Some(enabled) = patch.developer_mode else {
+        return update_settings(&data, patch).await;
+    };
+    let _gate = crate::developer::SETTINGS_GATE.lock().await;
+    let previous = settings(&data).await?.developer_mode;
+    crate::developer::set_enabled(&data, enabled)?;
+    let result = update_settings(&data, patch).await;
+    if result.is_err() {
+        let _ = crate::developer::set_enabled(&data, previous);
+    }
+    result
 }
 
 pub(super) async fn search_documents(
@@ -521,6 +531,7 @@ mod tests {
                 &root,
                 AppSettingsPatch {
                     theme: Some(AppTheme::Dark),
+                    developer_mode: Some(true),
                     ..Default::default()
                 }
             ),
@@ -541,6 +552,7 @@ mod tests {
             .unwrap();
         let saved = settings(&root).await.unwrap();
         assert!(matches!(saved.theme, AppTheme::Dark));
+        assert!(saved.developer_mode);
         assert_eq!(saved.navigation_width, 312.0);
         assert_eq!(saved.thinking_level.as_deref(), Some("xhigh"));
 
@@ -569,6 +581,7 @@ mod tests {
         );
         let reopened = settings(&root).await.unwrap();
         assert!(matches!(reopened.theme, AppTheme::Dark));
+        assert!(reopened.developer_mode);
         assert_eq!(reopened.navigation_width, 312.0);
         assert_eq!(reopened.thinking_level.as_deref(), Some("xhigh"));
     }

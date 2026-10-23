@@ -166,6 +166,7 @@ pub struct AppSettings {
     pub thinking_level: Option<String>,
     pub projects_directory: String,
     pub custom_projects_directory: String,
+    pub developer_mode: bool,
 }
 
 impl Default for AppSettings {
@@ -185,6 +186,7 @@ impl Default for AppSettings {
             thinking_level: None,
             projects_directory: String::new(),
             custom_projects_directory: String::new(),
+            developer_mode: false,
         }
     }
 }
@@ -231,6 +233,9 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub custom_projects_directory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub developer_mode: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]

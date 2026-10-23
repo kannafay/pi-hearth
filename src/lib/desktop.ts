@@ -15,6 +15,11 @@ export async function getAppVersion() {
   return invoke<string>('get_app_version')
 }
 
+export async function openDeveloperConsole() {
+  requireDesktop()
+  await invoke<void>('developer_console_open')
+}
+
 export async function setWindowTheme(theme: 'light' | 'dark' | null) {
   if (isDesktop()) await getCurrentWindow().setTheme(theme)
 }

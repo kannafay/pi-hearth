@@ -11,6 +11,7 @@ vi.mock('@/lib/desktop', () => ({
   getAppVersion: vi.fn(),
   isDesktop: vi.fn(),
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
+  openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/system-theme', () => ({
   usesNativeSystemTheme: () => true,

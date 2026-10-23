@@ -1,4 +1,5 @@
 mod desktop;
+mod developer;
 mod pi;
 #[cfg(windows)]
 mod theme;
@@ -69,6 +70,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            developer::developer_console_open,
             #[cfg(windows)]
             theme::get_system_theme,
             #[cfg(not(windows))]

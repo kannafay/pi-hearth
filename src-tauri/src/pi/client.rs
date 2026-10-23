@@ -212,6 +212,7 @@ impl PiClient {
             .spawn()
             .map_err(|_| "无法启动 Pi：请确认 Node.js 22.19 或以上版本已加入 PATH。")?;
         let process_id = child.id().ok_or("Pi 进程未启动。")?;
+        crate::developer::record("Pi 进程", || format!("启动 pid={process_id}"));
         let tree = match ProcessTree::attach(process_id) {
             Ok(tree) => tree,
             Err(error) => {
@@ -245,6 +246,7 @@ impl PiClient {
                     status = child.wait() => {
                         let summary = match status { Ok(status) => format!("Pi 进程已退出（{status}），请重新连接。"), Err(_) => "无法读取 Pi 进程状态，请重新连接。".into() };
                         let diagnostic = redact(String::from_utf8_lossy(&diagnostic_tail).trim().into(), &config.secrets);
+                        crate::developer::record("Pi 进程", || format!("{summary} {diagnostic}"));
                         exit_error = Some(if diagnostic.is_empty() { summary } else { format!("{summary}\n{diagnostic}") });
                         break;
                     }
@@ -593,18 +595,27 @@ impl PiClient {
     }
 
     pub async fn request(&self, body: Value, run_id: Option<String>) -> Result<Value, String> {
-        let (reply, receive) = oneshot::channel();
-        self.control(Control::Request {
-            body,
-            run_id,
-            reply,
-        })
-        .await
-        .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
-        timeout(Duration::from_secs(25), receive)
+        let trace =
+            crate::developer::Operation::start(body["type"].as_str().unwrap_or("Pi RPC"), || {
+                format!("instance={}", self.instance_id)
+            });
+        let result = async {
+            let (reply, receive) = oneshot::channel();
+            self.control(Control::Request {
+                body,
+                run_id,
+                reply,
+            })
             .await
-            .map_err(|_| "Pi 命令响应超时。")?
-            .map_err(|_| "Pi 连接已关闭。")?
+            .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
+            timeout(Duration::from_secs(25), receive)
+                .await
+                .map_err(|_| "Pi 命令响应超时。")?
+                .map_err(|_| "Pi 连接已关闭。")?
+        }
+        .await;
+        trace.finish(&result);
+        result
     }
 
     pub async fn rewrite(
@@ -813,6 +824,24 @@ async fn persist_tool(
 
 fn emit(channel: &Channel<PiEvent>, events: Vec<PiEvent>) {
     for event in events {
+        match &event.data {
+            EventData::RunStarted { .. } => crate::developer::record("回复开始", || {
+                format!(
+                    "instance={} run={}",
+                    event.instance_id,
+                    event.run_id.as_deref().unwrap_or("")
+                )
+            }),
+            EventData::RunFinished { status, error, .. } => {
+                crate::developer::record("回复结束", || {
+                    format!("status={status} error={}", error.as_deref().unwrap_or("无"))
+                })
+            }
+            EventData::Disconnected { error } => {
+                crate::developer::record("连接断开", || error.clone().unwrap_or_default())
+            }
+            _ => {}
+        }
         let _ = channel.send(event);
     }
 }

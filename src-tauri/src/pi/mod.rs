@@ -2,7 +2,7 @@ pub mod attachments;
 pub mod catalog;
 mod client;
 mod config;
-mod process_tree;
+pub(crate) mod process_tree;
 mod protocol;
 mod rewrite;
 mod search;
@@ -125,19 +125,27 @@ pub async fn pi_set_model(
     provider: String,
     model_id: String,
 ) -> Result<RuntimeSnapshot, String> {
-    let client = manager.client(&instance_id).await?;
-    let _action = client.actions.lock().await;
-    client
-        .request(
-            json!({"type":"set_model","provider":provider,"modelId":model_id}),
-            None,
-        )
-        .await?;
-    client.request(json!({"type":"get_state"}), None).await?;
-    client
-        .request(json!({"type":"get_available_thinking_levels"}), None)
-        .await?;
-    client.snapshot().await
+    let trace = crate::developer::Operation::start("切换模型", || {
+        format!("{provider}/{model_id} instance={instance_id}")
+    });
+    let result = async {
+        let client = manager.client(&instance_id).await?;
+        let _action = client.actions.lock().await;
+        client
+            .request(
+                json!({"type":"set_model","provider":provider,"modelId":model_id}),
+                None,
+            )
+            .await?;
+        client.request(json!({"type":"get_state"}), None).await?;
+        client
+            .request(json!({"type":"get_available_thinking_levels"}), None)
+            .await?;
+        client.snapshot().await
+    }
+    .await;
+    trace.finish(&result);
+    result
 }
 
 #[tauri::command]
@@ -146,27 +154,35 @@ pub async fn pi_set_thinking_level(
     instance_id: String,
     level: String,
 ) -> Result<RuntimeSnapshot, String> {
-    let client = manager.client(&instance_id).await?;
-    let _action = client.actions.lock().await;
-    let snapshot = client.snapshot().await?;
-    let level = if level == "default" {
-        let model = snapshot.model.as_ref().ok_or("请先选择模型。")?;
-        config::default_thinking_level(
-            &config::local_agent_directory()?,
-            &model.provider,
-            &model.id,
-        )?
-    } else {
-        if !snapshot.available_thinking_levels.contains(&level) {
-            return Err("当前模型不支持这个思考档位。".into());
-        }
-        level
-    };
-    client
-        .request(json!({"type":"set_thinking_level","level":level}), None)
-        .await?;
-    client.request(json!({"type":"get_state"}), None).await?;
-    client.snapshot().await
+    let trace = crate::developer::Operation::start("切换思考强度", || {
+        format!("{level} instance={instance_id}")
+    });
+    let result = async {
+        let client = manager.client(&instance_id).await?;
+        let _action = client.actions.lock().await;
+        let snapshot = client.snapshot().await?;
+        let level = if level == "default" {
+            let model = snapshot.model.as_ref().ok_or("请先选择模型。")?;
+            config::default_thinking_level(
+                &config::local_agent_directory()?,
+                &model.provider,
+                &model.id,
+            )?
+        } else {
+            if !snapshot.available_thinking_levels.contains(&level) {
+                return Err("当前模型不支持这个思考档位。".into());
+            }
+            level
+        };
+        client
+            .request(json!({"type":"set_thinking_level","level":level}), None)
+            .await?;
+        client.request(json!({"type":"get_state"}), None).await?;
+        client.snapshot().await
+    }
+    .await;
+    trace.finish(&result);
+    result
 }
 
 #[tauri::command]

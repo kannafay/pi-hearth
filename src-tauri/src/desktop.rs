@@ -35,6 +35,9 @@ pub fn shutdown(app: &AppHandle, action: Shutdown) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         app.state::<PiManager>().disconnect().await;
+        if let Ok(data) = app.path().app_local_data_dir() {
+            let _ = crate::developer::set_enabled(&data, false);
+        }
         match action {
             Shutdown::Exit(code) => app.exit(code),
             Shutdown::Restart => app.request_restart(),
@@ -52,6 +55,16 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle();
+    let _ = tauri::async_runtime::block_on(async {
+        let _gate = crate::developer::SETTINGS_GATE.lock().await;
+        let data = handle
+            .path()
+            .app_local_data_dir()
+            .map_err(|e| e.to_string())?;
+        let settings = crate::pi::storage::settings(&data).await?;
+        crate::developer::set_enabled(&data, settings.developer_mode)
+    });
     #[cfg(windows)]
     crate::theme::install(app.handle())?;
     #[cfg(windows)]

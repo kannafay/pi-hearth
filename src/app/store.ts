@@ -86,6 +86,9 @@ interface WorkspaceState {
   theme: Theme
   projectsDirectory: string
   customProjectsDirectory: string
+  developerMode: boolean
+  developerModePending: boolean
+  setDeveloperMode: (enabled: boolean) => Promise<void>
   setProjectsDirectory: (directory: string) => void
   setProject: (path: string) => void
   setDraft: (draft: string) => void
@@ -354,6 +357,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         archivedProjects: settings.archivedProjects ?? [],
         projectsDirectory: settings.projectsDirectory,
         customProjectsDirectory,
+        developerMode: settings.developerMode ?? false,
         settingsReady: true,
       })
     } catch (reason) {
@@ -363,6 +367,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   theme: 'system',
+  developerMode: false,
+  developerModePending: false,
+  setDeveloperMode: async (enabled) => {
+    if (get().developerModePending) return
+    set({ developerModePending: true })
+    try {
+      const settings = await updateAppSettings({ developerMode: enabled })
+      set({ developerMode: settings.developerMode })
+    } finally {
+      set({ developerModePending: false })
+    }
+  },
   projectsDirectory: '',
   customProjectsDirectory: '',
   setProjectsDirectory: (projectsDirectory) =>
