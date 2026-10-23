@@ -233,7 +233,7 @@ export function WorkspaceShell() {
             </div>
           </ResizablePanel>
           <ResizableHandle
-            className="workspace-panel-separator bg-transparent"
+            className="workspace-panel-separator z-10 w-0 bg-transparent"
             data-panel-open={sidebarOpen}
             disabled={!sidebarOpen}
           />
