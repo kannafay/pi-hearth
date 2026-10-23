@@ -244,6 +244,10 @@ select {
   background: var(--shell-tint);
 }
 
+:root[data-native-backdrop] .workspace-shell {
+  background: transparent;
+}
+
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);

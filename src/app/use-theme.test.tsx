@@ -134,3 +134,18 @@ test('other desktop platforms retain their native automatic-theme mode', () => {
   act(() => useWorkspaceStore.getState().setTheme('system'))
   expect(vi.mocked(setWindowTheme).mock.calls).toEqual([[null], ['light'], [null]])
 })
+
+test('Windows desktop exposes the native backdrop through both themes and cleans up on unmount', () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  const { unmount } = renderHook(useTheme)
+  expect(document.documentElement).toHaveAttribute('data-native-backdrop')
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(document.documentElement).toHaveAttribute('data-native-backdrop')
+  unmount()
+  expect(document.documentElement).not.toHaveAttribute('data-native-backdrop')
+})
+
+test('browser previews keep their opaque shell background', () => {
+  renderHook(useTheme)
+  expect(document.documentElement).not.toHaveAttribute('data-native-backdrop')
+})

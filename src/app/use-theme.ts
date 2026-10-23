@@ -35,6 +35,7 @@ export function useTheme() {
   // Changing the preference without changing its resolved color must not repaint Mica.
   useLayoutEffect(() => {
     const root = document.documentElement
+    root.toggleAttribute('data-native-backdrop', isDesktop() && usesNativeSystemTheme())
     const scheme = dark ? 'dark' : 'light'
     let frame: number | undefined
     if (root.classList.contains('dark') !== dark || root.style.colorScheme !== scheme) {
@@ -51,6 +52,7 @@ export function useTheme() {
     return () => {
       if (frame !== undefined) window.cancelAnimationFrame(frame)
       root.removeAttribute('data-theme-changing')
+      root.removeAttribute('data-native-backdrop')
     }
   }, [dark, nativeTheme])
 }
