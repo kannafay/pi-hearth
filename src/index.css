@@ -624,8 +624,8 @@ select {
   --os-padding-perpendicular: 3px;
   --os-padding-axis: 3px;
   --os-handle-perpendicular-size: 4px;
-  --os-handle-perpendicular-size-hover: 8px;
-  --os-handle-perpendicular-size-active: 8px;
+  --os-handle-perpendicular-size-hover: 6px;
+  --os-handle-perpendicular-size-active: 6px;
   --os-handle-interactive-area-offset: 4px;
   --os-handle-border-radius: 999px;
   --os-handle-min-size: 24px;
