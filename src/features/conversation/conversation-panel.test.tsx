@@ -96,7 +96,7 @@ test('preparing an empty new conversation and choosing its project keep the welc
   })
   render(<ConversationPanel />)
   const welcome = screen.getByRole('heading', { name: '开始一段新对话' })
-  const picker = screen.getByRole('button', { name: '选择对话项目' })
+  const picker = screen.getByRole('combobox', { name: '选择对话项目' })
   act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'new.jsonl' }))
   expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
   act(() =>
@@ -108,7 +108,7 @@ test('preparing an empty new conversation and choosing its project keep the welc
   )
   act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'project-new.jsonl' }))
   expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
-  expect(screen.getByRole('button', { name: '选择对话项目' })).toBe(picker)
+  expect(screen.getByRole('combobox', { name: '选择对话项目' })).toBe(picker)
 })
 
 test('an attachment-only message has a clickable file without an empty text bubble', async () => {

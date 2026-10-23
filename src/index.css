@@ -621,6 +621,61 @@ select {
   min-width: max(12rem, var(--anchor-width));
 }
 
+.composer-project-reveal {
+  position: relative;
+  height: 0;
+  opacity: 0;
+  transition:
+    height var(--sidebar-motion-duration) var(--sidebar-motion-ease),
+    opacity var(--sidebar-motion-duration) var(--sidebar-motion-ease);
+}
+
+.composer-project-reveal[data-open='true'] {
+  height: 36px;
+  opacity: 1;
+}
+
+.composer-project-clip {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 36px;
+  overflow: hidden;
+}
+
+.composer-project-shelf {
+  display: flex;
+  height: 36px;
+  margin-inline: 24px;
+  align-items: center;
+  border: 1px solid var(--input);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  padding-inline: 8px;
+  background: var(--composer-background);
+  transform: translateY(100%);
+  transition: transform var(--sidebar-motion-duration) var(--sidebar-motion-ease);
+}
+
+.composer-project-reveal[data-open='true'] .composer-project-shelf {
+  transform: translateY(0);
+}
+
+@starting-style {
+  .composer-project-reveal[data-open='true'] {
+    height: 0;
+    opacity: 0;
+  }
+
+  .composer-project-reveal[data-open='true'] .composer-project-shelf {
+    transform: translateY(100%);
+  }
+}
+
+.project-picker-popup {
+  max-height: min(22rem, var(--available-height));
+}
+
 .os-theme-hearth {
   --os-size: 14px;
   --os-padding-perpendicular: 3px;

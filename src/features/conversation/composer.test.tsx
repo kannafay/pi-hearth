@@ -50,6 +50,44 @@ beforeEach(() => {
   vi.mocked(stageFiles).mockResolvedValue([file])
 })
 
+test('the project shelf slides out for a new conversation and stays mounted while hiding during a reply', async () => {
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const picker = screen.getByRole('combobox', { name: '选择对话项目' })
+  const shelf = picker.closest('.composer-project-reveal')!
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  expect(shelf).toHaveAttribute('data-open', 'true')
+  expect(shelf.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  await user.click(picker)
+  expect(await screen.findByRole('combobox', { name: '搜索项目名称或路径' })).toBeVisible()
+
+  act(() => useConversationStore.setState({ status: 'running' }))
+  expect(shelf).toHaveAttribute('data-open', 'false')
+  expect(shelf).toHaveAttribute('inert')
+  expect(picker).toBeInTheDocument()
+  expect(picker).toBeDisabled()
+  await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument())
+  act(() =>
+    useConversationStore.setState({
+      status: 'ready',
+      messages: [
+        { id: 'sent', role: 'user', text: '已发送', thinking: '', status: 'complete', error: null },
+      ],
+    }),
+  )
+  expect(shelf).toHaveAttribute('data-open', 'false')
+  act(() =>
+    useConversationStore.setState({
+      status: 'connecting',
+      messages: [],
+      connectionTarget: { projectPath: null, sessionPath: null },
+    }),
+  )
+  expect(shelf).toHaveAttribute('data-open', 'true')
+  expect(screen.getByRole('combobox', { name: '选择对话项目' })).toBe(picker)
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+})
+
 test('selected files are sent with the draft and cleared only after acceptance', async () => {
   const user = userEvent.setup()
   render(<Composer onSendStart={() => {}} />)

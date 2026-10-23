@@ -24,8 +24,15 @@ import { AttachmentList } from './attachment-list'
 import { useConversationStore } from './store'
 import { ConnectionNotice } from './connection-notice'
 import { sessionKey } from '@/lib/session-preferences'
+import { ConversationProjectPicker } from './conversation-project-picker'
 
-export function Composer({ onSendStart }: { onSendStart: () => void }) {
+export function Composer({
+  onSendStart,
+  onCreateProject,
+}: {
+  onSendStart: () => void
+  onCreateProject?: () => void
+}) {
   const { draft, setDraft, draftAttachments, clearAttachments, sessionActionPending } =
     useWorkspaceStore()
   const {
@@ -38,6 +45,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
     settingsPending,
     activity,
     model,
+    openingSession,
     send,
     stop,
   } = useConversationStore(
@@ -50,6 +58,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
       settingsPending: state.settingsPending,
       activity: state.activity,
       model: state.model,
+      openingSession: Boolean(state.connectionTarget?.sessionPath),
       send: state.send,
       stop: state.stop,
       runStarted: Boolean(
@@ -64,6 +73,7 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
   const [dragging, setDragging] = useState(false)
   const nativePaste = useRef<Promise<Attachment[]> | null>(null)
   const busy = status === 'running' || status === 'stopping'
+  const choosingProject = !hasMessages && !busy && !readOnly && !openingSession
   const desktop = isDesktop()
   const connecting = status === 'connecting' || status === 'disconnected'
   const sessionUpdating = Boolean(
@@ -175,8 +185,23 @@ export function Composer({ onSendStart }: { onSendStart: () => void }) {
         </p>
       )}
       <div
+        className="composer-project-reveal"
+        data-open={choosingProject}
+        aria-hidden={!choosingProject}
+        inert={!choosingProject}
+      >
+        <div className="composer-project-clip">
+          <div className="composer-project-shelf">
+            <ConversationProjectPicker
+              disabled={!choosingProject}
+              onCreateProject={onCreateProject}
+            />
+          </div>
+        </div>
+      </div>
+      <div
         aria-label="消息输入区"
-        className={`relative overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
+        className={`relative z-1 overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault()

@@ -5,9 +5,8 @@ import { isDesktop } from '@/lib/desktop'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConnectionNotice } from './connection-notice'
 import { useConversationStore } from './store'
-import { ConversationProjectPicker } from './conversation-project-picker'
 
-export function ConversationWelcome({ onCreateProject }: { onCreateProject?: () => void }) {
+export function ConversationWelcome() {
   const { projectPath } = useWorkspaceStore()
   const { status, sessionFile, error } = useConversationStore(
     useShallow((state) => ({
@@ -71,7 +70,6 @@ export function ConversationWelcome({ onCreateProject }: { onCreateProject?: () 
               ? '围绕当前项目提问，或添加文件一起处理。'
               : '从一个问题开始，也可以选择项目或添加文件。'}
         </p>
-        {!error && <ConversationProjectPicker onCreateProject={onCreateProject} />}
         <ConnectionNotice className="mt-5" />
         {!desktop && (
           <p className="mt-4 text-xs text-muted-foreground">浏览器预览 · 对话需在桌面应用中使用</p>
