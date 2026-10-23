@@ -20,20 +20,34 @@ export function ConnectionNotice({ className = '' }: { className?: string }) {
       })),
     )
   const projectPath = useWorkspaceStore((state) => state.projectPath)
+  const [visibleFor, setVisibleFor] = useState<number | null>(null)
   const [slowFor, setSlowFor] = useState<number | null>(null)
   const connecting = status === 'connecting'
+  const newChat = !sessionFile && !hasMessages
+  const settling =
+    connecting && newChat && connectionStartedAt !== null && visibleFor !== connectionStartedAt
   const slow = connecting && connectionStartedAt !== null && slowFor === connectionStartedAt
 
   useEffect(() => {
     if (!connecting || connectionStartedAt === null) return
+    // A reused process usually creates a session within a few frames.
+    const reveal = newChat
+      ? setTimeout(
+          () => setVisibleFor(connectionStartedAt),
+          Math.max(0, 500 - (Date.now() - connectionStartedAt)),
+        )
+      : null
     const timer = setTimeout(
       () => setSlowFor(connectionStartedAt),
       Math.max(0, 8000 - (Date.now() - connectionStartedAt)),
     )
-    return () => clearTimeout(timer)
-  }, [connecting, connectionStartedAt])
+    return () => {
+      if (reveal !== null) clearTimeout(reveal)
+      clearTimeout(timer)
+    }
+  }, [connecting, newChat, connectionStartedAt])
 
-  if (!connecting && status !== 'disconnected') return null
+  if (settling || (!connecting && status !== 'disconnected')) return null
 
   return (
     <div
@@ -50,10 +64,14 @@ export function ConnectionNotice({ className = '' }: { className?: string }) {
       <span className="min-w-0 flex-1">
         {connecting
           ? slow
-            ? '连接较慢，仍在等待本地助手…'
-            : sessionFile && !hasMessages
-              ? '正在载入会话…'
-              : '正在连接助手…'
+            ? newChat
+              ? '准备时间较长，仍在等待本地助手…'
+              : '连接较慢，仍在等待本地助手…'
+            : newChat
+              ? '正在准备新会话…'
+              : sessionFile && !hasMessages
+                ? '正在载入会话…'
+                : '正在连接助手…'
           : error
             ? '连接未完成'
             : '助手尚未连接'}

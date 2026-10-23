@@ -277,6 +277,71 @@ test('opening the current session is a no-op while forced refreshes and new chat
   expect(connectPi).toHaveBeenCalledTimes(5)
 })
 
+test('new chats retain model choices while clearing the old runtime and history before sending', async () => {
+  const models = [snapshot.model!]
+  useConversationStore.setState({
+    instanceId: 'old-runtime',
+    sessionId: 'old-session',
+    sessionFile: 'old.jsonl',
+    status: 'ready',
+    model: snapshot.model,
+    models,
+    thinkingLevel: 'high',
+    messages: [{ ...message, text: '仅属于旧会话', status: 'complete' }],
+    timeline: [{ kind: 'message', id: message.id }],
+    blocks: { [message.id]: { 0: { kind: 'text', text: '旧内容' } } },
+  })
+  let hydrate!: (value: RuntimeSnapshot) => void
+  let finish!: () => void
+  vi.mocked(connectPi).mockImplementation((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  })
+  const pending = useConversationStore.getState().connect('project')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'connecting',
+    instanceId: null,
+    sessionId: null,
+    sessionFile: null,
+    messages: [],
+    timeline: [],
+    blocks: {},
+    model: snapshot.model,
+    thinkingLevel: 'high',
+    availableThinkingLevels: snapshot.availableThinkingLevels,
+  })
+  expect(useConversationStore.getState().models).toBe(models)
+  expect(await useConversationStore.getState().send('等待新会话准备好')).toBe(false)
+  expect(sendPiMessage).not.toHaveBeenCalled()
+  const obsoleteHydrate = hydrate
+  const finishOld = finish
+  const latest = useConversationStore.getState().connect('project')
+  expect(useConversationStore.getState().models).toBe(models)
+  obsoleteHydrate(sessionSnapshot('obsolete'))
+  expect(useConversationStore.getState().instanceId).toBeNull()
+  const fresh = {
+    ...snapshot,
+    instanceId: 'new-runtime',
+    sessionId: 'new-session',
+    sessionFile: 'new.jsonl',
+    model: { ...snapshot.model!, id: 'authoritative-model' },
+  }
+  vi.mocked(setPiThinkingLevel).mockResolvedValue(fresh)
+  hydrate(fresh)
+  finishOld()
+  finish()
+  await Promise.all([pending, latest])
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    instanceId: fresh.instanceId,
+    sessionFile: fresh.sessionFile,
+    model: fresh.model,
+    messages: [],
+  })
+})
+
 test('navigating away during a forced refresh keeps the latest local transcript in cache', async () => {
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
     hydrate(sessionSnapshot(file!))

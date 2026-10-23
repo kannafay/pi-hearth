@@ -297,12 +297,22 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       key && key === sessionKey(current.sessionFile) && current.messages.length
         ? sessionDisplay(current)
         : cached?.display
+    const settings =
+      !key && current.model && ['ready', 'connecting'].includes(current.status) && !current.readOnly
+        ? {
+            model: current.model,
+            models: current.models,
+            thinkingLevel: current.thinkingLevel,
+            availableThinkingLevels: current.availableThinkingLevels,
+          }
+        : undefined
     if (key && cached) sessionCache = touchSession(sessionCache, key, cached)
     let restorePreference: Promise<void> | undefined
     queued = []
     set({
       ...emptyConversation,
       ...display,
+      ...settings,
       sessionCache,
       requestedThinkingLevel,
       sessionFile: sessionPath ?? null,
