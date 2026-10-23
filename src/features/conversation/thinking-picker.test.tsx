@@ -91,7 +91,57 @@ test('a manual XHigh selection remains distinct from Max and can be reset to Def
   await user.click(screen.getByRole('option', { name: 'Default' }))
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('default')
   act(() => useConversationStore.setState({ settingsPending: 'model' }))
-  expect(picker).toBeDisabled()
+  expect(picker).toBeEnabled()
+})
+
+test('effort choices stay available while connecting and display the queued choice immediately', async () => {
+  const changeThinkingLevel = vi.fn()
+  useConversationStore.setState({
+    status: 'connecting',
+    availableThinkingLevels: [],
+    changeThinkingLevel,
+  })
+  const user = userEvent.setup()
+  render(<ThinkingPicker />)
+  const picker = screen.getByRole('combobox', { name: '思考强度' })
+  expect(picker).toBeEnabled()
+  await user.tab()
+  await user.keyboard(' ')
+  expect(
+    screen.getAllByRole('option').every((item) => item.getAttribute('aria-disabled') !== 'true'),
+  ).toBe(true)
+  await user.click(screen.getByRole('option', { name: 'Max' }))
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('max')
+  act(() =>
+    useConversationStore.setState({
+      status: 'ready',
+      settingsPending: 'thinking',
+      pendingSettings: { model: null, thinkingLevel: 'max' },
+    }),
+  )
+  expect(picker).toBeEnabled()
+  expect(picker).toHaveTextContent('Max')
+})
+
+test('a pending model does not constrain efforts using the previous model capabilities', async () => {
+  const changeThinkingLevel = vi.fn()
+  useConversationStore.setState({
+    status: 'ready',
+    model: { provider: 'p', id: 'old', name: 'Old' },
+    availableThinkingLevels: ['off'],
+    settingsPending: 'model',
+    pendingSettings: {
+      model: { provider: 'p', id: 'new', name: 'New' },
+      thinkingLevel: 'default',
+    },
+    changeThinkingLevel,
+  })
+  const user = userEvent.setup()
+  render(<ThinkingPicker />)
+  await user.tab()
+  await user.keyboard(' ')
+  await user.click(screen.getByRole('option', { name: 'High' }))
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
 })
 
 test('the old fixed effort is replaced by Default and new choices can still be remembered', () => {

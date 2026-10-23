@@ -169,6 +169,254 @@ function sessionSnapshot(file: string, text = `回复 ${file}`): RuntimeSnapshot
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
+test('an uncached session keeps the model catalog and applies only the final choices after hydration', async () => {
+  const first = snapshot.model!
+  const second = { provider: 'other', id: 'chat', name: 'Other Chat' }
+  const models = [first, second]
+  useConversationStore.setState({ instanceId: 'old', status: 'ready', models })
+  const opening = deferred<void>()
+  let hydrate!: (value: RuntimeSnapshot) => void
+  vi.mocked(connectPi).mockImplementation((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return opening.promise
+  })
+  const final = { ...sessionSnapshot('new'), model: second, models, thinkingLevel: 'max' }
+  vi.mocked(setPiModel).mockResolvedValue({ ...final, thinkingLevel: 'medium' })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue(final)
+  const pending = useConversationStore.getState().connect('project', 'new')
+  expect(useConversationStore.getState().models).toBe(models)
+  await useConversationStore.getState().changeModel(first)
+  await useConversationStore.getState().changeThinkingLevel('low')
+  await useConversationStore.getState().changeModel(second)
+  await useConversationStore.getState().changeThinkingLevel('max')
+  expect(setPiModel).not.toHaveBeenCalled()
+  expect(setPiThinkingLevel).not.toHaveBeenCalled()
+  expect(loadThinkingPreference()).toBe('default')
+  hydrate({ ...sessionSnapshot('new'), models })
+  opening.resolve()
+  await pending
+  expect(setPiModel).toHaveBeenCalledExactlyOnceWith('pi-new', 'other', 'chat')
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-new', 'max')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    model: second,
+    requestedThinkingLevel: 'max',
+    thinkingLevel: 'max',
+    pendingSettings: null,
+    settingsPending: null,
+  })
+  expect(loadThinkingPreference()).toBe('max')
+})
+
+test('cached transcript hydration keeps the choices made while reopening that session', async () => {
+  const selected = { provider: 'p', id: 'selected', name: 'Selected' }
+  const models = [snapshot.model!, selected]
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
+    hydrate({ ...sessionSnapshot(file!), models })
+  })
+  vi.mocked(setPiThinkingLevel).mockImplementation(async (instanceId) => ({
+    ...snapshot,
+    instanceId,
+    models,
+  }))
+  await useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().connect('project', 'B')
+  const opening = deferred<void>()
+  let hydrate!: (value: RuntimeSnapshot) => void
+  vi.mocked(connectPi).mockImplementationOnce((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return opening.promise
+  })
+  vi.mocked(setPiModel).mockClear()
+  vi.mocked(setPiModel).mockResolvedValue({ ...sessionSnapshot('A'), models, model: selected })
+  const applying = deferred<RuntimeSnapshot>()
+  vi.mocked(setPiThinkingLevel).mockClear()
+  vi.mocked(setPiThinkingLevel).mockReturnValueOnce(applying.promise)
+  const returning = useConversationStore.getState().connect('project', 'A')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'connecting',
+    messages: [{ text: '回复 A' }],
+    instanceId: null,
+  })
+  await useConversationStore.getState().changeModel(selected)
+  await useConversationStore.getState().changeThinkingLevel('high')
+  hydrate({ ...sessionSnapshot('A', '同步后的回复 A'), models })
+  opening.resolve()
+  await vi.waitFor(() => expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-A', 'high'))
+  expect(useConversationStore.getState()).toMatchObject({
+    messages: [{ text: '同步后的回复 A' }],
+    pendingSettings: { model: selected, thinkingLevel: 'high' },
+  })
+  applying.resolve({ ...sessionSnapshot('A'), model: selected, models, thinkingLevel: 'high' })
+  await returning
+  expect(setPiModel).toHaveBeenCalledExactlyOnceWith('pi-A', 'p', 'selected')
+  expect(useConversationStore.getState()).toMatchObject({
+    model: selected,
+    requestedThinkingLevel: 'high',
+    pendingSettings: null,
+    messages: [{ text: '同步后的回复 A' }],
+  })
+})
+
+test('new choices during automatic effort restoration supersede its acknowledgement and remain unsendable until applied', async () => {
+  const intermediate = { provider: 'p', id: 'intermediate', name: 'Intermediate' }
+  const last = { provider: 'p', id: 'last', name: 'Last' }
+  const restoring = deferred<RuntimeSnapshot>()
+  const applying = deferred<RuntimeSnapshot>()
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => hydrate(snapshot))
+  vi.mocked(setPiThinkingLevel)
+    .mockReturnValueOnce(restoring.promise)
+    .mockReturnValueOnce(applying.promise)
+  vi.mocked(setPiModel).mockResolvedValue({ ...snapshot, model: last })
+  const pending = useConversationStore.getState().connect('project')
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'default')
+  const changes = [
+    useConversationStore.getState().changeModel(intermediate),
+    useConversationStore.getState().changeThinkingLevel('low'),
+    useConversationStore.getState().changeModel(last),
+    useConversationStore.getState().changeThinkingLevel('max'),
+  ]
+  restoring.resolve({ ...snapshot, thinkingLevel: 'off' })
+  await vi.waitFor(() => expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', 'max'))
+  expect(setPiModel).toHaveBeenCalledExactlyOnceWith('pi-1', 'p', 'last')
+  expect(useConversationStore.getState().pendingSettings).toEqual({
+    model: last,
+    thinkingLevel: 'max',
+  })
+  expect(await useConversationStore.getState().send('wait')).toBe(false)
+  expect(loadThinkingPreference()).toBe('default')
+  applying.resolve({ ...snapshot, model: last, thinkingLevel: 'max' })
+  await Promise.all([pending, ...changes])
+  expect(loadThinkingPreference()).toBe('max')
+  expect(await useConversationStore.getState().send('ready')).toBe(true)
+  expect(sendPiMessage).toHaveBeenCalledExactlyOnceWith('pi-1', expect.any(String), 'ready', [])
+})
+
+test('an in-flight model change drains the latest model and effort without parallel requests or stale fallback', async () => {
+  const first = { provider: 'p', id: 'first', name: 'First' }
+  const intermediate = { provider: 'p', id: 'skip', name: 'Skip' }
+  const last = { provider: 'p', id: 'last', name: 'Last' }
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready', model: snapshot.model })
+  const applying = deferred<RuntimeSnapshot>()
+  vi.mocked(setPiModel)
+    .mockReturnValueOnce(applying.promise)
+    .mockResolvedValue({ ...snapshot, model: last })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({
+    ...snapshot,
+    model: last,
+    thinkingLevel: 'max',
+  })
+  const changes = [
+    useConversationStore.getState().changeModel(first),
+    useConversationStore.getState().changeModel(intermediate),
+    useConversationStore.getState().changeThinkingLevel('low'),
+    useConversationStore.getState().changeModel(last),
+    useConversationStore.getState().changeThinkingLevel('max'),
+  ]
+  expect(setPiModel).toHaveBeenCalledTimes(1)
+  expect(setPiThinkingLevel).not.toHaveBeenCalled()
+  applying.resolve({ ...snapshot, model: first, availableThinkingLevels: ['off'] })
+  await Promise.all(changes)
+  expect(vi.mocked(setPiModel).mock.calls).toEqual([
+    ['pi-1', 'p', 'first'],
+    ['pi-1', 'p', 'last'],
+  ])
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'max')
+  expect(useConversationStore.getState()).toMatchObject({
+    model: last,
+    requestedThinkingLevel: 'max',
+    pendingSettings: null,
+  })
+})
+
+test('switching targets discards queued choices and ignores late hydration and setting results', async () => {
+  const discarded = { provider: 'p', id: 'discarded', name: 'Discarded' }
+  const chosen = { provider: 'p', id: 'chosen', name: 'Chosen' }
+  const old = deferred<void>()
+  let hydrateOld!: (value: RuntimeSnapshot) => void
+  vi.mocked(connectPi)
+    .mockImplementationOnce((_project, hydrate) => {
+      hydrateOld = hydrate
+      return old.promise
+    })
+    .mockImplementationOnce(async (_project, hydrate) => hydrate(sessionSnapshot('B')))
+  const pending = useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().changeModel(discarded)
+  await useConversationStore.getState().changeThinkingLevel('max')
+  const restoring = deferred<RuntimeSnapshot>()
+  vi.mocked(setPiThinkingLevel).mockReturnValueOnce(restoring.promise)
+  const latest = useConversationStore.getState().connect('project', 'B')
+  expect(useConversationStore.getState().pendingSettings).toEqual({
+    model: null,
+    thinkingLevel: 'default',
+  })
+  hydrateOld(sessionSnapshot('A'))
+  old.resolve()
+  await pending
+  expect(useConversationStore.getState().instanceId).toBe('pi-B')
+  const changing = useConversationStore.getState().changeModel(chosen)
+  vi.mocked(setPiModel).mockResolvedValue({ ...sessionSnapshot('B'), model: chosen })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({
+    ...sessionSnapshot('B'),
+    model: chosen,
+    thinkingLevel: 'high',
+  })
+  const thinking = useConversationStore.getState().changeThinkingLevel('high')
+  restoring.resolve(sessionSnapshot('B'))
+  await Promise.all([latest, changing, thinking])
+  expect(setPiModel).toHaveBeenCalledExactlyOnceWith('pi-B', 'p', 'chosen')
+  expect(useConversationStore.getState()).toMatchObject({
+    instanceId: 'pi-B',
+    model: chosen,
+    requestedThinkingLevel: 'high',
+  })
+})
+
+test('unsupported queued efforts use the new model default and read-only snapshots discard queued settings', async () => {
+  const model = { provider: 'p', id: 'limited', name: 'Limited' }
+  const opening = deferred<void>()
+  let hydrate!: (value: RuntimeSnapshot) => void
+  vi.mocked(connectPi).mockImplementation((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return opening.promise
+  })
+  vi.mocked(setPiModel).mockResolvedValue({
+    ...snapshot,
+    model,
+    availableThinkingLevels: ['off', 'high'],
+  })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, model, thinkingLevel: 'high' })
+  const pending = useConversationStore.getState().connect('project', 'A')
+  await useConversationStore.getState().changeModel(model)
+  await useConversationStore.getState().changeThinkingLevel('max')
+  hydrate(sessionSnapshot('A'))
+  opening.resolve()
+  await pending
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-A', 'default')
+  expect(useConversationStore.getState().requestedThinkingLevel).toBe('default')
+  const readOnly = useConversationStore.getState().connect('missing', 'B')
+  await useConversationStore.getState().changeModel(model)
+  await useConversationStore.getState().changeThinkingLevel('max')
+  hydrate({ ...sessionSnapshot('B'), readOnly: '文件夹不存在' })
+  await readOnly
+  expect(setPiModel).toHaveBeenCalledTimes(1)
+  expect(useConversationStore.getState()).toMatchObject({
+    readOnly: '文件夹不存在',
+    pendingSettings: null,
+    settingsPending: null,
+  })
+})
+
 test('returning to a cached session displays the latest reply immediately and waits for a fresh runtime before sending', async () => {
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
     hydrate(sessionSnapshot(file!))
@@ -738,7 +986,7 @@ test('a failed thinking change preserves the selected effort and a late result c
   expect(useConversationStore.getState()).toMatchObject({
     instanceId: 'pi-2',
     thinkingLevel: 'high',
-    requestedThinkingLevel: 'max',
+    requestedThinkingLevel: 'default',
     settingsPending: null,
     status: 'ready',
   })
@@ -799,7 +1047,7 @@ test('unsupported manual efforts fall back to Default on model changes and recon
 })
 
 test.each(['model', 'thinking'] as const)(
-  'changing %s leaves the transcript, activity and connection state untouched and blocks racing writes',
+  'changing %s preserves the transcript and serializes newer choices before allowing a send',
   async (kind) => {
     const messages = [{ ...message, text: '保留回复', status: 'complete' }]
     const timeline = [{ kind: 'message', id: message.id }]
@@ -830,12 +1078,12 @@ test.each(['model', 'thinking'] as const)(
           : useConversationStore.getState().changeThinkingLevel('low')
       expect(useConversationStore.getState().settingsPending).toBe(kind)
       expect(await useConversationStore.getState().send('不能抢先发送')).toBe(false)
-      await useConversationStore.getState().changeModel(snapshot.model!)
-      await useConversationStore.getState().changeThinkingLevel('high')
+      const modelChange = useConversationStore.getState().changeModel(snapshot.model!)
+      const thinkingChange = useConversationStore.getState().changeThinkingLevel('high')
       expect(setPiModel).toHaveBeenCalledTimes(kind === 'model' ? 1 : 0)
       expect(setPiThinkingLevel).toHaveBeenCalledTimes(kind === 'thinking' ? 1 : 0)
       finish(snapshot)
-      await pending
+      await Promise.all([pending, modelChange, thinkingChange])
       const state = useConversationStore.getState()
       expect(states.every((status) => status === 'ready')).toBe(true)
       expect(state.messages).toBe(messages)
@@ -845,6 +1093,8 @@ test.each(['model', 'thinking'] as const)(
       expect(state.activity).toBe('已停止生成')
       expect(state.sequence).toBe(42)
       expect(state.settingsPending).toBeNull()
+      expect(state.pendingSettings).toBeNull()
+      expect(state.requestedThinkingLevel).toBe('high')
     } finally {
       unsubscribe()
     }

@@ -18,6 +18,7 @@ import {
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 import { getResponseStatus } from './response-status'
+import { modelKey } from './models'
 import {
   rememberSession,
   sessionDisplay,
@@ -44,6 +45,7 @@ export interface ConversationData {
   requestedThinkingLevel: string | null
   availableThinkingLevels: string[]
   settingsPending: 'model' | 'thinking' | null
+  pendingSettings: { model: ModelInfo | null; thinkingLevel: string } | null
   activeRunId: string | null
   sequence: number
   error: string | null
@@ -85,6 +87,7 @@ export const emptyConversation: ConversationData = {
   requestedThinkingLevel: null,
   availableThinkingLevels: [],
   settingsPending: null,
+  pendingSettings: null,
   activeRunId: null,
   sequence: 0,
   error: null,
@@ -124,6 +127,14 @@ function settingsFromSnapshot(snapshot: RuntimeSnapshot) {
     thinkingLevel: snapshot.thinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,
   }
+}
+
+export function thinkingCapabilitiesPending(state: ConversationData) {
+  const selected = state.pendingSettings?.model
+  return (
+    state.status === 'connecting' ||
+    Boolean(selected && (!state.model || modelKey(selected) !== modelKey(state.model)))
+  )
 }
 
 export function reducePiEvent(state: ConversationData, event: PiEvent): ConversationData {
@@ -230,6 +241,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.instanceId = null
       next.activeRunId = null
       next.settingsPending = null
+      next.pendingSettings = null
       next.error = data.error
       next.activity = ''
       next.messages = state.messages.map((m) =>
@@ -263,6 +275,69 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
 let queued: PiEvent[] = []
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let connection = 0
+let settingsTask: { connection: number; instanceId: string; promise: Promise<void> } | null = null
+
+function applyPendingSettings(): Promise<void> {
+  const get = useConversationStore.getState
+  const set = useConversationStore.setState
+  const { instanceId, status, readOnly, pendingSettings } = get()
+  if (!instanceId || status !== 'ready' || readOnly || !pendingSettings) return Promise.resolve()
+  if (settingsTask?.connection === connection && settingsTask.instanceId === instanceId)
+    return settingsTask.promise
+
+  const task = { connection, instanceId, promise: Promise.resolve() }
+  settingsTask = task
+  const current = () =>
+    task.connection === connection && get().instanceId === instanceId && get().status === 'ready'
+  task.promise = (async () => {
+    let appliedModel: ModelInfo | null = null
+    try {
+      while (current() && get().pendingSettings) {
+        const selection = get().pendingSettings!
+        try {
+          if (
+            selection.model &&
+            (!appliedModel || modelKey(selection.model) !== modelKey(appliedModel))
+          ) {
+            set({ settingsPending: 'model' })
+            const snapshot = await setPiModel(
+              instanceId,
+              selection.model.provider,
+              selection.model.id,
+            )
+            if (!current()) return
+            appliedModel = selection.model
+            set(settingsFromSnapshot(snapshot))
+            if (get().pendingSettings !== selection) continue
+          }
+          const level = get().availableThinkingLevels.includes(selection.thinkingLevel)
+            ? selection.thinkingLevel
+            : 'default'
+          set({ settingsPending: 'thinking' })
+          const snapshot = await setPiThinkingLevel(instanceId, level)
+          if (!current()) return
+          set(settingsFromSnapshot(snapshot))
+          // A newer choice supersedes this acknowledgement, including its saved preference.
+          if (get().pendingSettings !== selection) continue
+          await saveThinkingPreference(level).catch((reason: unknown) => {
+            if (current()) set({ error: `无法保存思考偏好：${String(reason)}` })
+          })
+          if (!current()) return
+          if (get().pendingSettings !== selection) continue
+          set({ requestedThinkingLevel: level, pendingSettings: null, settingsPending: null })
+        } catch (reason) {
+          if (!current()) return
+          if (get().pendingSettings !== selection) continue
+          set({ pendingSettings: null, settingsPending: null, error: String(reason) })
+        }
+      }
+    } finally {
+      if (settingsTask === task) settingsTask = null
+    }
+  })()
+  return task.promise
+}
+
 function enqueue(event: PiEvent) {
   queued.push(event)
   if (flushTimer) return
@@ -331,6 +406,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...emptyConversation,
       ...display,
       ...settings,
+      // The configured catalog remains usable even before an uncached session opens.
+      models: current.models.length ? current.models : (display?.models ?? []),
       sessionCache,
       requestedThinkingLevel,
       connectionTarget: { projectPath, sessionPath: sessionPath ?? null },
@@ -344,20 +421,23 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         projectPath,
         (snapshot) => {
           if (request !== connection) return
+          const pendingSettings =
+            snapshot.readOnly || snapshot.activeRunId
+              ? null
+              : (get().pendingSettings ?? { model: null, thinkingLevel: requestedThinkingLevel })
           const data = {
             ...fromSnapshot(snapshot),
             requestedThinkingLevel,
+            pendingSettings,
+            settingsPending: pendingSettings
+              ? pendingSettings.model
+                ? ('model' as const)
+                : ('thinking' as const)
+              : null,
             lastLocalActivityAt: get().lastLocalActivityAt,
           }
           set({ ...data, sessionCache: rememberSession(get().sessionCache, data) })
-          if (!snapshot.readOnly && !snapshot.activeRunId) {
-            const level =
-              requestedThinkingLevel === 'default' ||
-              snapshot.availableThinkingLevels.includes(requestedThinkingLevel)
-                ? requestedThinkingLevel
-                : 'default'
-            restorePreference = get().changeThinkingLevel(level)
-          }
+          restorePreference = applyPendingSettings()
         },
         (event) => {
           if (request === connection) enqueue(event)
@@ -374,6 +454,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           activity: '',
           connectionStartedAt: null,
           settingsPending: null,
+          pendingSettings: null,
         })
     }
   },
@@ -388,6 +469,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       sequence: 0,
       blocks: {},
       settingsPending: null,
+      pendingSettings: null,
       activity: '',
       error: null,
       connectionStartedAt: null,
@@ -465,51 +547,43 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   changeModel: async (model) => {
-    const { instanceId, status, readOnly, settingsPending, requestedThinkingLevel } = get()
-    if (!instanceId || status !== 'ready' || readOnly || settingsPending) return
-    const request = connection
-    const current = () => request === connection && get().instanceId === instanceId
-    set({ settingsPending: 'model', error: null })
-    try {
-      const snapshot = await setPiModel(instanceId, model.provider, model.id)
-      if (!current()) return
-      set(settingsFromSnapshot(snapshot))
-      const level =
-        requestedThinkingLevel && snapshot.availableThinkingLevels.includes(requestedThinkingLevel)
-          ? requestedThinkingLevel
-          : 'default'
-      const thinking = await setPiThinkingLevel(instanceId, level)
-      if (!current()) return
-      await saveThinkingPreference(level).catch((reason: unknown) => {
-        if (current()) set({ error: `无法保存思考偏好：${String(reason)}` })
-      })
-      if (!current()) return
-      set({
-        ...settingsFromSnapshot(thinking),
-        requestedThinkingLevel: level,
-        settingsPending: null,
-      })
-    } catch (reason) {
-      if (current()) set({ settingsPending: null, error: String(reason) })
-    }
+    const { instanceId, status, readOnly, pendingSettings, requestedThinkingLevel } = get()
+    if (
+      !['connecting', 'ready'].includes(status) ||
+      readOnly ||
+      (status === 'ready' && !instanceId)
+    )
+      return
+    set({
+      pendingSettings: {
+        model,
+        thinkingLevel: pendingSettings?.thinkingLevel ?? requestedThinkingLevel ?? 'default',
+      },
+      settingsPending: status === 'ready' ? 'model' : null,
+      error: null,
+    })
+    await applyPendingSettings()
   },
   changeThinkingLevel: async (level) => {
-    const { instanceId, status, readOnly, settingsPending, requestedThinkingLevel } = get()
-    if (!instanceId || status !== 'ready' || readOnly || settingsPending) return
-    if (level !== 'default' && !get().availableThinkingLevels.includes(level)) return
-    const request = connection
-    const current = () => request === connection && get().instanceId === instanceId
-    set({ settingsPending: 'thinking', requestedThinkingLevel: level, error: null })
-    try {
-      const snapshot = await setPiThinkingLevel(instanceId, level)
-      if (!current()) return
-      await saveThinkingPreference(level).catch((reason: unknown) => {
-        if (current()) set({ error: `无法保存思考偏好：${String(reason)}` })
-      })
-      if (!current()) return
-      set({ ...settingsFromSnapshot(snapshot), settingsPending: null })
-    } catch (reason) {
-      if (current()) set({ settingsPending: null, requestedThinkingLevel, error: String(reason) })
-    }
+    const state = get()
+    const { instanceId, status, readOnly, pendingSettings } = state
+    if (
+      !['connecting', 'ready'].includes(status) ||
+      readOnly ||
+      (status === 'ready' && !instanceId)
+    )
+      return
+    if (
+      level !== 'default' &&
+      !thinkingCapabilitiesPending(state) &&
+      !state.availableThinkingLevels.includes(level)
+    )
+      return
+    set({
+      pendingSettings: { model: pendingSettings?.model ?? null, thinkingLevel: level },
+      settingsPending: status === 'ready' ? (pendingSettings?.model ? 'model' : 'thinking') : null,
+      error: null,
+    })
+    await applyPendingSettings()
   },
 }))

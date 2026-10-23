@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useConversationStore } from './store'
+import { thinkingCapabilitiesPending, useConversationStore } from './store'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 export function ThinkingPicker() {
@@ -17,6 +17,7 @@ export function ThinkingPicker() {
     settingsPending,
     thinkingLevel,
     availableThinkingLevels,
+    capabilitiesPending,
     requestedThinkingLevel,
     changeThinkingLevel,
   } = useConversationStore(
@@ -26,7 +27,8 @@ export function ThinkingPicker() {
       settingsPending: state.settingsPending,
       thinkingLevel: state.thinkingLevel,
       availableThinkingLevels: state.availableThinkingLevels,
-      requestedThinkingLevel: state.requestedThinkingLevel,
+      requestedThinkingLevel: state.pendingSettings?.thinkingLevel ?? state.requestedThinkingLevel,
+      capabilitiesPending: thinkingCapabilitiesPending(state),
       changeThinkingLevel: state.changeThinkingLevel,
     })),
   )
@@ -45,7 +47,7 @@ export function ThinkingPicker() {
     <Select
       items={items}
       value={value}
-      disabled={status !== 'ready' || Boolean(readOnly) || Boolean(settingsPending)}
+      disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly)}
       onValueChange={(level) => {
         if (level) void changeThinkingLevel(level)
       }}
@@ -75,7 +77,11 @@ export function ThinkingPicker() {
             <SelectItem
               key={item.value}
               value={item.value}
-              disabled={item.value !== 'default' && !availableThinkingLevels.includes(item.value)}
+              disabled={
+                item.value !== 'default' &&
+                !capabilitiesPending &&
+                !availableThinkingLevels.includes(item.value)
+              }
             >
               {item.label}
             </SelectItem>

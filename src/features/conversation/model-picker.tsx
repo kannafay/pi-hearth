@@ -21,7 +21,7 @@ export function ModelPicker({
   const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
     useShallow((state) => ({
       models: state.models,
-      model: state.model,
+      model: state.pendingSettings?.model ?? state.model,
       status: state.status,
       readOnly: state.readOnly,
       settingsPending: state.settingsPending,
@@ -37,9 +37,7 @@ export function ModelPicker({
     <Select
       items={items}
       value={model ? modelKey(model) : null}
-      disabled={
-        status !== 'ready' || Boolean(readOnly) || Boolean(settingsPending) || !models.length
-      }
+      disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly) || !models.length}
       onValueChange={(value) => {
         const selected = models.find((item) => modelKey(item) === value)
         if (selected) void changeModel(selected)

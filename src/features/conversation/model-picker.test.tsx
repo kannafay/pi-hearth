@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { ModelPicker } from './model-picker'
@@ -67,6 +67,39 @@ test('model selection remains visible while a running turn prevents a mid-reques
   render(<ModelPicker />)
   expect(screen.getByRole('combobox', { name: '切换模型' })).toBeDisabled()
   expect(screen.getByText(/Alpha/)).toBeVisible()
+})
+
+test('models remain selectable through connection and settings acknowledgements show the latest choice', async () => {
+  const first = { provider: 'first', id: 'a', name: 'Alpha' }
+  const second = { provider: 'second', id: 'b', name: 'Beta' }
+  const changeModel = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    status: 'connecting',
+    model: null,
+    models: [first, second],
+    changeModel,
+  })
+  const user = userEvent.setup()
+  render(<ModelPicker compact />)
+  const picker = screen.getByRole('combobox', { name: '切换模型' })
+  expect(picker).toBeEnabled()
+  await user.tab()
+  await user.keyboard(' ')
+  await user.click(screen.getByRole('option', { name: 'Beta' }))
+  expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
+  act(() =>
+    useConversationStore.setState({
+      status: 'ready',
+      model: first,
+      settingsPending: 'model',
+      pendingSettings: { model: second, thinkingLevel: 'high' },
+    }),
+  )
+  expect(picker).toBeEnabled()
+  expect(picker).toHaveTextContent('Beta')
+  await user.keyboard(' ')
+  await user.click(screen.getByRole('option', { name: 'Alpha' }))
+  expect(changeModel).toHaveBeenLastCalledWith(first)
 })
 
 test('models are grouped by provider and identical model IDs select the correct provider', async () => {
