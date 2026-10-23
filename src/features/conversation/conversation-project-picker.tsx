@@ -74,7 +74,7 @@ export function ConversationProjectPicker({
             variant="ghost"
             size="sm"
             aria-label="选择对话项目"
-            className="h-7 max-w-full gap-2 px-2 text-xs font-normal text-muted-foreground"
+            className="h-7 max-w-full gap-2 px-2 text-xs font-normal text-muted-foreground hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
           />
         }
       >

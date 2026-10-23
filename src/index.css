@@ -612,8 +612,9 @@ select {
   @apply border-0 py-0 text-foreground/70 shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
 }
 
-.composer-select-trigger svg {
+.composer-select-trigger > svg {
   color: inherit;
+  opacity: 0.55;
 }
 
 .composer-select-content {
