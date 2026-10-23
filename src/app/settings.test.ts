@@ -16,6 +16,7 @@ const saved: AppSettings = {
   expandedProjects: { 'd:/project': false },
   thinkingLevel: 'xhigh',
   projectsDirectory: 'D:/saved-projects',
+  customProjectsDirectory: 'D:/saved-projects',
 }
 
 beforeEach(() => {
@@ -73,9 +74,37 @@ test('UI changes save only changed fields and never overwrite startup settings',
     { sidebarOpen: true },
     { navigationWidth: 326 },
     { expandedProjects: { 'd:/project': true } },
-    { projectsDirectory: 'D:/new-projects' },
+    { projectsDirectory: 'D:/new-projects', customProjectsDirectory: 'D:/new-projects' },
     { projectsDirectory: '' },
   ])
+})
+
+test('the saved custom directory survives startup while the default directory is active', async () => {
+  vi.mocked(loadAppSettings).mockResolvedValue({ ...saved, projectsDirectory: '' })
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    projectsDirectory: '',
+    customProjectsDirectory: 'D:/saved-projects',
+  })
+  expect(updateAppSettings).not.toHaveBeenCalled()
+  useWorkspaceStore.getState().setProjectsDirectory('D:/saved-projects')
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
+    projectsDirectory: 'D:/saved-projects',
+  })
+})
+
+test('an existing custom directory is imported before switching back to the default', async () => {
+  vi.mocked(loadAppSettings).mockResolvedValue({ ...saved, customProjectsDirectory: '' })
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
+    customProjectsDirectory: 'D:/saved-projects',
+  })
+  useWorkspaceStore.getState().setProjectsDirectory('')
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    projectsDirectory: '',
+    customProjectsDirectory: 'D:/saved-projects',
+  })
+  expect(updateAppSettings).toHaveBeenLastCalledWith({ projectsDirectory: '' })
 })
 
 test('a failed database load keeps startup closed and a retry restores saved settings', async () => {

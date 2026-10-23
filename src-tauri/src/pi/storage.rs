@@ -234,8 +234,12 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
         values.insert(key, serde_json::from_str(&value).map_err(database_error)?);
     }
     let settings: AppSettings = serde_json::from_value(values.into()).map_err(database_error)?;
-    if !settings.projects_directory.is_empty()
-        && !Path::new(&settings.projects_directory).is_absolute()
+    if [
+        &settings.projects_directory,
+        &settings.custom_projects_directory,
+    ]
+    .iter()
+    .any(|directory| !directory.is_empty() && !Path::new(directory).is_absolute())
     {
         return Err("项目保存目录必须是绝对路径。".into());
     }
@@ -558,12 +562,17 @@ mod tests {
             &root,
             AppSettingsPatch {
                 projects_directory: Some(directory.clone()),
+                custom_projects_directory: Some(directory.clone()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
         assert_eq!(settings(&root).await.unwrap().projects_directory, directory);
+        assert_eq!(
+            settings(&root).await.unwrap().custom_projects_directory,
+            directory
+        );
         assert!(
             update_settings(
                 &root,
@@ -576,6 +585,17 @@ mod tests {
             .is_err()
         );
         assert_eq!(settings(&root).await.unwrap().projects_directory, directory);
+        assert!(
+            update_settings(
+                &root,
+                AppSettingsPatch {
+                    custom_projects_directory: Some("../relative".into()),
+                    ..Default::default()
+                }
+            )
+            .await
+            .is_err()
+        );
         update_settings(
             &root,
             AppSettingsPatch {
@@ -585,7 +605,19 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(settings(&root).await.unwrap().projects_directory.is_empty());
+        let reopened = settings(&root).await.unwrap();
+        assert!(reopened.projects_directory.is_empty());
+        assert_eq!(reopened.custom_projects_directory, directory);
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                projects_directory: Some(reopened.custom_projects_directory),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(settings(&root).await.unwrap().projects_directory, directory);
     }
 
     #[tokio::test]

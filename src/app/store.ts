@@ -56,6 +56,7 @@ interface WorkspaceState {
   hydrateSettings: () => Promise<void>
   theme: Theme
   projectsDirectory: string
+  customProjectsDirectory: string
   setProjectsDirectory: (directory: string) => void
   setProject: (path: string) => void
   setDraft: (draft: string) => void
@@ -211,7 +212,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       const settings = await loadAppSettings()
       const thinkingLevel = settings.thinkingLevel ?? loadThinkingPreference()
-      if (settings.thinkingLevel === null) await updateAppSettings({ thinkingLevel })
+      const customProjectsDirectory = settings.customProjectsDirectory || settings.projectsDirectory
+      const imported: AppSettingsPatch = {}
+      if (settings.thinkingLevel === null) imported.thinkingLevel = thinkingLevel
+      if (!settings.customProjectsDirectory && customProjectsDirectory)
+        imported.customProjectsDirectory = customProjectsDirectory
+      if (Object.keys(imported).length) await updateAppSettings(imported)
       useConversationStore.setState({ requestedThinkingLevel: thinkingLevel })
       set({
         theme: settings.theme,
@@ -221,6 +227,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         inspectorWidth: settings.inspectorWidth,
         expandedProjects: settings.expandedProjects,
         projectsDirectory: settings.projectsDirectory,
+        customProjectsDirectory,
         settingsReady: true,
       })
     } catch (reason) {
@@ -231,7 +238,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   theme: 'system',
   projectsDirectory: '',
-  setProjectsDirectory: (projectsDirectory) => set({ projectsDirectory }),
+  customProjectsDirectory: '',
+  setProjectsDirectory: (projectsDirectory) =>
+    set((state) => ({
+      projectsDirectory,
+      customProjectsDirectory:
+        projectsDirectory || state.customProjectsDirectory || state.projectsDirectory,
+    })),
   setProject: (projectPath) =>
     set((state) => ({
       projectPath,
@@ -397,6 +410,7 @@ const persistedKeys = [
   'inspectorWidth',
   'expandedProjects',
   'projectsDirectory',
+  'customProjectsDirectory',
 ] as const
 
 useWorkspaceStore.subscribe((state, previous) => {

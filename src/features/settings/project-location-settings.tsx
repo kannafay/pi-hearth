@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Folder, FolderCog, FolderOpen } from 'lucide-react'
+import { Folder, FolderCog } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -20,6 +21,9 @@ const locations = [
 
 export function ProjectLocationSettings() {
   const directory = useWorkspaceStore((state) => state.projectsDirectory)
+  const customDirectory = useWorkspaceStore(
+    (state) => state.customProjectsDirectory || state.projectsDirectory,
+  )
   const [defaultDirectory, setDefaultDirectory] = useState('文档\\Pi Hearth\\Projects')
   const [selecting, setSelecting] = useState(false)
   const [error, setError] = useState('')
@@ -74,13 +78,17 @@ export function ProjectLocationSettings() {
           disabled={!desktop || selecting}
           onValueChange={(value) => {
             if (value === 'default') useWorkspaceStore.getState().setProjectsDirectory('')
-            else if (value === 'custom') void chooseDirectory()
+            else if (value === 'custom') {
+              if (customDirectory)
+                useWorkspaceStore.getState().setProjectsDirectory(customDirectory)
+              else void chooseDirectory()
+            }
           }}
         >
-          <SelectTrigger aria-label="新项目保存位置" className="w-32 shrink-0">
-            <SelectValue>
+          <SelectTrigger aria-label="新项目保存位置" className="w-36 shrink-0">
+            <SelectValue className="min-w-0">
               <LocationIcon aria-hidden className="size-3.5 stroke-[1.6]" />
-              <span>{locationLabel}</span>
+              <span className="truncate">{locationLabel}</span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -95,21 +103,31 @@ export function ProjectLocationSettings() {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground break-all">
-          {directory || defaultDirectory}
+      {directory ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="link"
+                className="h-auto max-w-full justify-start rounded-sm border-0 p-0 text-left text-xs leading-5 font-normal whitespace-normal text-muted-foreground hover:text-foreground"
+              />
+            }
+            aria-label="更改自定义目录"
+            disabled={!desktop || selecting}
+            onClick={() => void chooseDirectory()}
+          >
+            <span className="min-w-0 break-all">{directory}</span>
+          </TooltipTrigger>
+          <TooltipContent showArrow={false}>点击更改自定义目录</TooltipContent>
+        </Tooltip>
+      ) : (
+        <p className="text-xs leading-5 text-muted-foreground break-all">{defaultDirectory}</p>
+      )}
+      {selecting && (
+        <p role="status" className="text-xs text-muted-foreground">
+          正在选择目录…
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          disabled={!desktop || selecting}
-          onClick={() => void chooseDirectory()}
-        >
-          <FolderOpen className="stroke-[1.5]" />
-          {selecting ? '正在选择…' : '选择目录'}
-        </Button>
-      </div>
+      )}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}
