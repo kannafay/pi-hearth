@@ -338,9 +338,28 @@ test('a changed session cannot hide a disconnected assistant behind an automatic
 
 test('creating a project uses the returned canonical folder and starts its own session', async () => {
   vi.mocked(addProject).mockResolvedValue({ path: 'D:\\新项目', name: '新项目' })
-  await useWorkspaceStore.getState().addProject('D:\\', '新项目')
-  expect(addProject).toHaveBeenCalledWith('D:\\', '新项目')
+  await useWorkspaceStore.getState().addProject({ sourcePath: null, name: '新项目' })
+  expect(addProject).toHaveBeenCalledWith({ sourcePath: null, name: '新项目', parentPath: '' })
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\新项目')
+})
+
+test('adding an existing folder updates its independent project name without duplicating it', async () => {
+  useWorkspaceStore.setState({ projects: [{ path: 'D:/source', name: 'source' }] })
+  vi.mocked(addProject).mockResolvedValue({ path: 'D:\\source', name: '设计讨论' })
+  await useWorkspaceStore.getState().addProject({ sourcePath: 'D:/source', name: '设计讨论' })
+  expect(useWorkspaceStore.getState().projects).toEqual([{ path: 'D:\\source', name: '设计讨论' }])
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\source')
+})
+
+test('project creation uses the latest directory preference while its database write is pending', async () => {
+  useWorkspaceStore.setState({ projectsDirectory: 'D:/New Location' })
+  vi.mocked(addProject).mockResolvedValue({ path: 'D:/New Location/New', name: 'New' })
+  await useWorkspaceStore.getState().addProject({ sourcePath: null, name: 'New' })
+  expect(addProject).toHaveBeenCalledWith({
+    sourcePath: null,
+    name: 'New',
+    parentPath: 'D:/New Location',
+  })
 })
 
 test('opening a session during new-chat startup keeps the latest selection', async () => {

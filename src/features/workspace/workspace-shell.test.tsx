@@ -16,6 +16,10 @@ vi.mock('@/lib/desktop', () => ({
 }))
 
 vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
+vi.mock('@/lib/project-directory', () => ({
+  resolveProjectDirectory: vi.fn().mockResolvedValue('C:/Documents/Pi Hearth/Projects'),
+  listenForProjectFolderDrop: vi.fn().mockResolvedValue(() => {}),
+}))
 
 // Layout measurement and the conversation runtime are unrelated to dialog interaction.
 vi.mock('@/components/ui/resizable', () => ({

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Archive, Info, Palette, SlidersHorizontal } from 'lucide-react'
+import { Activity, Archive, Folder, Info, Palette, SlidersHorizontal } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
 import { useConversationStore } from '@/features/conversation/store'
@@ -19,10 +19,12 @@ import { getAppVersion, isDesktop } from '@/lib/desktop'
 import { ModelSettings } from './model-settings'
 import { SettingsPageHeader } from './settings-page-header'
 import { ArchivedSessions } from './archived-sessions'
+import { ProjectLocationSettings } from './project-location-settings'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
   { value: 'models', label: '模型与凭证', icon: SlidersHorizontal },
+  { value: 'projects', label: '项目', icon: Folder },
   { value: 'archived', label: '归档', icon: Archive },
   { value: 'diagnostics', label: '运行诊断', icon: Activity },
   { value: 'about', label: '关于', icon: Info },
@@ -130,6 +132,10 @@ export function SettingsDialog({
               </TabsContent>
               <TabsContent value="models" className="settings-panel m-0">
                 <ModelSettings />
+              </TabsContent>
+              <TabsContent value="projects" className="settings-panel m-0">
+                <SettingsPageHeader title="项目" description="管理新项目的保存位置。" />
+                <ProjectLocationSettings />
               </TabsContent>
               <TabsContent value="archived" className="settings-panel m-0">
                 <ArchivedSessions />

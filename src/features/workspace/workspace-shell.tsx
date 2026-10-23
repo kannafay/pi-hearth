@@ -21,6 +21,7 @@ import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
+import { sessionKey } from '@/lib/session-preferences'
 
 export function WorkspaceShell() {
   const workspace = useWorkspaceStore()
@@ -62,7 +63,9 @@ export function WorkspaceShell() {
     attachmentPreview !== null ||
     (inspectorOpen && compact)
   const desktop = isDesktop()
-  const projectName = projectPath?.split(/[\\/]/).filter(Boolean).at(-1)
+  const projectName =
+    workspace.projects.find((item) => sessionKey(item.path) === sessionKey(projectPath))?.name ??
+    projectPath?.split(/[\\/]/).filter(Boolean).at(-1)
   const session = workspace.sessions.find((session) => session.path === conversation.sessionFile)
   const themeIndex = themeOptions.findIndex((item) => item.value === theme)
   const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]

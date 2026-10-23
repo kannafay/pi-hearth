@@ -10,8 +10,13 @@ import type {
 export const loadCatalog = () => invoke<WorkspaceCatalog>('workspace_catalog')
 export const searchSessions = (query: string) =>
   invoke<SessionSearchResult[]>('workspace_search', { query })
-export const addProject = (path: string, name: string | null = null) =>
-  invoke<ProjectInfo>('workspace_add_project', { path, name })
+export type CreateProjectOptions = {
+  sourcePath: string | null
+  name: string | null
+  parentPath?: string
+}
+export const addProject = (options: CreateProjectOptions) =>
+  invoke<ProjectInfo>('workspace_add_project', options)
 export const updateSessionPreference = (path: string, preference: SessionPreference) =>
   invoke<WorkspaceCatalog['sessionPreferences']>('workspace_update_session', { path, preference })
 export const deleteArchivedSessions = (paths: string[]) =>

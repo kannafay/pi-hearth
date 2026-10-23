@@ -468,34 +468,99 @@ fn valid_project_name(name: &str) -> bool {
 }
 
 #[tauri::command]
-pub async fn workspace_add_project(
+pub fn workspace_project_directory(
     app: tauri::AppHandle,
-    workspace: State<'_, WorkspaceManager>,
-    path: String,
-    name: Option<String>,
-) -> Result<ProjectInfo, String> {
-    let _lock = workspace.gate.lock().await;
-    let mut directory = dunce::canonicalize(path).map_err(|_| "项目目录不存在或无法访问。")?;
+    path: Option<String>,
+) -> Result<String, String> {
+    let directory = match path {
+        Some(path) => existing_project_directory(Path::new(&path))?,
+        None => default_projects_directory(&app)?,
+    };
+    Ok(directory.to_string_lossy().into())
+}
+
+fn default_projects_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .document_dir()
+        .map(|path| path.join("Pi Hearth").join("Projects"))
+        .map_err(|_| "无法定位文档目录，请在设置中选择项目保存位置。".into())
+}
+
+fn existing_project_directory(path: &Path) -> Result<PathBuf, String> {
+    let directory = dunce::canonicalize(path).map_err(|_| "项目目录不存在或无法访问。")?;
     if !directory.is_dir() {
-        return Err("请选择文件夹。".into());
+        return Err("请添加文件夹，而不是文件。".into());
     }
-    if let Some(name) = name {
-        if !valid_project_name(&name) {
-            return Err("项目名称不能包含路径分隔符、保留名称或末尾空格与句点。".into());
+    Ok(directory)
+}
+
+async fn prepare_project(
+    source: Option<&str>,
+    name: Option<&str>,
+    parent: &Path,
+) -> Result<ProjectInfo, String> {
+    let name = name.map(str::trim).filter(|name| !name.is_empty());
+    if name.is_some_and(|name| name.chars().count() > 128 || name.chars().any(char::is_control)) {
+        return Err("项目名称不能包含控制字符，且不能超过 128 个字符。".into());
+    }
+    let directory = if let Some(source) = source {
+        existing_project_directory(Path::new(source))?
+    } else {
+        let name = name.ok_or("未添加源文件夹时，请填写项目名称。")?;
+        if !valid_project_name(name) {
+            return Err("项目名称不能包含路径分隔符、保留名称或末尾句点。".into());
         }
-        directory = directory.join(name);
+        if !parent.is_absolute() {
+            return Err("项目保存目录必须是绝对路径。".into());
+        }
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|_| "无法创建项目保存目录，请在设置中更改保存位置。")?;
+        let directory = existing_project_directory(parent)?.join(name);
         tokio::fs::create_dir(&directory)
             .await
             .map_err(|_| "创建失败：同名文件夹已存在或目录无法写入。")?;
+        directory
+    };
+    let mut project = project(&directory);
+    if let Some(name) = name {
+        project.name = name.into();
     }
-    let project = project(&directory);
+    Ok(project)
+}
+
+#[tauri::command]
+pub async fn workspace_add_project(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    source_path: Option<String>,
+    name: Option<String>,
+    parent_path: Option<String>,
+) -> Result<ProjectInfo, String> {
+    let _lock = workspace.gate.lock().await;
     let data = app_data(&app)?;
+    let parent = if source_path.is_some() {
+        PathBuf::new()
+    } else {
+        let parent = match parent_path {
+            Some(path) => path,
+            None => storage::settings(&data).await?.projects_directory,
+        };
+        if parent.is_empty() {
+            default_projects_directory(&app)?
+        } else {
+            PathBuf::from(parent)
+        }
+    };
+    let project = prepare_project(source_path.as_deref(), name.as_deref(), &parent).await?;
     let mut prefs = preferences(&data).await?;
-    if !prefs
+    if let Some(existing) = prefs
         .projects
-        .iter()
-        .any(|item| same_path(&item.path, &project.path))
+        .iter_mut()
+        .find(|item| same_path(&item.path, &project.path))
     {
+        *existing = project.clone();
+    } else {
         prefs.projects.push(project.clone());
     }
     save(&data, &prefs).await?;
@@ -838,6 +903,88 @@ mod tests {
             assert!(!valid_project_name(name), "{name}");
         }
         assert!(valid_project_name("中文 project"));
+    }
+
+    #[tokio::test]
+    async fn project_without_source_requires_a_name_and_creates_under_the_save_location() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-create-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        assert!(prepare_project(None, None, &root).await.is_err());
+        assert!(!root.exists());
+        assert!(
+            prepare_project(None, Some("../escape"), &root)
+                .await
+                .is_err()
+        );
+        assert!(!root.exists());
+        let created = prepare_project(None, Some("新项目"), &root).await.unwrap();
+        assert_eq!(created.name, "新项目");
+        assert_eq!(
+            Path::new(&created.path),
+            dunce::canonicalize(root.join("新项目")).unwrap()
+        );
+        let marker = Path::new(&created.path).join("keep.txt");
+        tokio::fs::write(&marker, "existing project").await.unwrap();
+        assert!(prepare_project(None, Some("新项目"), &root).await.is_err());
+        assert_eq!(
+            tokio::fs::read_to_string(marker).await.unwrap(),
+            "existing project"
+        );
+    }
+
+    #[tokio::test]
+    async fn project_names_are_independent_from_existing_source_directories_and_persist() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-source-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("source");
+        tokio::fs::create_dir_all(&source).await.unwrap();
+        let alias = "设计讨论：前端/体验";
+        let added = prepare_project(
+            Some(source.to_str().unwrap()),
+            Some(alias),
+            Path::new("unused"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(added.name, alias);
+        assert_eq!(
+            Path::new(&added.path),
+            dunce::canonicalize(&source).unwrap()
+        );
+        assert_eq!(std::fs::read_dir(&source).unwrap().count(), 0);
+        let prefs = Preferences {
+            projects: vec![added],
+            ..Default::default()
+        };
+        save(&root, &prefs).await.unwrap();
+        assert_eq!(preferences(&root).await.unwrap().projects[0].name, alias);
+        let inferred = prepare_project(
+            Some(source.to_str().unwrap()),
+            Some("  "),
+            Path::new("unused"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(inferred.name, "source");
+    }
+
+    #[tokio::test]
+    async fn project_sources_reject_files_and_missing_directories() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-source-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let file = root.join("notes.txt");
+        tokio::fs::write(&file, "keep").await.unwrap();
+        assert!(
+            existing_project_directory(&file)
+                .unwrap_err()
+                .contains("而不是文件")
+        );
+        assert!(existing_project_directory(&root.join("missing")).is_err());
+        assert_eq!(tokio::fs::read_to_string(file).await.unwrap(), "keep");
     }
 
     #[tokio::test]

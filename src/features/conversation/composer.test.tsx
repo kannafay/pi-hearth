@@ -8,6 +8,7 @@ import {
   chooseAttachments,
   clipboardAttachments,
   hasClipboardAttachments,
+  listenForAttachmentDrop,
   releaseAttachments,
   stageFiles,
   stagePaths,
@@ -48,6 +49,24 @@ beforeEach(() => {
   vi.mocked(clipboardAttachments).mockResolvedValue([])
   vi.mocked(hasClipboardAttachments).mockResolvedValue(false)
   vi.mocked(stageFiles).mockResolvedValue([file])
+})
+
+test('native drops do not become chat attachments while a dialog makes the workspace inert', async () => {
+  const { container } = render(
+    <div inert>
+      <Composer onSendStart={() => {}} />
+    </div>,
+  )
+  const [onOver, onDrop] = vi.mocked(listenForAttachmentDrop).mock.calls.at(-1)!
+  act(() => {
+    onOver(true)
+    onDrop(['D:/project-folder'])
+  })
+  expect(stagePaths).not.toHaveBeenCalled()
+  expect(screen.queryByPlaceholderText('松开以添加附件')).not.toBeInTheDocument()
+  container.firstElementChild!.removeAttribute('inert')
+  act(() => onDrop(['D:/notes.txt']))
+  await waitFor(() => expect(stagePaths).toHaveBeenCalledExactlyOnceWith(['D:/notes.txt']))
 })
 
 test('the project shelf slides out for a new conversation and stays mounted while hiding during a reply', async () => {

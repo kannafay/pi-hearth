@@ -159,6 +159,7 @@ pub struct AppSettings {
     #[ts(type = "Record<string, boolean>")]
     pub expanded_projects: std::collections::HashMap<String, bool>,
     pub thinking_level: Option<String>,
+    pub projects_directory: String,
 }
 
 impl Default for AppSettings {
@@ -171,6 +172,7 @@ impl Default for AppSettings {
             inspector_width: 400.0,
             expanded_projects: Default::default(),
             thinking_level: None,
+            projects_directory: String::new(),
         }
     }
 }
@@ -199,6 +201,9 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub thinking_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub projects_directory: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]

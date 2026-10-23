@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Folder, FolderOpen, FolderPlus, Laptop, LoaderCircle, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Folder, FolderOpen, FolderPlus, LoaderCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -12,12 +12,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { selectProjectDirectory } from '@/lib/desktop'
+import { isDesktop, selectProjectDirectory } from '@/lib/desktop'
+import { listenForProjectFolderDrop, resolveProjectDirectory } from '@/lib/project-directory'
 import { readInstructions, saveInstructions } from '@/lib/workspace'
 import { useWorkspaceStore } from '@/app/store'
 import type { ProjectInfo } from '@/lib/generated/pi'
-
-type ProjectSource = { kind: 'create' | 'existing'; directory: string }
 
 export function ProjectDialog({
   project,
@@ -31,7 +30,13 @@ export function ProjectDialog({
   onOpenChangeComplete?: (open: boolean) => void
 }) {
   const [name, setName] = useState('')
-  const [source, setSource] = useState<ProjectSource | null>(null)
+  const [source, setSource] = useState<string | null>(null)
+  const [defaultDirectory, setDefaultDirectory] = useState('')
+  const [dragging, setDragging] = useState(false)
+  const sourceArea = useRef<HTMLDivElement>(null)
+  const actionPending = useRef(false)
+  const selectionVersion = useRef(0)
+  const projectsDirectory = useWorkspaceStore((state) => state.projectsDirectory)
   const [selecting, setSelecting] = useState(false)
   const [content, setContent] = useState('')
   const [original, setOriginal] = useState('')
@@ -39,12 +44,71 @@ export function ProjectDialog({
   const [loading, setLoading] = useState(Boolean(project))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const existing = source?.kind === 'existing'
-  const sourceName = source?.directory.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
-  const displayName = existing ? sourceName : name
-  const canSubmit = Boolean(
-    !saving && !selecting && !loading && (project || (source && (existing || name.trim()))),
+  const sourceName = source?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
+  const createDirectory = projectsDirectory || defaultDirectory || '文档\\Pi Hearth\\Projects'
+  const desktop = isDesktop()
+  const canSubmit = Boolean(!saving && !selecting && !loading && (project || source || name.trim()))
+
+  useEffect(
+    () => () => {
+      selectionVersion.current++
+    },
+    [],
   )
+
+  useEffect(() => {
+    if (!open || project || projectsDirectory || !desktop) return
+    let disposed = false
+    void resolveProjectDirectory().then(
+      (directory) => {
+        if (!disposed) setDefaultDirectory(directory)
+      },
+      (reason: unknown) => {
+        if (!disposed) setError(String(reason))
+      },
+    )
+    return () => {
+      disposed = true
+    }
+  }, [open, project, projectsDirectory, desktop])
+
+  useEffect(() => {
+    if (!open || project || !desktop) return
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void listenForProjectFolderDrop((event) => {
+      if (disposed || actionPending.current) return
+      if (event.type === 'leave') {
+        setDragging(false)
+        return
+      }
+      const bounds = sourceArea.current?.getBoundingClientRect()
+      const x = event.position.x / window.devicePixelRatio
+      const y = event.position.y / window.devicePixelRatio
+      const inside = Boolean(
+        bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom,
+      )
+      setDragging(event.type !== 'drop' && inside)
+      if (event.type === 'drop' && inside) {
+        if (event.paths.length !== 1) {
+          setError('每个项目请选择一个源文件夹。')
+          return
+        }
+        void chooseDirectory('source', event.paths[0])
+      }
+    })
+      .then((stop) => {
+        if (disposed) stop()
+        else unlisten = stop
+      })
+      .catch((reason: unknown) => {
+        if (!disposed) setError(String(reason))
+      })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [open, project, desktop])
 
   useEffect(() => {
     if (!project) return
@@ -71,7 +135,8 @@ export function ProjectDialog({
   }, [project])
 
   async function submit() {
-    if (!canSubmit) return
+    if (!canSubmit || actionPending.current) return
+    actionPending.current = true
     setSaving(true)
     setError('')
     try {
@@ -79,34 +144,43 @@ export function ProjectDialog({
         await saveInstructions(project.path, content, original)
         if (useWorkspaceStore.getState().projectPath === project.path)
           await useWorkspaceStore.getState().reloadCurrent()
-      } else if (source) {
+      } else {
         await useWorkspaceStore
           .getState()
-          .addProject(source.directory, existing ? null : name.trim())
+          .addProject({ sourcePath: source, name: name.trim() || null })
       }
       onClose()
     } catch (reason) {
       setError(String(reason))
     } finally {
+      actionPending.current = false
       setSaving(false)
     }
   }
 
-  async function chooseDirectory(kind: ProjectSource['kind']) {
-    if (saving || selecting) return
+  async function chooseDirectory(target: 'source' | 'location', path?: string) {
+    if (actionPending.current) return
+    actionPending.current = true
+    const request = ++selectionVersion.current
     setSelecting(true)
     setError('')
     try {
-      const value = await selectProjectDirectory(
-        kind === 'create' ? '选择父文件夹' : '选择项目文件夹',
-      )
+      const value =
+        path ??
+        (await selectProjectDirectory(target === 'source' ? '添加源文件夹' : '新项目保存位置'))
       if (value) {
-        setSource({ kind, directory: value })
+        const directory = await resolveProjectDirectory(value)
+        if (request !== selectionVersion.current) return
+        if (target === 'source') setSource(directory)
+        else useWorkspaceStore.getState().setProjectsDirectory(directory)
       }
     } catch (reason) {
-      setError(String(reason))
+      if (request === selectionVersion.current) setError(String(reason))
     } finally {
-      setSelecting(false)
+      if (request === selectionVersion.current) {
+        actionPending.current = false
+        setSelecting(false)
+      }
     }
   }
 
@@ -114,8 +188,12 @@ export function ProjectDialog({
     <WorkspaceDialog
       open={open}
       onOpenChangeComplete={onOpenChangeComplete}
-      onOpenChange={(open) => {
-        if (!open && !saving && !selecting) onClose()
+      onOpenChange={(open, details) => {
+        if (!open && actionPending.current) {
+          details.cancel()
+          return
+        }
+        if (!open) onClose()
       }}
     >
       <DialogContent
@@ -126,7 +204,7 @@ export function ProjectDialog({
           <DialogDescription className={project ? undefined : 'sr-only'}>
             {project
               ? '保存到项目的指令文件，该项目的所有会话与 Pi CLI 均可使用。'
-              : '新建一个文件夹，或选择已有文件夹作为项目。'}
+              : '填写项目名称，或添加源文件夹。未添加文件夹时，在设置的保存位置创建项目。'}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -164,56 +242,68 @@ export function ProjectDialog({
                       </span>
                       <Input
                         aria-label="项目名称"
-                        aria-describedby={existing ? 'project-name-hint' : undefined}
-                        placeholder="项目名称"
-                        value={displayName}
+                        aria-describedby={source ? 'project-name-hint' : undefined}
+                        placeholder={sourceName || '项目名称'}
+                        value={name}
                         onChange={(event) => setName(event.target.value)}
-                        readOnly={existing}
                         disabled={saving || selecting}
                         className="h-10 rounded-xl pl-13"
                         autoFocus
                       />
                     </div>
-                    {existing && (
+                    {source && (
                       <p id="project-name-hint" className="text-xs text-muted-foreground">
-                        项目名称与所选文件夹名称一致。
+                        可留空，使用文件夹名称作为项目名。
                       </p>
                     )}
                   </div>
                   <section aria-label="源文件夹" className="space-y-2.5">
                     <div className="flex items-center justify-between">
                       <h3 className="font-medium">源文件夹</h3>
-                      <span
-                        role={selecting ? 'status' : undefined}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                      >
-                        {selecting ? (
+                      {selecting && (
+                        <span
+                          role="status"
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                        >
                           <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-                        ) : (
-                          <Laptop aria-hidden className="size-3.5 stroke-[1.5]" />
-                        )}
-                        {selecting ? '正在选择文件夹…' : '此电脑'}
-                      </span>
+                          正在选择文件夹…
+                        </span>
+                      )}
                     </div>
-                    <div className="overflow-hidden rounded-xl border">
+                    <div
+                      ref={sourceArea}
+                      aria-label="源文件夹拖放区"
+                      className={`overflow-hidden rounded-xl border border-dashed transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                      onDragOver={(event) => {
+                        if (!actionPending.current && event.dataTransfer.types.includes('Files')) {
+                          event.preventDefault()
+                          setDragging(true)
+                        }
+                      }}
+                      onDragLeave={(event) => {
+                        if (
+                          !(event.relatedTarget instanceof Node) ||
+                          !event.currentTarget.contains(event.relatedTarget)
+                        )
+                          setDragging(false)
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        setDragging(false)
+                        if (!desktop) setError('拖拽文件夹需要在桌面应用中使用。')
+                      }}
+                    >
                       {source ? (
                         <>
                           <div className="flex items-start gap-3 p-3.5">
-                            {existing ? (
-                              <FolderOpen
-                                aria-hidden
-                                className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
-                              />
-                            ) : (
-                              <FolderPlus
-                                aria-hidden
-                                className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
-                              />
-                            )}
+                            <FolderOpen
+                              aria-hidden
+                              className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
+                            />
                             <div className="min-w-0 flex-1 space-y-1">
-                              <p className="break-all">{displayName.trim() || '新文件夹'}</p>
+                              <p className="break-all">{sourceName}</p>
                               <p className="text-xs leading-5 text-muted-foreground break-all">
-                                {existing ? source.directory : `创建位置：${source.directory}`}
+                                {source}
                               </p>
                             </div>
                             <Button
@@ -235,50 +325,48 @@ export function ProjectDialog({
                               variant="ghost"
                               size="sm"
                               disabled={saving || selecting}
-                              onClick={() => void chooseDirectory(source.kind)}
+                              onClick={() => void chooseDirectory('source')}
                             >
                               <FolderOpen className="stroke-[1.5]" />
-                              {existing ? '更换文件夹' : '更换位置'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-muted-foreground hover:text-foreground"
-                              disabled={saving || selecting}
-                              onClick={() => void chooseDirectory(existing ? 'create' : 'existing')}
-                            >
-                              <FolderPlus className="stroke-[1.5]" />
-                              {existing ? '新建文件夹' : '添加已有文件夹'}
+                              更换文件夹
                             </Button>
                           </div>
                         </>
                       ) : (
                         <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 py-5">
                           <p className="mb-1 text-xs text-muted-foreground">
-                            添加已有文件夹，或新建一个文件夹
+                            {dragging ? '松开以添加文件夹' : '拖拽文件夹到此处'}
                           </p>
                           <div className="flex flex-wrap justify-center gap-2">
                             <Button
                               variant="secondary"
                               className="rounded-full"
                               disabled={saving || selecting}
-                              onClick={() => void chooseDirectory('existing')}
+                              onClick={() => void chooseDirectory('source')}
                             >
                               <FolderPlus className="stroke-[1.5]" />
                               添加文件夹
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="rounded-full text-muted-foreground hover:text-foreground"
-                              disabled={saving || selecting}
-                              onClick={() => void chooseDirectory('create')}
-                            >
-                              新建文件夹
                             </Button>
                           </div>
                         </div>
                       )}
                     </div>
+                    {!source && (
+                      <div className="flex items-start gap-3 text-xs text-muted-foreground">
+                        <div className="min-w-0 flex-1 space-y-1 leading-5">
+                          <p>未添加源文件夹时，将在以下位置创建项目</p>
+                          <p className="break-all">{createDirectory}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          disabled={saving || selecting}
+                          onClick={() => void chooseDirectory('location')}
+                        >
+                          更改
+                        </Button>
+                      </div>
+                    )}
                   </section>
                 </div>
               )}

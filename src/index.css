@@ -796,6 +796,22 @@ select {
   transform: translateX(12px);
 }
 
+/* Also animate dialogs that are mounted already open. */
+@starting-style {
+  [data-slot='dialog-overlay'] {
+    opacity: 0;
+  }
+
+  [data-slot='dialog-content'] {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  [data-slot='dialog-content'][data-dialog-layout='drawer'] {
+    transform: translateX(12px);
+  }
+}
+
 .settings-panels {
   position: relative;
   display: grid;

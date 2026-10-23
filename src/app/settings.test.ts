@@ -15,6 +15,7 @@ const saved: AppSettings = {
   inspectorWidth: 450,
   expandedProjects: { 'd:/project': false },
   thinkingLevel: 'xhigh',
+  projectsDirectory: 'D:/saved-projects',
 }
 
 beforeEach(() => {
@@ -65,11 +66,15 @@ test('UI changes save only changed fields and never overwrite startup settings',
   workspace.toggleSidebar()
   workspace.setNavigationWidth(326.4)
   workspace.setProjectExpanded('D:\\project', true)
+  workspace.setProjectsDirectory('D:/new-projects')
+  workspace.setProjectsDirectory('')
   expect(vi.mocked(updateAppSettings).mock.calls.map(([patch]) => patch)).toEqual([
     { theme: 'light' },
     { sidebarOpen: true },
     { navigationWidth: 326 },
     { expandedProjects: { 'd:/project': true } },
+    { projectsDirectory: 'D:/new-projects' },
+    { projectsDirectory: '' },
   ])
 })
 

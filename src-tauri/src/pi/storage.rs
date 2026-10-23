@@ -234,6 +234,11 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
         values.insert(key, serde_json::from_str(&value).map_err(database_error)?);
     }
     let settings: AppSettings = serde_json::from_value(values.into()).map_err(database_error)?;
+    if !settings.projects_directory.is_empty()
+        && !Path::new(&settings.projects_directory).is_absolute()
+    {
+        return Err("项目保存目录必须是绝对路径。".into());
+    }
     if !settings.navigation_width.is_finite()
         || !(220.0..=400.0).contains(&settings.navigation_width)
         || !settings.inspector_width.is_finite()
@@ -542,6 +547,45 @@ mod tests {
         assert!(matches!(reopened.theme, AppTheme::Dark));
         assert_eq!(reopened.navigation_width, 312.0);
         assert_eq!(reopened.thinking_level.as_deref(), Some("xhigh"));
+    }
+
+    #[tokio::test]
+    async fn project_save_locations_persist_and_can_return_to_the_default() {
+        let root = fixture();
+        assert!(settings(&root).await.unwrap().projects_directory.is_empty());
+        let directory = root.join("projects").to_string_lossy().into_owned();
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                projects_directory: Some(directory.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(settings(&root).await.unwrap().projects_directory, directory);
+        assert!(
+            update_settings(
+                &root,
+                AppSettingsPatch {
+                    projects_directory: Some("../relative".into()),
+                    ..Default::default()
+                }
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(settings(&root).await.unwrap().projects_directory, directory);
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                projects_directory: Some(String::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(settings(&root).await.unwrap().projects_directory.is_empty());
     }
 
     #[tokio::test]

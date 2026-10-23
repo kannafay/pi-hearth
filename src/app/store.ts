@@ -16,6 +16,7 @@ import {
   addProject,
   updateSessionPreference,
   deleteArchivedSessions,
+  type CreateProjectOptions,
 } from '@/lib/workspace'
 import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
 import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
@@ -54,6 +55,8 @@ interface WorkspaceState {
   settingsLoading: boolean
   hydrateSettings: () => Promise<void>
   theme: Theme
+  projectsDirectory: string
+  setProjectsDirectory: (directory: string) => void
   setProject: (path: string) => void
   setDraft: (draft: string) => void
   toggleSidebar: () => void
@@ -66,7 +69,7 @@ interface WorkspaceState {
     projectPath: string | null,
     options?: { preserveDraft?: boolean },
   ) => Promise<void>
-  addProject: (path: string, name?: string | null) => Promise<void>
+  addProject: (options: CreateProjectOptions) => Promise<void>
   reloadCurrent: () => Promise<void>
 }
 
@@ -217,6 +220,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         navigationWidth: settings.navigationWidth,
         inspectorWidth: settings.inspectorWidth,
         expandedProjects: settings.expandedProjects,
+        projectsDirectory: settings.projectsDirectory,
         settingsReady: true,
       })
     } catch (reason) {
@@ -226,6 +230,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   theme: 'system',
+  projectsDirectory: '',
+  setProjectsDirectory: (projectsDirectory) => set({ projectsDirectory }),
   setProject: (projectPath) =>
     set((state) => ({
       projectPath,
@@ -358,14 +364,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (request === navigation)
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },
-  addProject: async (path, name = null) => {
+  addProject: async (options) => {
     const preserveDraft = canReuseNewConversation(
       useConversationStore.getState(),
       get().projectPath,
     )
-    const project = await addProject(path, name)
+    const project = await addProject({ ...options, parentPath: get().projectsDirectory })
     const projects = get().projects.some((item) => samePath(item.path, project.path))
-      ? get().projects
+      ? get().projects.map((item) => (samePath(item.path, project.path) ? project : item))
       : [...get().projects, project]
     set({ projects })
     await get().newConversation(project.path, { preserveDraft })
@@ -390,6 +396,7 @@ const persistedKeys = [
   'navigationWidth',
   'inspectorWidth',
   'expandedProjects',
+  'projectsDirectory',
 ] as const
 
 useWorkspaceStore.subscribe((state, previous) => {

@@ -72,6 +72,7 @@ export function Composer({
   const [selecting, setSelecting] = useState(false)
   const [dragging, setDragging] = useState(false)
   const nativePaste = useRef<Promise<Attachment[]> | null>(null)
+  const inputArea = useRef<HTMLDivElement>(null)
   const busy = status === 'running' || status === 'stopping'
   const choosingProject = !hasMessages && !busy && !readOnly && !openingSession
   const desktop = isDesktop()
@@ -127,9 +128,18 @@ export function Composer({
     void prepareAttachmentPicker()
     let disposed = false
     let unlisten: (() => void) | undefined
-    void listenForAttachmentDrop(setDragging, (paths) => {
-      if (!useConversationStore.getState().readOnly) void receive(stagePaths(paths))
-    })
+    void listenForAttachmentDrop(
+      (over) =>
+        setDragging(Boolean(over && inputArea.current && !inputArea.current.closest('[inert]'))),
+      (paths) => {
+        if (
+          inputArea.current &&
+          !inputArea.current.closest('[inert]') &&
+          !useConversationStore.getState().readOnly
+        )
+          void receive(stagePaths(paths))
+      },
+    )
       .then((stop) => {
         if (disposed) stop()
         else unlisten = stop
@@ -200,6 +210,7 @@ export function Composer({
         </div>
       </div>
       <div
+        ref={inputArea}
         aria-label="消息输入区"
         className={`relative z-1 overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
         onDragOver={(event) => {
