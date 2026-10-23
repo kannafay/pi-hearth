@@ -236,7 +236,7 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);
-  --sidebar-motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --sidebar-motion-ease: cubic-bezier(0.58, 0, 0.42, 1);
 }
 
 .dark .workspace-navigation {
