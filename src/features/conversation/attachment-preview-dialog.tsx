@@ -3,6 +3,7 @@ import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/c
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { useDialogPresence } from '@/components/use-dialog-presence'
 import { ScrollArea } from '@/components/scroll-area'
+import { FieldError } from '@/components/ui/field'
 import { getAttachmentPreview } from '@/lib/attachments'
 import type { Attachment, AttachmentPreview } from '@/lib/generated/pi'
 
@@ -66,7 +67,7 @@ function AttachmentPreviewContent({ file, onClose }: { file: Attachment; onClose
 
   return (
     <DialogContent
-      className="top-[calc((100dvh+var(--titlebar-height))/2)] h-[min(620px,calc(100dvh-var(--titlebar-height)-3rem))] w-[min(900px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-none"
+      layout="preview"
       onKeyDownCapture={(event) => {
         if (event.key === 'Escape' && !document.fullscreenElement) {
           event.preventDefault()
@@ -81,9 +82,7 @@ function AttachmentPreviewContent({ file, onClose }: { file: Attachment; onClose
       </DialogHeader>
       <div className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
         {error ? (
-          <p role="alert" className="py-8 text-sm text-muted-foreground">
-            {error}
-          </p>
+          <FieldError className="py-8">{error}</FieldError>
         ) : !preview ? (
           <p role="status" className="py-8 text-sm text-muted-foreground">
             正在读取附件…

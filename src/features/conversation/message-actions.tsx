@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -125,11 +126,13 @@ export function MessageActions({
         </span>
       )}
       <Dialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
-        <DialogContent showCloseButton={false} className="sm:max-w-100">
-          <DialogTitle>重新回答？</DialogTitle>
-          <DialogDescription>
-            将从这条消息重新生成回复，当前回复及其后的对话将被替换。
-          </DialogDescription>
+        <DialogContent showCloseButton={false} size="sm">
+          <DialogHeader variant="compact">
+            <DialogTitle>重新回答？</DialogTitle>
+            <DialogDescription>
+              将从这条消息重新生成回复，当前回复及其后的对话将被替换。
+            </DialogDescription>
+          </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmRegenerate(false)}>
               取消

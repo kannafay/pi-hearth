@@ -319,11 +319,7 @@ export function WorkspaceShell() {
         </ResizablePanelGroup>
       </div>
       <WorkspaceDialog open={inspectorOpen && compact} onOpenChange={setInspectorOpen}>
-        <DialogContent
-          showCloseButton={false}
-          data-dialog-layout="drawer"
-          className="top-(--titlebar-height) right-(--workspace-inset) left-auto h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 p-0 sm:max-w-100"
-        >
+        <DialogContent showCloseButton={false} layout="drawer">
           <DialogTitle className="sr-only">项目文件与变更</DialogTitle>
           <DialogDescription className="sr-only">查看当前项目的文件和 Git 差异。</DialogDescription>
           <Inspector />

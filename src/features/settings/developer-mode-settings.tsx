@@ -4,6 +4,8 @@ import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { isDesktop, openDeveloperConsole } from '@/lib/desktop'
+import { SettingsRow } from './settings-row'
+import { FieldDescription, FieldError } from '@/components/ui/field'
 
 export function DeveloperModeSettings() {
   const { enabled, pending, setDeveloperMode } = useWorkspaceStore(
@@ -35,34 +37,30 @@ export function DeveloperModeSettings() {
   }
 
   return (
-    <div className="border-b py-5">
-      <div className="flex items-center justify-between gap-5">
-        <div className="min-w-0">
-          <h3 id="developer-mode-label" className="text-sm font-normal">
-            开发者模式
-          </h3>
-          <p
-            id="developer-mode-description"
-            className="mt-1.5 text-xs leading-5 text-muted-foreground"
-          >
-            {supported
-              ? '打开独立后台终端，查看会话连接、设置切换和报错。'
-              : '独立后台终端需在 Windows 桌面应用中使用。'}
-          </p>
-        </div>
+    <SettingsRow
+      title="开发者模式"
+      titleId="developer-mode-label"
+      descriptionId="developer-mode-description"
+      htmlFor="developer-mode"
+      description={
+        supported
+          ? '打开独立后台终端，查看会话连接、设置切换和报错。'
+          : '独立后台终端需在 Windows 桌面应用中使用。'
+      }
+      control={
         <Switch
+          id="developer-mode"
           aria-labelledby="developer-mode-label"
           aria-describedby="developer-mode-description"
           checked={enabled}
           disabled={!supported || pending}
           onCheckedChange={(checked) => void change(checked)}
         />
-      </div>
+      }
+    >
       {enabled && (
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <p className="text-xs leading-5 text-muted-foreground">
-            关闭终端不会退出应用；重启后保持开启。
-          </p>
+        <div className="flex items-center justify-between gap-4">
+          <FieldDescription>关闭终端不会退出应用；重启后保持开启。</FieldDescription>
           <Button
             variant="outline"
             size="sm"
@@ -73,11 +71,7 @@ export function DeveloperModeSettings() {
           </Button>
         </div>
       )}
-      {error && (
-        <p role="alert" className="mt-3 text-xs text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
+      <FieldError>{error}</FieldError>
+    </SettingsRow>
   )
 }

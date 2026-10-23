@@ -2,10 +2,14 @@ import { useId, useRef, useState } from 'react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Field, FieldLabel, FieldError, FieldGroup } from '@/components/ui/field'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogHeader,
+  DialogBody,
+  DialogForm,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
@@ -54,44 +58,44 @@ export function SessionRenameDialog({
         else if (!next) onClose()
       }}
     >
-      <DialogContent className="sm:max-w-100" showCloseButton={false}>
-        <DialogTitle>重命名会话</DialogTitle>
-        <DialogDescription className="sr-only">为此会话设置一个方便辨认的标题。</DialogDescription>
-        <form
-          className="grid gap-5"
+      <DialogContent size="sm" showCloseButton={false}>
+        <DialogHeader variant="compact">
+          <DialogTitle>重命名会话</DialogTitle>
+          <DialogDescription className="sr-only">
+            为此会话设置一个方便辨认的标题。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogForm
           onSubmit={(event) => {
             event.preventDefault()
             void save()
           }}
         >
-          <div className="grid gap-2">
-            <label htmlFor={id} className="text-sm leading-5">
-              会话标题
-            </label>
-            <Input
-              id={id}
-              className="focus-visible:ring-1"
-              autoFocus
-              maxLength={160}
-              value={title}
-              disabled={working}
-              onFocus={(event) => {
-                if (!focused.current) {
-                  focused.current = true
-                  event.currentTarget.select()
-                }
-              }}
-              onChange={(event) => {
-                setTitle(event.target.value)
-                setError('')
-              }}
-            />
-          </div>
-          {error && (
-            <p role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
+          <DialogBody>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor={id}>会话标题</FieldLabel>
+                <Input
+                  id={id}
+                  autoFocus
+                  maxLength={160}
+                  value={title}
+                  disabled={working}
+                  onFocus={(event) => {
+                    if (!focused.current) {
+                      focused.current = true
+                      event.currentTarget.select()
+                    }
+                  }}
+                  onChange={(event) => {
+                    setTitle(event.target.value)
+                    setError('')
+                  }}
+                />
+              </Field>
+              <FieldError>{error}</FieldError>
+            </FieldGroup>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={working} onClick={onClose}>
               取消
@@ -100,7 +104,7 @@ export function SessionRenameDialog({
               {working ? '正在保存…' : '保存'}
             </Button>
           </DialogFooter>
-        </form>
+        </DialogForm>
       </DialogContent>
     </Dialog>
   )

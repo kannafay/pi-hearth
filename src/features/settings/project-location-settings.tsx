@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/select'
 import { isDesktop, selectProjectDirectory } from '@/lib/desktop'
 import { resolveProjectDirectory } from '@/lib/project-directory'
+import { SettingsRow } from './settings-row'
+import { FieldDescription, FieldError } from '@/components/ui/field'
 
 const locations = [
   { value: 'default', label: '默认目录', icon: Folder },
@@ -64,14 +66,12 @@ export function ProjectLocationSettings() {
   }
 
   return (
-    <div className="space-y-4 border-b py-5">
-      <div className="flex items-center justify-between gap-5">
-        <div className="min-w-0">
-          <h3 className="text-sm font-normal">新项目保存位置</h3>
-          <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-            未添加源文件夹时，在此目录下创建项目文件夹。
-          </p>
-        </div>
+    <SettingsRow
+      title="新项目保存位置"
+      description="未添加源文件夹时，在此目录下创建项目文件夹。"
+      htmlFor="project-location"
+      descriptionId="project-location-description"
+      control={
         <Select
           items={locations}
           value={directory ? 'custom' : 'default'}
@@ -85,7 +85,12 @@ export function ProjectLocationSettings() {
             }
           }}
         >
-          <SelectTrigger aria-label="新项目保存位置" className="w-36 shrink-0">
+          <SelectTrigger
+            id="project-location"
+            aria-label="新项目保存位置"
+            aria-describedby="project-location-description"
+            className="w-36"
+          >
             <SelectValue className="min-w-0">
               <LocationIcon aria-hidden className="size-3.5 stroke-[1.6]" />
               <span className="truncate">{locationLabel}</span>
@@ -102,7 +107,8 @@ export function ProjectLocationSettings() {
             </SelectGroup>
           </SelectContent>
         </Select>
-      </div>
+      }
+    >
       {directory ? (
         <Tooltip>
           <TooltipTrigger
@@ -121,18 +127,14 @@ export function ProjectLocationSettings() {
           <TooltipContent showArrow={false}>点击更改自定义目录</TooltipContent>
         </Tooltip>
       ) : (
-        <p className="text-xs leading-5 text-muted-foreground break-all">{defaultDirectory}</p>
+        <FieldDescription className="break-all">{defaultDirectory}</FieldDescription>
       )}
       {selecting && (
         <p role="status" className="text-xs text-muted-foreground">
           正在选择目录…
         </p>
       )}
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
+      <FieldError>{error}</FieldError>
+    </SettingsRow>
   )
 }

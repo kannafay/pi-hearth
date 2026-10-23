@@ -3,7 +3,13 @@ import { cn } from 'cn'
 import { OverlayScrollbars } from 'overlayscrollbars'
 import { ScrollArea } from '@/components/scroll-area'
 
-function Textarea({ className, value, disabled, ...props }: React.ComponentProps<'textarea'>) {
+function Textarea({
+  className,
+  value,
+  disabled,
+  variant = 'default',
+  ...props
+}: React.ComponentProps<'textarea'> & { variant?: 'default' | 'embedded' }) {
   const host = React.useRef<HTMLDivElement>(null)
   React.useLayoutEffect(() => {
     if (host.current) OverlayScrollbars(host.current)?.update(true)
@@ -12,10 +18,13 @@ function Textarea({ className, value, disabled, ...props }: React.ComponentProps
     <ScrollArea
       ref={host}
       data-slot="textarea-scroll"
+      data-variant={variant}
       data-disabled={disabled || undefined}
       className="w-full"
       viewportClassName={cn(
         'textarea-scroll min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:bg-input/50 has-disabled:opacity-50 has-aria-invalid:border-destructive has-aria-invalid:ring-3 has-aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:has-disabled:bg-input/80 dark:has-aria-invalid:border-destructive/50 dark:has-aria-invalid:ring-destructive/40',
+        variant === 'embedded' &&
+          'rounded-none border-0 bg-transparent p-0 text-sm shadow-none focus-within:border-transparent focus-within:ring-0 dark:bg-transparent',
         className,
       )}
       onClick={(event) => {

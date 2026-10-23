@@ -4,6 +4,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
+import { SettingsRow } from './settings-row'
+import { FieldLabel } from '@/components/ui/field'
 
 export function ModelSettings() {
   const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
@@ -21,12 +23,10 @@ export function ModelSettings() {
 
   return (
     <div>
-      <div className="border-b py-5">
-        <h3 className="text-sm font-normal">当前模型</h3>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {model ? `${model.name} · ${model.provider}` : '尚未选择模型'}
-        </p>
-      </div>
+      <SettingsRow
+        title="当前模型"
+        description={model ? `${model.name} · ${model.provider}` : '尚未选择模型'}
+      />
       <RadioGroup
         aria-label="可用模型"
         value={model ? modelKey(model) : null}
@@ -53,10 +53,10 @@ export function ModelSettings() {
             >
               <div className="border-t p-1">
                 {group.models.map((item) => (
-                  <label
+                  <FieldLabel
                     key={modelKey(item)}
                     data-disabled={disabled || undefined}
-                    className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2 transition-colors duration-160 ease-(--dialog-ease) hover:bg-accent has-[:focus-visible]:bg-accent data-disabled:cursor-not-allowed data-disabled:opacity-50"
+                    variant="option"
                   >
                     <RadioGroupItem
                       value={modelKey(item)}
@@ -70,7 +70,7 @@ export function ModelSettings() {
                         </span>
                       )}
                     </span>
-                  </label>
+                  </FieldLabel>
                 ))}
               </div>
             </CollapsibleContent>

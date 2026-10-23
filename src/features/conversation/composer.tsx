@@ -228,6 +228,7 @@ export function Composer({
           </div>
         )}
         <Textarea
+          variant="embedded"
           aria-label="消息草稿"
           rows={1}
           placeholder={dragging ? '松开以添加附件' : '发送消息，或粘贴图片与文件…'}
@@ -266,7 +267,7 @@ export function Composer({
                 void submit()
             }
           }}
-          className="composer-input max-h-48 min-h-12 rounded-none border-0 bg-transparent px-3.5 pt-3 pb-2 text-sm shadow-none focus-within:border-transparent focus-within:ring-0 dark:bg-transparent"
+          className="composer-input max-h-48 min-h-12 px-3.5 pt-3 pb-2"
         />
         <div className="flex h-7 items-stretch justify-between gap-2 px-2">
           <div className="flex h-full min-w-0 items-stretch gap-1">

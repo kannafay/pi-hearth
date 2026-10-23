@@ -4,6 +4,8 @@ import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { ScrollArea } from '@/components/scroll-area'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { FieldError } from '@/components/ui/field'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { isDesktop } from '@/lib/desktop'
@@ -128,7 +130,9 @@ export function SessionSearchDialog({
     >
       <DialogContent
         initialFocus={input}
-        className="flex h-[min(560px,calc(100dvh-112px))] flex-col gap-0 overflow-hidden p-0 sm:max-w-150"
+        layout="panel"
+        size="search"
+        className="h-[min(560px,calc(100dvh-112px))]"
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing || !shown.length || loading) return
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -147,7 +151,8 @@ export function SessionSearchDialog({
         </DialogDescription>
         <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4 pr-13">
           <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-          <input
+          <Input
+            variant="embedded"
             ref={input}
             role="combobox"
             aria-label="搜索项目、标题或对话内容"
@@ -162,7 +167,6 @@ export function SessionSearchDialog({
               setActive(0)
             }}
             placeholder="搜索项目、标题或对话内容…"
-            className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {loading && (
             <LoaderCircle
@@ -244,8 +248,8 @@ export function SessionSearchDialog({
             </div>
           )}
           {error ? (
-            <div role="alert" className="px-3 py-6 text-center text-sm">
-              <p className="text-destructive">{error}</p>
+            <div className="px-3 py-6 text-center">
+              <FieldError>{error}</FieldError>
               <Button
                 variant="ghost"
                 className="mt-3"

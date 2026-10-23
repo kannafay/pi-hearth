@@ -3,7 +3,14 @@ import { FolderOpen, FolderPlus, LoaderCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { ScrollArea } from '@/components/scroll-area'
+import {
+  Field,
+  FieldLabel,
+  FieldTitle,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+} from '@/components/ui/field'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import {
   DialogContent,
@@ -11,6 +18,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogBody,
+  DialogForm,
 } from '@/components/ui/dialog'
 import { isDesktop, selectProjectDirectory } from '@/lib/desktop'
 import { listenForProjectFolderDrop, resolveProjectDirectory } from '@/lib/project-directory'
@@ -205,7 +214,10 @@ export function ProjectDialog({
         if (!open) onClose()
       }}
     >
-      <DialogContent className="max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden sm:max-w-136">
+      <DialogContent
+        size="lg"
+        className="max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden"
+      >
         <DialogHeader>
           <DialogTitle>{project ? '编辑项目' : '新建项目'}</DialogTitle>
           <DialogDescription>
@@ -214,174 +226,160 @@ export function ProjectDialog({
               : '填写项目名称，或添加源文件夹。未添加文件夹时，在设置的保存位置创建项目。'}
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="contents"
+        <DialogForm
           onSubmit={(event) => {
             event.preventDefault()
             void submit()
           }}
         >
-          <ScrollArea
-            className="-m-1"
-            viewportClassName="max-h-[calc(100dvh-var(--titlebar-height)-18rem)] p-1"
-          >
-            <div className="space-y-4">
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label htmlFor="project-name" className="block text-sm">
-                    项目名称
-                  </label>
-                  <Input
-                    id="project-name"
-                    aria-label="项目名称"
-                    aria-describedby={source ? 'project-name-hint' : undefined}
-                    placeholder={sourceName || '项目名称'}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    disabled={saving || selecting || loading}
-                    autoFocus
-                  />
-                  {source && (
-                    <p id="project-name-hint" className="text-xs text-muted-foreground">
-                      可留空，使用文件夹名称作为项目名。
-                    </p>
+          <DialogBody viewportClassName="max-h-[calc(100dvh-var(--titlebar-height)-18rem)]">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="project-name">项目名称</FieldLabel>
+                <Input
+                  id="project-name"
+                  aria-label="项目名称"
+                  aria-describedby={source ? 'project-name-hint' : undefined}
+                  placeholder={sourceName || '项目名称'}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  disabled={saving || selecting || loading}
+                  autoFocus
+                />
+                {source && (
+                  <FieldDescription id="project-name-hint">
+                    可留空，使用文件夹名称作为项目名。
+                  </FieldDescription>
+                )}
+              </Field>
+              <Field role="region" aria-label="源文件夹">
+                <div className="flex items-center justify-between">
+                  <FieldTitle role="heading" aria-level={3}>
+                    源文件夹
+                  </FieldTitle>
+                  {selecting && (
+                    <span
+                      role="status"
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
+                      正在选择文件夹…
+                    </span>
                   )}
                 </div>
-                <section aria-label="源文件夹" className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3>源文件夹</h3>
-                    {selecting && (
-                      <span
-                        role="status"
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                      >
-                        <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-                        正在选择文件夹…
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    ref={sourceArea}
-                    aria-label={project ? '项目源文件夹' : '源文件夹拖放区'}
-                    className={`overflow-hidden rounded-lg border border-solid transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
-                    onDragOver={(event) => {
-                      if (
-                        !project &&
-                        !actionPending.current &&
-                        event.dataTransfer.types.includes('Files')
-                      ) {
-                        event.preventDefault()
-                        setDragging(true)
-                      }
-                    }}
-                    onDragLeave={(event) => {
-                      if (
-                        !(event.relatedTarget instanceof Node) ||
-                        !event.currentTarget.contains(event.relatedTarget)
-                      )
-                        setDragging(false)
-                    }}
-                    onDrop={(event) => {
+                <div
+                  ref={sourceArea}
+                  aria-label={project ? '项目源文件夹' : '源文件夹拖放区'}
+                  className={`overflow-hidden rounded-lg border border-solid transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                  onDragOver={(event) => {
+                    if (
+                      !project &&
+                      !actionPending.current &&
+                      event.dataTransfer.types.includes('Files')
+                    ) {
                       event.preventDefault()
+                      setDragging(true)
+                    }
+                  }}
+                  onDragLeave={(event) => {
+                    if (
+                      !(event.relatedTarget instanceof Node) ||
+                      !event.currentTarget.contains(event.relatedTarget)
+                    )
                       setDragging(false)
-                      if (project) return
-                      if (!desktop) setError('拖拽文件夹需要在桌面应用中使用。')
-                    }}
-                  >
-                    {source ? (
-                      <>
-                        <div className="flex items-start gap-3 p-3.5">
-                          <FolderOpen
-                            aria-hidden
-                            className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
-                          />
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <p className="break-all">{sourceName}</p>
-                            <p className="text-xs leading-5 text-muted-foreground break-all">
-                              {source}
-                            </p>
-                          </div>
-                          {!project && (
-                            <Button
-                              aria-label="移除文件夹"
-                              variant="ghost"
-                              size="icon-xs"
-                              className="text-muted-foreground hover:text-foreground"
-                              disabled={saving || selecting}
-                              onClick={() => {
-                                setSource(null)
-                                setOriginal('')
-                                setError('')
-                              }}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          )}
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setDragging(false)
+                    if (project) return
+                    if (!desktop) setError('拖拽文件夹需要在桌面应用中使用。')
+                  }}
+                >
+                  {source ? (
+                    <>
+                      <div className="flex items-start gap-3 p-3.5">
+                        <FolderOpen
+                          aria-hidden
+                          className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="break-all">{sourceName}</p>
+                          <p className="text-xs leading-5 text-muted-foreground break-all">
+                            {source}
+                          </p>
                         </div>
                         {!project && (
-                          <div className="flex flex-wrap items-center justify-between gap-1 border-t px-2 py-1.5">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={saving || selecting}
-                              onClick={() => void chooseDirectory()}
-                            >
-                              <FolderOpen className="stroke-[1.5]" />
-                              更换文件夹
-                            </Button>
-                          </div>
+                          <Button
+                            aria-label="移除文件夹"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-muted-foreground hover:text-foreground"
+                            disabled={saving || selecting}
+                            onClick={() => {
+                              setSource(null)
+                              setOriginal('')
+                              setError('')
+                            }}
+                          >
+                            <X className="size-3.5" />
+                          </Button>
                         )}
-                      </>
-                    ) : (
-                      <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 py-5">
-                        <p className="mb-1 text-xs text-muted-foreground">
-                          {dragging ? '松开以添加文件夹' : '拖拽文件夹到此处'}
-                        </p>
-                        <Button
-                          variant="outline"
-                          disabled={saving || selecting}
-                          onClick={() => void chooseDirectory()}
-                        >
-                          <FolderPlus className="stroke-[1.5]" />
-                          添加文件夹
-                        </Button>
                       </div>
-                    )}
-                  </div>
-                  {!source && (
-                    <div className="space-y-1 text-xs leading-5 text-muted-foreground">
-                      <p>未添加源文件夹时，将在以下位置新建项目，可在设置中修改</p>
-                      <p className="break-all">{createDirectory}</p>
+                      {!project && (
+                        <div className="flex flex-wrap items-center justify-between gap-1 border-t px-2 py-1.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={saving || selecting}
+                            onClick={() => void chooseDirectory()}
+                          >
+                            <FolderOpen className="stroke-[1.5]" />
+                            更换文件夹
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 py-5">
+                      <p className="mb-1 text-xs text-muted-foreground">
+                        {dragging ? '松开以添加文件夹' : '拖拽文件夹到此处'}
+                      </p>
+                      <Button
+                        variant="outline"
+                        disabled={saving || selecting}
+                        onClick={() => void chooseDirectory()}
+                      >
+                        <FolderPlus className="stroke-[1.5]" />
+                        添加文件夹
+                      </Button>
                     </div>
                   )}
-                </section>
-                <div className="space-y-1.5">
-                  <label htmlFor="project-instructions" className="block text-sm">
-                    项目指令
-                  </label>
-                  <p id="project-instructions-hint" className="text-xs text-muted-foreground">
-                    应用于此项目的所有会话。
-                  </p>
-                  <Textarea
-                    id="project-instructions"
-                    aria-describedby="project-instructions-hint"
-                    disabled={loading || saving || selecting || original === null}
-                    value={content}
-                    onChange={(event) => setContent(event.target.value)}
-                    className="min-h-28 max-h-56"
-                    placeholder={
-                      loading ? '正在读取项目指令…' : '例如：使用中文回答，遵循项目约定。'
-                    }
-                  />
                 </div>
-              </div>
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
-            </div>
-          </ScrollArea>
+                {!source && (
+                  <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+                    <p>未添加源文件夹时，将在以下位置新建项目，可在设置中修改</p>
+                    <p className="break-all">{createDirectory}</p>
+                  </div>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="project-instructions">项目指令</FieldLabel>
+                <FieldDescription id="project-instructions-hint">
+                  应用于此项目的所有会话。
+                </FieldDescription>
+                <Textarea
+                  id="project-instructions"
+                  aria-describedby="project-instructions-hint"
+                  disabled={loading || saving || selecting || original === null}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  className="min-h-28 max-h-56"
+                  placeholder={loading ? '正在读取项目指令…' : '例如：使用中文回答，遵循项目约定。'}
+                />
+              </Field>
+              <FieldError>{error}</FieldError>
+            </FieldGroup>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" disabled={saving || selecting} onClick={onClose}>
               取消
@@ -390,7 +388,7 @@ export function ProjectDialog({
               {saving ? (project ? '正在保存…' : '正在创建…') : project ? '保存修改' : '新建项目'}
             </Button>
           </DialogFooter>
-        </form>
+        </DialogForm>
       </DialogContent>
     </WorkspaceDialog>
   )

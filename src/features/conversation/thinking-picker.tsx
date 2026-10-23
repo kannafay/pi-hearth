@@ -59,7 +59,8 @@ export function ThinkingPicker() {
               aria-label="思考强度"
               data-pending={Boolean(settingsPending) || undefined}
               size="sm"
-              className="composer-select-trigger shrink-0"
+              variant="ghost"
+              className="shrink-0"
             />
           }
         >
@@ -71,7 +72,7 @@ export function ThinkingPicker() {
             : `思考强度：${effectiveLabel}`}
         </TooltipContent>
       </Tooltip>
-      <SelectContent alignItemWithTrigger={false} align="start" className="composer-select-content">
+      <SelectContent alignItemWithTrigger={false} align="start" width="content">
         <SelectGroup>
           {items.map((item) => (
             <SelectItem

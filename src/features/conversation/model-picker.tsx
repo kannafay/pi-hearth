@@ -47,14 +47,16 @@ export function ModelPicker({
         aria-label={label}
         data-pending={Boolean(settingsPending) || undefined}
         size="sm"
-        className={compact ? 'composer-select-trigger max-w-64 min-w-0' : 'max-w-72'}
+        variant={compact ? 'ghost' : 'default'}
+        className={compact ? 'max-w-64 min-w-0' : 'max-w-72'}
       >
         <SelectValue placeholder="选择模型" />
       </SelectTrigger>
       <SelectContent
         alignItemWithTrigger={false}
         align="start"
-        className={compact ? 'composer-select-content' : 'min-w-max'}
+        width={compact ? 'content' : 'default'}
+        className={compact ? undefined : 'min-w-max'}
       >
         {groups.map((group) => (
           <SelectGroup key={group.provider}>

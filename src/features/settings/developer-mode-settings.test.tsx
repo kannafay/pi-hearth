@@ -64,3 +64,13 @@ test('the terminal setting stays unavailable in a browser preview', async () => 
   expect(screen.getByText(/Windows 桌面应用/)).toBeVisible()
   expect(updateAppSettings).not.toHaveBeenCalled()
 })
+
+test('the shared setting label activates its switch and exposes the description', async () => {
+  const user = userEvent.setup()
+  render(<DeveloperModeSettings />)
+  const control = screen.getByRole('switch', { name: '开发者模式' })
+  expect(control).toHaveAccessibleDescription('打开独立后台终端，查看会话连接、设置切换和报错。')
+  await user.click(screen.getByText('开发者模式', { exact: true }))
+  expect(control).toBeChecked()
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({ developerMode: true })
+})

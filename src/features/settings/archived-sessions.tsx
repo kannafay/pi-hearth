@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { Archive, ArchiveRestore, Folder, Trash2 } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
+import { FieldError } from '@/components/ui/field'
 import { Checkbox } from '@/components/ui/checkbox'
 import { IconButton } from '@/components/icon-button'
 import { useDialogPresence } from '@/components/use-dialog-presence'
@@ -10,6 +11,8 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogBody,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -128,11 +131,7 @@ export function ArchivedSessions() {
 
   return (
     <>
-      {error && (
-        <p role="alert" className="pt-4 text-xs text-destructive">
-          {error}
-        </p>
-      )}
+      <FieldError className="pt-4">{error}</FieldError>
       {archivedProjectList.length > 0 && (
         <section aria-label="归档项目" className="border-b py-4">
           <h3 className="mb-2 text-xs text-muted-foreground">项目</h3>
@@ -284,17 +283,21 @@ export function ArchivedSessions() {
           if (!open && !busy) setDeleteTargets([])
         }}
       >
-        <DialogContent showCloseButton={false} className="sm:max-w-100">
-          <DialogTitle>删除 {shownTargets.length} 个归档会话？</DialogTitle>
-          <DialogDescription>聊天记录会从本机删除，无法恢复。</DialogDescription>
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {shownTargets.slice(0, 3).map((session) => (
-              <li key={session.path} className="truncate">
-                {session.title}
-              </li>
-            ))}
-            {shownTargets.length > 3 && <li>以及其余 {shownTargets.length - 3} 个会话</li>}
-          </ul>
+        <DialogContent showCloseButton={false} size="sm">
+          <DialogHeader variant="compact">
+            <DialogTitle>删除 {shownTargets.length} 个归档会话？</DialogTitle>
+            <DialogDescription>聊天记录会从本机删除，无法恢复。</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {shownTargets.slice(0, 3).map((session) => (
+                <li key={session.path} className="truncate">
+                  {session.title}
+                </li>
+              ))}
+              {shownTargets.length > 3 && <li>以及其余 {shownTargets.length - 3} 个会话</li>}
+            </ul>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => setDeleteTargets([])}>
               取消

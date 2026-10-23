@@ -21,6 +21,8 @@ import { SettingsPageHeader } from './settings-page-header'
 import { ArchivedSessions } from './archived-sessions'
 import { ProjectLocationSettings } from './project-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
+import { SettingsRow } from './settings-row'
+import { FieldError } from '@/components/ui/field'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
@@ -91,7 +93,7 @@ export function SettingsDialog({
 
   return (
     <WorkspaceDialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="settings-dialog overflow-hidden p-0 sm:max-w-190">
+      <DialogContent layout="panel" size="xl" className="settings-dialog">
         <DialogTitle className="sr-only">设置</DialogTitle>
         <DialogDescription className="sr-only">
           Pi Hearth 的外观、模型、归档与运行信息。
@@ -118,36 +120,44 @@ export function SettingsDialog({
           </div>
           <div className="settings-panels min-h-0 min-w-0 flex-1">
             <SettingsPanel value="appearance" title="外观" description="让工作台适合你的使用环境。">
-              <div className="flex items-center justify-between gap-5 border-b py-5">
-                <div>
-                  <h3 className="text-sm font-normal">界面主题</h3>
-                  <p className="mt-1.5 text-xs text-muted-foreground">选择浅色、深色或跟随系统。</p>
-                </div>
-                <Select
-                  items={themeOptions}
-                  value={theme}
-                  onValueChange={(value) => {
-                    if (value === 'system' || value === 'light' || value === 'dark') setTheme(value)
-                  }}
-                >
-                  <SelectTrigger aria-label="界面主题" className="w-32 shrink-0">
-                    <SelectValue>
-                      <ThemeIcon aria-hidden className="size-3.5 stroke-[1.6]" />
-                      <span>{themeLabel}</span>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {themeOptions.map(({ value, label, icon: Icon }) => (
-                        <SelectItem key={value} value={value}>
-                          <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
+              <SettingsRow
+                title="界面主题"
+                description="选择浅色、深色或跟随系统。"
+                htmlFor="settings-theme"
+                descriptionId="settings-theme-description"
+                control={
+                  <Select
+                    items={themeOptions}
+                    value={theme}
+                    onValueChange={(value) => {
+                      if (value === 'system' || value === 'light' || value === 'dark')
+                        setTheme(value)
+                    }}
+                  >
+                    <SelectTrigger
+                      id="settings-theme"
+                      aria-label="界面主题"
+                      aria-describedby="settings-theme-description"
+                      className="w-32"
+                    >
+                      <SelectValue>
+                        <ThemeIcon aria-hidden className="size-3.5 stroke-[1.6]" />
+                        <span>{themeLabel}</span>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {themeOptions.map(({ value, label, icon: Icon }) => (
+                          <SelectItem key={value} value={value}>
+                            <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                }
+              />
             </SettingsPanel>
             <SettingsPanel
               value="models"
@@ -180,38 +190,33 @@ export function SettingsDialog({
                   当前为浏览器预览，本地项目和桌面能力需在桌面应用中使用。
                 </p>
               ) : error ? (
-                <p role="alert" className="border-b py-5 text-sm text-destructive">
-                  桌面核心连接失败：{error}
-                </p>
+                <SettingsRow title="桌面核心">
+                  <FieldError>桌面核心连接失败：{error}</FieldError>
+                </SettingsRow>
               ) : (
-                <div className="divide-y border-b">
-                  <div className="py-5">
-                    <h3 className="text-sm font-normal">桌面核心</h3>
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      {version ? `已连接桌面核心，版本 ${version}` : '正在连接桌面核心…'}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between gap-5 py-5 text-sm">
-                    <h3 className="text-sm font-normal">Pi RPC</h3>
-                    <span className="text-muted-foreground">
-                      {status === 'disconnected'
+                <>
+                  <SettingsRow
+                    title="桌面核心"
+                    description={version ? `已连接桌面核心，版本 ${version}` : '正在连接桌面核心…'}
+                  />
+                  <SettingsRow
+                    title="Pi RPC"
+                    value={
+                      status === 'disconnected'
                         ? '未连接'
                         : status === 'running' || status === 'stopping'
                           ? '任务执行中'
                           : status === 'connecting'
                             ? '正在连接'
-                            : '已就绪'}
-                    </span>
-                  </div>
-                </div>
+                            : '已就绪'
+                    }
+                  />
+                </>
               )}
               <DeveloperModeSettings />
             </SettingsPanel>
             <SettingsPanel value="about" title="Pi Hearth" description="Pi Coding Agent 桌面工作台">
-              <div className="flex items-center justify-between gap-5 border-b py-5 text-sm">
-                <h3 className="text-sm font-normal">版本</h3>
-                <span className="text-muted-foreground">{version ?? '开发预览'}</span>
-              </div>
+              <SettingsRow title="版本" value={version ?? '开发预览'} />
               <p className="mt-5 text-xs leading-6 text-muted-foreground">
                 在本机管理项目、对话和工具执行，共享 Pi CLI 的会话。模型配置由 Pi 与 CC Switch
                 管理。

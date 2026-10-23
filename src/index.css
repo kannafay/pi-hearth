@@ -691,20 +691,6 @@ select {
   animation-fill-mode: both;
 }
 
-.composer-select-trigger {
-  @apply border-0 py-0 text-foreground/70 shadow-none hover:bg-accent hover:text-foreground data-pending:disabled:opacity-100 dark:bg-transparent dark:hover:bg-accent;
-}
-
-.composer-select-trigger > svg {
-  color: inherit;
-  opacity: 0.55;
-}
-
-.composer-select-content {
-  @apply w-max max-w-[calc(100vw-2rem)];
-  min-width: max(12rem, var(--anchor-width));
-}
-
 .composer-project-reveal {
   --composer-project-duration: 240ms;
   --composer-project-ease: cubic-bezier(0.26, 0, 0.18, 1);

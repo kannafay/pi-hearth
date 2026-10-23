@@ -78,13 +78,14 @@ export const ConversationTurn = memo(function ConversationTurn({
               }}
             >
               <Textarea
+                variant="embedded"
                 aria-label="编辑消息内容"
                 autoFocus
                 value={draft}
                 disabled={submitting}
                 onChange={(event) => setDraft(event.target.value)}
                 rows={3}
-                className="max-h-64 rounded-none border-0 bg-transparent px-0 py-0 text-[14px] leading-6 shadow-none focus-within:ring-0 dark:bg-transparent [&_textarea]:rounded-none"
+                className="max-h-64 leading-6"
                 onKeyDown={(event) => {
                   if (event.nativeEvent.isComposing) return
                   if (event.key === 'Escape' && !submitting) {

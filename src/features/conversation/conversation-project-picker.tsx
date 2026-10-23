@@ -4,6 +4,7 @@ import { Combobox } from '@base-ui/react/combobox'
 import { Check, ChevronUp, Folder, FolderPlus, MessageSquare, Search } from 'lucide-react'
 import { cn } from 'cn'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { menuItemStyles, menuPopupStyles } from '@/components/ui/menu-styles'
 import { ScrollArea } from '@/components/scroll-area'
 import { useWorkspaceStore } from '@/app/store'
@@ -109,10 +110,10 @@ export function ConversationProjectPicker({
             <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/70 px-3">
               <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               <Combobox.Input
+                render={<Input variant="embedded" />}
                 aria-label="搜索项目名称或路径"
                 placeholder="搜索项目名称或路径…"
                 maxLength={200}
-                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
             <ScrollArea
