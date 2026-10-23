@@ -650,28 +650,18 @@ select {
 }
 
 .composer-project-shelf {
-  position: relative;
   display: flex;
   height: 100%;
   margin-inline: 24px;
   align-items: center;
   border: 1px solid var(--input);
-  border-radius: 12px;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
   padding-inline: 8px;
   padding-bottom: var(--composer-project-overlap);
   background: var(--composer-project-background);
   transform: translateY(100%);
   transition: transform var(--composer-project-duration) var(--composer-project-ease);
-}
-
-.composer-project-shelf::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: var(--composer-project-overlap);
-  height: 6px;
-  background: linear-gradient(to top, oklch(0 0 0 / 6%), transparent);
-  pointer-events: none;
 }
 
 .composer-project-reveal[data-open='true'] .composer-project-shelf {
