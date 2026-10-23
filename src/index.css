@@ -62,6 +62,7 @@
   --caption-pressed: oklch(0.85 0.006 300);
   --background: oklch(1 0 0);
   --composer-background: var(--background);
+  --composer-project-background: oklch(0.98 0 0);
   --user-message-background: #000;
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -103,6 +104,7 @@
   --caption-pressed: oklch(0.43 0.008 300);
   --background: #181818;
   --composer-background: #363636;
+  --composer-project-background: #2f2f2f;
   --user-message-background: #303030;
   --sidebar-tab-background: #454545;
   --foreground: oklch(0.985 0 0);
@@ -623,12 +625,15 @@ select {
 }
 
 .composer-project-reveal {
+  --composer-project-duration: 240ms;
+  --composer-project-ease: cubic-bezier(0.26, 0, 0.18, 1);
+  --composer-project-overlap: 8px;
   position: relative;
   height: 0;
   opacity: 0;
   transition:
-    height var(--sidebar-motion-duration) var(--sidebar-motion-ease),
-    opacity var(--sidebar-motion-duration) var(--sidebar-motion-ease);
+    height var(--composer-project-duration) var(--composer-project-ease),
+    opacity var(--composer-project-duration) var(--composer-project-ease);
 }
 
 .composer-project-reveal[data-open='true'] {
@@ -639,23 +644,34 @@ select {
 .composer-project-clip {
   position: absolute;
   inset-inline: 0;
-  bottom: 0;
-  height: 36px;
+  bottom: calc(-1 * var(--composer-project-overlap));
+  height: calc(36px + var(--composer-project-overlap));
   overflow: hidden;
 }
 
 .composer-project-shelf {
+  position: relative;
   display: flex;
-  height: 36px;
+  height: 100%;
   margin-inline: 24px;
   align-items: center;
   border: 1px solid var(--input);
-  border-bottom: 0;
-  border-radius: 10px 10px 0 0;
+  border-radius: 12px;
   padding-inline: 8px;
-  background: var(--composer-background);
+  padding-bottom: var(--composer-project-overlap);
+  background: var(--composer-project-background);
   transform: translateY(100%);
-  transition: transform var(--sidebar-motion-duration) var(--sidebar-motion-ease);
+  transition: transform var(--composer-project-duration) var(--composer-project-ease);
+}
+
+.composer-project-shelf::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: var(--composer-project-overlap);
+  height: 6px;
+  background: linear-gradient(to top, oklch(0 0 0 / 6%), transparent);
+  pointer-events: none;
 }
 
 .composer-project-reveal[data-open='true'] .composer-project-shelf {
