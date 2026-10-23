@@ -95,7 +95,25 @@ test('startup restores the selected native session and its project', async () =>
   await useWorkspaceStore.getState().initialize()
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path)
   expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
+  expect(useWorkspaceStore.getState().expandedProjects[sessionKey(session.cwd)!]).toBe(true)
 })
+
+test.each([session.path, null])(
+  'startup preserves saved project collapse when restoring session %s',
+  async (sessionPath) => {
+    const expandedProjects = { [sessionKey(session.cwd)!]: false, 'd:/other': true }
+    useWorkspaceStore.setState({ expandedProjects })
+    vi.mocked(loadCatalog).mockResolvedValue({
+      ...catalog,
+      selection: { projectPath: session.cwd, sessionPath },
+    })
+
+    await useWorkspaceStore.getState().initialize()
+
+    expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
+    expect(useWorkspaceStore.getState().expandedProjects).toBe(expandedProjects)
+  },
+)
 
 test('projects can contain multiple sessions and each open selects the exact file', async () => {
   const second = { ...session, id: 'second', path: 'second.jsonl' }

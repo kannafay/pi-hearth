@@ -405,10 +405,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               samePath(project.path, catalog.selection.projectPath) &&
               !hasPath(get().archivedProjects, project.path),
           )?.path ?? null)
+      const expandedProjects = get().expandedProjects
+      const projectKey = sessionKey(projectPath)
       set({
         ...catalogState(catalog),
         projectPath,
-        expandedProjects: expandProject(get().expandedProjects, projectPath),
+        expandedProjects:
+          projectKey && expandedProjects[projectKey] === undefined
+            ? { ...expandedProjects, [projectKey]: true }
+            : expandedProjects,
         selectedSessionPath: session?.path ?? null,
         initialized: true,
       })
