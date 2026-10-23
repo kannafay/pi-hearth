@@ -36,10 +36,21 @@ export function useTheme() {
   useLayoutEffect(() => {
     const root = document.documentElement
     const scheme = dark ? 'dark' : 'light'
-    if (root.classList.contains('dark') !== dark) root.classList.toggle('dark', dark)
-    if (root.style.colorScheme !== scheme) root.style.colorScheme = scheme
+    let frame: number | undefined
+    if (root.classList.contains('dark') !== dark || root.style.colorScheme !== scheme) {
+      root.setAttribute('data-theme-changing', '')
+      root.classList.toggle('dark', dark)
+      root.style.colorScheme = scheme
+      // Resolve every element with transitions disabled before restoring them.
+      void root.offsetHeight
+      frame = window.requestAnimationFrame(() => root.removeAttribute('data-theme-changing'))
+    }
     void setWindowTheme(nativeTheme).catch((reason: unknown) => {
       console.warn('Unable to update the native window theme:', reason)
     })
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame)
+      root.removeAttribute('data-theme-changing')
+    }
   }, [dark, nativeTheme])
 }

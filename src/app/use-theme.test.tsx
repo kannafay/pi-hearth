@@ -16,9 +16,25 @@ vi.mock('@/lib/system-theme', () => ({
 
 let systemChanged: (dark: boolean) => void
 const unlisten = vi.fn()
+const frames = new Map<number, FrameRequestCallback>()
+let nextFrame = 0
+
+function finishThemeFrame() {
+  const callbacks = [...frames.values()]
+  frames.clear()
+  act(() => callbacks.forEach((callback) => callback(0)))
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
+  frames.clear()
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.set(++nextFrame, callback)
+    return nextFrame
+  })
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((frame) => {
+    frames.delete(frame)
+  })
   vi.mocked(isDesktop).mockReturnValue(false)
   vi.mocked(usesNativeSystemTheme).mockReturnValue(true)
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
@@ -39,6 +55,7 @@ test.each([false, true])(
   (dark) => {
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: dark } as MediaQueryList)
     renderHook(useTheme)
+    finishThemeFrame()
     expect(setWindowTheme).toHaveBeenCalledExactlyOnceWith(dark ? 'dark' : 'light')
     const mutations = new MutationObserver(() => {})
     mutations.observe(document.documentElement, { attributes: true })
@@ -50,6 +67,28 @@ test.each([false, true])(
     expect(document.documentElement.classList.contains('dark')).toBe(dark)
   },
 )
+
+test('theme changes snap together and restore transitions after the latest switch or unmount', () => {
+  const root = document.documentElement
+  const view = renderHook(useTheme)
+  finishThemeFrame()
+  expect(root).not.toHaveAttribute('data-theme-changing')
+
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(root).toHaveClass('dark')
+  expect(root).toHaveAttribute('data-theme-changing')
+  act(() => useWorkspaceStore.getState().setTheme('light'))
+  expect(root).not.toHaveClass('dark')
+  expect(root).toHaveAttribute('data-theme-changing')
+  expect(frames.size).toBe(1)
+
+  finishThemeFrame()
+  expect(root).not.toHaveAttribute('data-theme-changing')
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  view.unmount()
+  expect(root).not.toHaveAttribute('data-theme-changing')
+  expect(frames.size).toBe(0)
+})
 
 test('system changes keep manual colors stable and returning to automatic uses the actual OS color', () => {
   renderHook(useTheme)
