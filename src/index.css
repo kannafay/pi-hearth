@@ -236,6 +236,7 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);
+  --sidebar-motion-duration: 240ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
 
@@ -401,7 +402,7 @@ select {
 
 .sidebar-tab-indicator {
   transition-property: translate, width;
-  transition-duration: 240ms;
+  transition-duration: var(--sidebar-motion-duration);
   transition-timing-function: var(--sidebar-motion-ease);
 }
 
@@ -417,8 +418,8 @@ select {
   overflow: hidden;
   opacity: 1;
   transition:
-    height 220ms var(--sidebar-motion-ease),
-    opacity 140ms var(--sidebar-motion-ease);
+    height var(--sidebar-motion-duration) var(--sidebar-motion-ease),
+    opacity var(--sidebar-motion-duration) var(--sidebar-motion-ease);
 }
 
 .sidebar-project-sessions .sidebar-session-link {
@@ -429,10 +430,6 @@ select {
 .sidebar-project-sessions:is([data-starting-style], [data-ending-style]) {
   height: 0;
   opacity: 0;
-}
-
-.sidebar-project-sessions[data-ending-style] {
-  transition-duration: 170ms, 100ms;
 }
 
 .execution-process-content,
