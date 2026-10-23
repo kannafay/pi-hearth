@@ -12,7 +12,6 @@ import {
   MoreHorizontal,
   Plus,
   Pin,
-  RefreshCw,
   Settings,
   SquarePen,
 } from 'lucide-react'
@@ -24,7 +23,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useWorkspaceStore } from '@/app/store'
@@ -46,13 +44,11 @@ function sessionTime(modified: number) {
 
 export function WorkspaceNavigation({
   desktop,
-  onAdd,
   onCreate,
   onSettings,
   onInstructions,
 }: {
   desktop: boolean
-  onAdd: () => void
   onCreate: () => void
   onSettings: () => void
   onInstructions: (project: ProjectInfo) => void
@@ -240,31 +236,15 @@ export function WorkspaceNavigation({
               <section aria-label="项目" className="mb-6">
                 <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">项目</h2>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button aria-label="项目操作" variant="ghost" size="icon-xs" />}
-                    >
-                      <Plus className="size-3.5" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem disabled={!desktop || busy} onClick={onAdd}>
-                        <FolderOpen />
-                        添加项目
-                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled={!desktop || busy} onClick={onCreate}>
-                        <FolderPlus />
-                        新建项目
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        disabled={!desktop || workspace.loading}
-                        onClick={() => void workspace.refresh()}
-                      >
-                        <RefreshCw />
-                        刷新会话
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button
+                    aria-label="创建项目"
+                    variant="ghost"
+                    size="icon-xs"
+                    disabled={!desktop || busy}
+                    onClick={onCreate}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
                 </div>
                 <div className="flex flex-col gap-1">
                   {workspace.projects.map((project) => (
@@ -372,7 +352,7 @@ export function WorkspaceNavigation({
                     variant="ghost"
                     className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
                     disabled={!desktop || busy}
-                    onClick={onAdd}
+                    onClick={onCreate}
                   >
                     <FolderPlus className="size-4 stroke-[1.5]" />
                     添加项目

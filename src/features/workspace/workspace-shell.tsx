@@ -19,7 +19,7 @@ import { WorkspaceNavigation } from './workspace-navigation'
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
-import { controlWindow, isDesktop, selectProjectDirectory } from '@/lib/desktop'
+import { controlWindow, isDesktop } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
 
 export function WorkspaceShell() {
@@ -98,16 +98,6 @@ export function WorkspaceShell() {
     window.addEventListener('keydown', search)
     return () => window.removeEventListener('keydown', search)
   }, [dialogOpen, searchOpen])
-
-  async function addProject() {
-    setError(null)
-    try {
-      const selected = await selectProjectDirectory()
-      if (selected) await workspace.addProject(selected)
-    } catch (reason) {
-      setError(String(reason))
-    }
-  }
 
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
     void controlWindow(action).catch((reason: unknown) => setError(String(reason)))
@@ -225,7 +215,6 @@ export function WorkspaceShell() {
             >
               <WorkspaceNavigation
                 desktop={desktop}
-                onAdd={() => void addProject()}
                 onCreate={createProject}
                 onSettings={() => setSettingsOpen(true)}
                 onInstructions={setProjectDialog}

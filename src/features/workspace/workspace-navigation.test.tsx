@@ -14,22 +14,22 @@ beforeEach(() => {
   useConversationStore.setState({ status: 'ready' })
 })
 
-test('project menu actions fire and close the menu', async () => {
+test('the project add button opens creation directly without a menu', async () => {
   const onCreate = vi.fn()
   const user = userEvent.setup()
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={onCreate}
       onSettings={vi.fn()}
       onInstructions={vi.fn()}
     />,
   )
-  await user.click(screen.getByRole('button', { name: '项目操作' }))
-  await user.click(await screen.findByRole('menuitem', { name: '新建项目' }))
+  await user.click(screen.getByRole('button', { name: '创建项目' }))
   expect(onCreate).toHaveBeenCalledOnce()
-  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '添加项目' }))
+  expect(onCreate).toHaveBeenCalledTimes(2)
 })
 
 test('projects expand their sessions and their instruction menu remains usable', async () => {
@@ -51,7 +51,6 @@ test('projects expand their sessions and their instruction menu remains usable',
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
       onInstructions={onInstructions}
@@ -104,7 +103,6 @@ test('sliding filters and session navigation stay usable while a session is conn
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
       onInstructions={vi.fn()}
@@ -142,7 +140,6 @@ test('session and project tooltips expose full titles and paths without native t
     <TooltipProvider delay={0}>
       <WorkspaceNavigation
         desktop
-        onAdd={vi.fn()}
         onCreate={vi.fn()}
         onSettings={vi.fn()}
         onInstructions={vi.fn()}
@@ -182,7 +179,6 @@ test('switching projects and tabs preserves each project expansion independently
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
       onInstructions={vi.fn()}
@@ -231,7 +227,6 @@ test('pinned chats sort first, archived chats stay hidden and row actions never 
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
       onInstructions={vi.fn()}
@@ -277,7 +272,6 @@ test('only the replying session shows progress and terminal events always clear 
   render(
     <WorkspaceNavigation
       desktop
-      onAdd={vi.fn()}
       onCreate={vi.fn()}
       onSettings={vi.fn()}
       onInstructions={vi.fn()}
@@ -379,7 +373,6 @@ describe('animated navigation filters', () => {
     const rendered = render(
       <WorkspaceNavigation
         desktop
-        onAdd={vi.fn()}
         onCreate={vi.fn()}
         onSettings={vi.fn()}
         onInstructions={vi.fn()}
