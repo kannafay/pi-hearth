@@ -263,7 +263,7 @@ export function ProjectDialog({
                   <div
                     ref={sourceArea}
                     aria-label={project ? '项目源文件夹' : '源文件夹拖放区'}
-                    className={`overflow-hidden rounded-lg border border-dashed transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                    className={`overflow-hidden rounded-lg border transition-colors ${source ? 'border-solid' : 'border-dashed'} ${dragging ? 'border-ring bg-muted/40' : ''}`}
                     onDragOver={(event) => {
                       if (
                         !project &&
