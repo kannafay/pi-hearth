@@ -235,13 +235,7 @@ export function Composer({
         <Textarea
           aria-label="消息草稿"
           rows={1}
-          placeholder={
-            dragging
-              ? '松开以添加附件'
-              : status === 'connecting'
-                ? '可以先输入，连接完成后发送…'
-                : '发送消息，或粘贴图片与文件…'
-          }
+          placeholder={dragging ? '松开以添加附件' : '发送消息，或粘贴图片与文件…'}
           value={draft}
           disabled={Boolean(readOnly)}
           onChange={(event) => setDraft(event.target.value)}
@@ -333,7 +327,7 @@ export function Composer({
           )}
         </div>
       </div>
-      {connecting && hasMessages ? (
+      {status === 'disconnected' ? (
         <ConnectionNotice className="mt-2 px-1" />
       ) : statusText ? (
         <p role="status" className="mt-2 truncate px-1 text-[11px] text-muted-foreground/80">

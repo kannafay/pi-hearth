@@ -3,7 +3,6 @@ import { CircleAlert, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ConnectionNotice } from './connection-notice'
 import { useConversationStore } from './store'
 
 export function ConversationWelcome() {
@@ -21,12 +20,8 @@ export function ConversationWelcome() {
 
   if (connecting && sessionFile) {
     return (
-      <div className="mx-auto w-full max-w-209" aria-label="正在载入会话">
-        <ConnectionNotice className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2" />
-        <p className="mt-3 px-1 text-xs leading-5 text-muted-foreground/75">
-          正在准备聊天记录，你可以先输入消息。
-        </p>
-        <div aria-hidden className="mt-8 space-y-8 motion-safe:animate-pulse">
+      <div className="mx-auto w-full max-w-209" aria-label="正在载入会话" aria-busy="true">
+        <div aria-hidden className="space-y-8 motion-safe:animate-pulse">
           <div className="ml-auto h-10 w-40 max-w-[60%] rounded-xl bg-muted/60" />
           <div className="space-y-3">
             <div className="mb-5 h-3 w-16 rounded bg-muted/50" />
@@ -70,7 +65,6 @@ export function ConversationWelcome() {
               ? '围绕当前项目提问，或添加文件一起处理。'
               : '从一个问题开始，也可以选择项目或添加文件。'}
         </p>
-        <ConnectionNotice className="mt-5" />
         {!desktop && (
           <p className="mt-4 text-xs text-muted-foreground">浏览器预览 · 对话需在桌面应用中使用</p>
         )}

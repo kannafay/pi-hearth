@@ -237,6 +237,7 @@ test('failed reconnects and cancellation preserve cached history and stale hydra
   await useConversationStore.getState().disconnect()
   expect(useConversationStore.getState()).toMatchObject({
     status: 'disconnected',
+    connectionTarget: { projectPath: 'project', sessionPath: 'A' },
     messages: [{ text: '回复 A' }],
     error: null,
   })

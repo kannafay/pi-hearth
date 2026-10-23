@@ -390,7 +390,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       activity: '',
       error: null,
       connectionStartedAt: null,
-      connectionTarget: null,
     })
     try {
       await disconnectPi()

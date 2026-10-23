@@ -108,7 +108,7 @@ export function ConversationProjectPicker({
             <ScrollArea
               data-project-picker-list
               className="min-h-0 flex-1"
-              viewportClassName="overflow-x-hidden overflow-y-auto p-1"
+              viewportClassName="overflow-x-hidden overflow-y-auto p-1 pr-[10px]"
               style={{ maxHeight: 'min(16rem, max(0px, calc(var(--available-height) - 5rem)))' }}
             >
               <Combobox.List aria-label="项目列表" className="space-y-0.5">

@@ -97,6 +97,11 @@ test('preparing an empty new conversation and choosing its project keep the welc
   render(<ConversationPanel />)
   const welcome = screen.getByRole('heading', { name: '开始一段新对话' })
   const picker = screen.getByRole('combobox', { name: '选择对话项目' })
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveAttribute(
+    'placeholder',
+    '发送消息，或粘贴图片与文件…',
+  )
   act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'new.jsonl' }))
   expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
   act(() =>
@@ -416,22 +421,25 @@ test('starting the next request does not re-expand the previous turn before its 
   expect(screen.getByText(answer.text)).toBeVisible()
 })
 
-test('an uncached conversation uses a compact loading notice and a skeleton while drafts remain editable', async () => {
-  const disconnect = vi.fn().mockResolvedValue(undefined)
+test('an uncached conversation keeps its history skeleton and editable draft without a connection notice', async () => {
   useConversationStore.setState({
     status: 'connecting',
     sessionFile: 'history.jsonl',
     connectionStartedAt: Date.now(),
-    disconnect,
   })
   const user = userEvent.setup()
   render(<ConversationPanel />)
-  expect(screen.getByRole('status')).toHaveTextContent('正在载入会话…')
-  expect(screen.queryByRole('heading', { name: '正在打开会话' })).not.toBeInTheDocument()
-  await user.type(screen.getByRole('textbox', { name: '消息草稿' }), '先写草稿')
+  expect(screen.getByLabelText('正在载入会话')).toHaveAttribute('aria-busy', 'true')
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '取消连接' })).not.toBeInTheDocument()
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  expect(input).toHaveAttribute('placeholder', '发送消息，或粘贴图片与文件…')
+  await user.type(input, '先写草稿')
   expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
-  await user.click(screen.getByRole('button', { name: '取消连接' }))
-  expect(disconnect).toHaveBeenCalledOnce()
+  act(() => useConversationStore.setState({ status: 'ready' }))
+  expect(screen.queryByLabelText('正在载入会话')).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toBe(input)
+  expect(input).toHaveValue('先写草稿')
   expect(useWorkspaceStore.getState().draft).toBe('先写草稿')
 })
 
@@ -448,15 +456,34 @@ test('cached history stays visible during connection and failures have an inline
   render(<ConversationPanel />)
   expect(screen.getByText(answer.text)).toBeVisible()
   expect(screen.queryByLabelText('正在载入会话')).not.toBeInTheDocument()
-  const notice = screen.getByRole('status')
-  expect(notice).toHaveTextContent('正在连接助手…')
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
   const input = screen.getByRole('textbox', { name: '消息草稿' })
-  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   act(() => useConversationStore.setState({ status: 'disconnected', error: '助手启动失败' }))
   expect(screen.getByText(answer.text)).toBeVisible()
   expect(screen.getByRole('alert')).toHaveTextContent('助手启动失败')
+  const notice = screen.getByRole('status')
+  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   await user.click(screen.getByRole('button', { name: '重新连接' }))
   expect(connect).toHaveBeenCalledWith('D:\\项目', 'history.jsonl')
+})
+
+test('a failed new conversation has one recovery action below the composer', async () => {
+  const connect = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    status: 'disconnected',
+    connectionTarget: { projectPath: 'D:\\项目', sessionPath: null },
+    error: '助手启动失败',
+    connect,
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  expect(screen.getByRole('heading', { name: '连接未完成' })).toBeVisible()
+  expect(screen.getAllByRole('button', { name: '重新连接' })).toHaveLength(1)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  const notice = screen.getByRole('status')
+  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  await user.click(screen.getByRole('button', { name: '重新连接' }))
+  expect(connect).toHaveBeenCalledWith('D:\\项目', null)
 })
 
 function historyFixture(count: number) {
