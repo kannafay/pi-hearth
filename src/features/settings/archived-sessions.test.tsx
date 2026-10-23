@@ -51,6 +51,14 @@ test('mixed selection and select-all restore only archived conversations', async
   const user = userEvent.setup()
   preview()
   expect(screen.queryByText('普通会话')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '恢复所选' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '删除所选' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('checkbox', { name: `选择 ${sessions[0].title}` }))
+  expect(screen.getByRole('button', { name: '恢复所选' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '删除所选' })).toBeEnabled()
+  await user.click(screen.getByRole('checkbox', { name: `选择 ${sessions[0].title}` }))
+  expect(screen.queryByRole('button', { name: '恢复所选' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '删除所选' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('checkbox', { name: `选择 ${sessions[0].title}` }))
   expect(screen.getByRole('checkbox', { name: '全选归档会话' })).toHaveAttribute(
     'aria-checked',

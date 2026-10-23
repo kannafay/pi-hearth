@@ -820,22 +820,6 @@ select {
 .settings-panel {
   grid-area: 1 / 1;
   min-width: 0;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 200ms var(--dialog-ease),
-    transform 200ms var(--dialog-ease);
-}
-
-.settings-panel:is([data-starting-style], [data-ending-style]) {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.settings-panel[data-ending-style] {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
 }
 
 .settings-dialog

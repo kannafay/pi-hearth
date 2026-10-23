@@ -141,29 +141,33 @@ export function ArchivedSessions() {
                 setSelected(new Set(checked ? archived.map((session) => session.path) : []))
               }
             />
-            <span className="flex-1 text-xs text-muted-foreground">
+            <span className="flex min-h-7 flex-1 items-center text-xs text-muted-foreground">
               {chosen.length ? `已选 ${chosen.length} 项` : `共 ${archived.length} 个会话`}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              disabled={!desktop || busy || !chosen.length}
-              onClick={() => void restore(chosen)}
-            >
-              <ArchiveRestore className="size-3.5" />
-              恢复所选
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/15"
-              disabled={!desktop || busy || !chosen.length}
-              onClick={() => setDeleteTargets(chosen)}
-            >
-              <Trash2 className="size-3.5" />
-              删除所选
-            </Button>
+            {chosen.length > 0 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  disabled={!desktop || busy}
+                  onClick={() => void restore(chosen)}
+                >
+                  <ArchiveRestore className="size-3.5" />
+                  恢复所选
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/15"
+                  disabled={!desktop || busy}
+                  onClick={() => setDeleteTargets(chosen)}
+                >
+                  <Trash2 className="size-3.5" />
+                  删除所选
+                </Button>
+              </>
+            )}
           </div>
           <ul aria-label="归档会话" className="divide-y border-b">
             {archived.map((session) => {
