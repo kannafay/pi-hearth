@@ -218,7 +218,7 @@ export function WorkspaceNavigation({
                 {label}
               </Tabs.Tab>
             ))}
-            <Tabs.Indicator className="sidebar-tab-indicator absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-sidebar-accent shadow-xs transition-[translate,width] duration-200 ease-out" />
+            <Tabs.Indicator className="sidebar-tab-indicator absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-sidebar-accent shadow-xs" />
           </Tabs.List>
         </div>
         <Tabs.Panel value={filter} className="flex min-h-0 flex-1 flex-col">

@@ -236,6 +236,7 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);
+  --sidebar-motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .dark .workspace-navigation {
@@ -393,6 +394,17 @@ select {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
+.sidebar-tabs [role='tab'] {
+  transition-duration: 180ms;
+  transition-timing-function: var(--sidebar-motion-ease);
+}
+
+.sidebar-tab-indicator {
+  transition:
+    translate 280ms var(--sidebar-motion-ease),
+    width 280ms var(--sidebar-motion-ease);
+}
+
 .dark .sidebar-tab-indicator {
   background: var(--sidebar-tab-background);
   box-shadow:
@@ -405,8 +417,8 @@ select {
   overflow: hidden;
   opacity: 1;
   transition:
-    height 160ms ease-out,
-    opacity 160ms ease-out;
+    height 300ms var(--sidebar-motion-ease),
+    opacity 180ms var(--sidebar-motion-ease);
 }
 
 .sidebar-project-sessions .sidebar-session-link {
@@ -417,6 +429,10 @@ select {
 .sidebar-project-sessions:is([data-starting-style], [data-ending-style]) {
   height: 0;
   opacity: 0;
+}
+
+.sidebar-project-sessions[data-ending-style] {
+  transition-duration: 240ms, 140ms;
 }
 
 .execution-process-content,
