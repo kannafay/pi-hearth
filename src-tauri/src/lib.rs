@@ -7,6 +7,7 @@ mod tray_menu;
 #[cfg(windows)]
 #[path = "tray_menu/native.rs"]
 mod tray_menu;
+mod window_state;
 
 use tauri::Manager;
 
@@ -43,15 +44,18 @@ pub fn run() {
             }
         }))
         .manage(desktop::Lifecycle::default())
+        .manage(window_state::Persistence::default())
         .manage(pi::PiManager::default())
         .manage(pi::WorkspaceManager::default())
         .manage(pi::attachments::AttachmentManager::default())
-        .plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(window_state::plugin());
     #[cfg(not(windows))]
     let builder = builder.manage(tray_menu::TrayMenuState::default());
     builder
         .setup(desktop::setup)
         .on_window_event(|window, event| {
+            window_state::on_window_event(window, event);
             if window.label() == "main"
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && !window

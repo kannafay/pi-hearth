@@ -30,6 +30,7 @@ pub fn shutdown(app: &AppHandle, action: Shutdown) {
     {
         return;
     }
+    crate::window_state::save(app);
     app.state::<WorkspaceManager>().cancel_open();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -93,5 +94,6 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = tray.build(app)?;
     #[cfg(windows)]
     crate::tray_menu::apply_style(&_tray, &menu)?;
+    crate::window_state::restore_and_show(app.handle())?;
     Ok(())
 }
