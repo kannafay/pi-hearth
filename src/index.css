@@ -400,9 +400,9 @@ select {
 }
 
 .sidebar-tab-indicator {
-  transition:
-    translate 200ms var(--sidebar-motion-ease),
-    width 200ms var(--sidebar-motion-ease);
+  transition-property: translate, width;
+  transition-duration: 240ms;
+  transition-timing-function: cubic-bezier(0.26, 0, 0.18, 1);
 }
 
 .dark .sidebar-tab-indicator {
