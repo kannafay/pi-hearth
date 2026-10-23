@@ -236,6 +236,7 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--background);
+  --sidebar-row-accent: var(--sidebar-accent);
   --sidebar-motion-duration: 240ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
@@ -243,6 +244,7 @@ select {
 .dark .workspace-navigation {
   --muted: oklch(0.3 0.006 300);
   --sidebar-accent: var(--muted);
+  --sidebar-row-accent: oklch(0.35 0.006 300);
 }
 
 .workspace-navigation [data-slot='button']:hover {
@@ -256,7 +258,7 @@ select {
 }
 
 :is(.sidebar-session-row, .sidebar-project-row) {
-  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-accent) 70%, transparent);
+  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-row-accent) 70%, transparent);
   --sidebar-row-actions-width: 3.625rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
@@ -290,7 +292,7 @@ select {
 }
 
 .sidebar-session-row[data-selected='true'] {
-  --sidebar-row-surface: var(--sidebar-accent);
+  --sidebar-row-surface: var(--sidebar-row-accent);
   color: var(--foreground);
 }
 
