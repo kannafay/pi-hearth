@@ -11,6 +11,7 @@ import { useConversationStore } from './store'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useConversationLocalState } from './conversation-local-state'
+import { getResponseStatus } from './response-status'
 
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
@@ -32,7 +33,10 @@ export const ConversationTurn = memo(function ConversationTurn({
   const error = lastAssistant?.error
   const hasAssistant =
     active || process.length > 0 || reply || cancelled || error || user?.finishedAt !== undefined
-  const lastProcess = process.at(-1)
+  const responseStatus = getResponseStatus(
+    lastAssistant,
+    process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : [])),
+  )
   const rewrite = useConversationStore((state) => state.rewrite)
   const canRewrite = useConversationStore(
     (state) =>
@@ -156,17 +160,7 @@ export const ConversationTurn = memo(function ConversationTurn({
                 {reply.text}
               </Streamdown>
             ) : null}
-            {active && (
-              <p className="text-[14px] text-muted-foreground/70">
-                {lastProcess?.kind === 'tool' && lastProcess.tool.status === 'awaiting_approval'
-                  ? '等待工具调用确认…'
-                  : lastProcess?.kind === 'tool' && lastProcess.tool.status === 'running'
-                    ? '正在执行工具…'
-                    : reply?.text
-                      ? '正在生成…'
-                      : '正在思考…'}
-              </p>
-            )}
+            {active && <p className="text-[14px] text-muted-foreground/70">{responseStatus}</p>}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}
             {!active && (reply || cancelled || error) && (

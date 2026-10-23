@@ -9,9 +9,9 @@ test('the running clock advances and the finished duration remains fixed', () =>
   vi.useFakeTimers()
   vi.setSystemTime(100_000)
   const { rerender } = render(<ExecutionProcess items={[]} active startedAt={100_000} />)
-  expect(screen.getByText('已处理 0秒')).toBeVisible()
+  expect(screen.getByText('已用时 0秒')).toBeVisible()
   act(() => vi.advanceTimersByTime(217_000))
-  expect(screen.getByText('已处理 3分37秒')).toBeVisible()
+  expect(screen.getByText('已用时 3分37秒')).toBeVisible()
   rerender(<ExecutionProcess items={[]} active={false} startedAt={100_000} finishedAt={317_000} />)
   expect(screen.getByText('用时 3分37秒')).toBeVisible()
   act(() => vi.advanceTimersByTime(60_000))
@@ -49,7 +49,7 @@ test('a fast running reply retains the live clock until it completes', () => {
   const { rerender, container } = render(
     <ExecutionProcess items={[]} active startedAt={startedAt} />,
   )
-  expect(screen.getByText('已处理 0秒')).toBeVisible()
+  expect(screen.getByText('已用时 0秒')).toBeVisible()
   rerender(
     <ExecutionProcess
       items={[]}

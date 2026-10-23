@@ -302,6 +302,80 @@ function receive(sequence: number, data: PiEvent['data']) {
   )
 }
 
+test('a reply waits for output before showing thinking and generation states', () => {
+  const { user, answer } = processFixture()
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
+  render(<ConversationPanel />)
+  receive(1, { type: 'run_started', message: user })
+  const reply = within(screen.getByRole('article', { name: 'Pi 的回复' }))
+  expect(reply.getByText('等待回复…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复…')
+
+  receive(2, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  expect(reply.getByText('等待回复…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复…')
+
+  receive(3, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 0,
+    kind: 'thinking',
+    delta: '整理结论',
+  })
+  expect(reply.getByText('正在思考…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('正在思考…')
+
+  receive(4, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 1,
+    kind: 'text',
+    delta: answer.text,
+  })
+  expect(reply.getByText('正在生成…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('正在生成…')
+  receive(5, { type: 'message_completed', message: answer })
+  receive(6, { type: 'run_finished', status: 'complete', error: null })
+  expect(reply.queryByText(/等待回复…|正在思考…|正在生成…/)).not.toBeInTheDocument()
+})
+
+test('tool states take priority and completed tools return to waiting for the next response', () => {
+  const { user, progress, answer, tool, timeline } = processFixture()
+  const queued = { ...tool, id: 'tool-2', toolCallId: 'source-2', status: 'queued' }
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'running',
+    activeRunId: 'run-1',
+    messages: [user, progress],
+    tools: [tool, queued],
+    timeline: [...timeline, { kind: 'tool', id: queued.id }],
+  })
+  render(<ConversationPanel />)
+  const reply = within(screen.getByRole('article', { name: 'Pi 的回复' }))
+  expect(reply.getByText('正在执行工具…')).toBeVisible()
+  receive(1, {
+    type: 'tool_changed',
+    tool: { ...queued, status: 'awaiting_approval', approvalId: 'approval-2' },
+  })
+  expect(reply.getByText('等待确认…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('等待确认…')
+  receive(2, { type: 'tool_changed', tool: { ...queued, status: 'complete' } })
+  expect(reply.getByText('正在执行工具…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('正在执行工具…')
+  receive(3, { type: 'tool_changed', tool: { ...tool, status: 'complete' } })
+  expect(reply.getByText('等待回复…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复…')
+  receive(4, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  expect(reply.getByText('等待回复…')).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复…')
+})
+
 test('completed history shows one final reply and keeps all process details in a collapsed group', async () => {
   const { user: prompt, progress, answer, tool, timeline } = processFixture()
   useConversationStore.setState({

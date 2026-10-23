@@ -32,7 +32,7 @@ function ElapsedTime({
     return <span>{active ? '正在处理…' : '已完成'}</span>
   return (
     <span>
-      {active ? '已处理 ' : '用时 '}
+      {active ? '已用时 ' : '用时 '}
       {formatElapsed((active ? now : finishedAt!) - startedAt)}
     </span>
   )

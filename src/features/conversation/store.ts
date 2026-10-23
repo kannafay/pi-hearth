@@ -17,6 +17,7 @@ import {
   stopPi,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
+import { getResponseStatus } from './response-status'
 import {
   rememberSession,
   sessionDisplay,
@@ -144,7 +145,6 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
         activeRunId: event.runId,
         status: state.status === 'stopping' ? 'stopping' : 'running',
         error: null,
-        activity: state.status === 'stopping' ? '正在停止…' : '正在等待回复…',
         messages: [
           ...state.messages,
           { ...data.message, startedAt: data.message.startedAt ?? Date.now() },
@@ -156,14 +156,12 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.messages = [...state.messages, data.message]
       next.timeline = [...state.timeline, { kind: 'message', id: data.message.id }]
       next.blocks = { ...state.blocks, [data.message.id]: {} }
-      next.activity = state.status === 'stopping' ? '正在停止…' : '正在生成…'
       break
     case 'message_delta': {
       const blocks = { ...state.blocks[data.messageId] }
       const block = blocks[data.contentIndex] ?? { kind: data.kind, text: '' }
       blocks[data.contentIndex] = { ...block, text: block.text + data.delta }
       next.blocks = { ...state.blocks, [data.messageId]: blocks }
-      next.activity = state.status === 'stopping' ? '正在停止…' : '正在生成…'
       const ordered = Object.entries(blocks).sort(([a], [b]) => Number(a) - Number(b))
       next.messages = state.messages.map((message) =>
         message.id === data.messageId
@@ -193,14 +191,6 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
         ? state.tools.map((tool) => (tool.id === data.tool.id ? data.tool : tool))
         : [...state.tools, data.tool]
       if (!exists) next.timeline = [...state.timeline, { kind: 'tool', id: data.tool.id }]
-      next.activity =
-        state.status === 'stopping'
-          ? '正在停止…'
-          : data.tool.status === 'awaiting_approval'
-            ? '等待工具调用确认…'
-            : data.tool.status === 'running'
-              ? '正在执行工具…'
-              : '正在等待 Pi…'
       break
     }
     case 'run_finished':
@@ -254,6 +244,23 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
           ? { ...tool, approvalId: null, status: 'interrupted' }
           : tool,
       )
+  }
+  if (
+    [
+      'run_started',
+      'message_started',
+      'message_delta',
+      'message_completed',
+      'tool_changed',
+    ].includes(data.type)
+  ) {
+    next.activity =
+      next.status === 'stopping'
+        ? '正在停止…'
+        : getResponseStatus(
+            next.messages.at(-1),
+            next.tools.filter((tool) => tool.runId === next.activeRunId),
+          )
   }
   return next
 }
