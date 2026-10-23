@@ -66,6 +66,7 @@ interface WorkspaceState {
   deleteArchivedSessions: (paths: string[]) => Promise<boolean>
   initialized: boolean
   loading: boolean
+  refreshRequested: boolean
   error: string | null
   projectPath: string | null
   draft: string
@@ -96,6 +97,7 @@ interface WorkspaceState {
   setInspectorOpen: (open: boolean) => void
   setTheme: (theme: Theme) => void
   initialize: () => Promise<void>
+  syncActiveSession: () => void
   refresh: () => Promise<void>
   openSession: (session: SessionInfo) => Promise<void>
   newConversation: (
@@ -123,6 +125,12 @@ function catalogState(catalog: WorkspaceCatalog) {
 
 function expandProject(expanded: Record<string, boolean>, path: string | null) {
   return path ? { ...expanded, [sessionKey(path)!]: true } : expanded
+}
+
+async function finishCatalogLoad() {
+  const { refreshRequested } = useWorkspaceStore.getState()
+  useWorkspaceStore.setState({ loading: false, refreshRequested: false })
+  if (refreshRequested) await useWorkspaceStore.getState().refresh()
 }
 
 async function changeSessionPreference(
@@ -306,6 +314,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   initialized: false,
   loading: false,
+  refreshRequested: false,
   error: null,
   projectPath: null,
   draft: '',
@@ -439,12 +448,57 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     } catch (reason) {
       set({ error: String(reason) })
     } finally {
-      set({ loading: false })
+      await finishCatalogLoad()
     }
   },
-  refresh: async () => {
+  syncActiveSession: () => {
+    const conversation = useConversationStore.getState()
+    const { instanceId, sessionId, sessionFile, connectionTarget, messages } = conversation
+    if (!instanceId || !sessionId || !sessionFile || conversation.status === 'connecting') return
+    const firstUserMessage = messages.find((message) => message.role === 'user')
+    if (!firstUserMessage) return
+    const cwd = connectionTarget
+      ? (connectionTarget.projectPath ?? get().generalCwd)
+      : (get().projectPath ?? get().generalCwd)
+    if (!cwd) return
+    const previous = get().sessions.find((session) => samePath(session.path, sessionFile))
+    const modified = messages.reduce(
+      (latest, message) =>
+        Math.max(latest, message.timestamp ?? 0, message.startedAt ?? 0, message.finishedAt ?? 0),
+      Math.max(previous?.modified ?? 0, conversation.lastLocalActivityAt ?? 0),
+    )
+    const session: SessionInfo = {
+      path: sessionFile,
+      id: sessionId,
+      cwd,
+      title: previous?.title ?? (firstUserMessage.text.trim() || '未命名会话').slice(0, 160),
+      modified: modified || Date.now(),
+      messageCount: Math.max(previous?.messageCount ?? 0, messages.length),
+    }
     if (
-      get().loading ||
+      previous &&
+      previous.id === session.id &&
+      samePath(previous.cwd, cwd) &&
+      previous.modified === session.modified &&
+      previous.messageCount === session.messageCount &&
+      samePath(get().selectedSessionPath, sessionFile)
+    )
+      return
+    // A catalog requested before this local change must not erase its new row.
+    sessionRevision++
+    set((state) => ({
+      sessions: previous
+        ? state.sessions.map((item) => (samePath(item.path, sessionFile) ? session : item))
+        : [session, ...state.sessions],
+      selectedSessionPath: sessionFile,
+    }))
+  },
+  refresh: async () => {
+    if (get().loading) {
+      set({ refreshRequested: true })
+      return
+    }
+    if (
       !get().initialized ||
       get().sessionActionPending ||
       useConversationStore.getState().settingsPending
@@ -465,6 +519,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const connecting = conversation.status === 'connecting'
       set({
         ...catalogState(catalog),
+        // New native sessions may not be written to disk until the first reply ends.
+        ...(busy() && previous && !next ? { sessions: [previous, ...catalog.sessions] } : {}),
         ...(connecting ? {} : { selectedSessionPath: path }),
         error: null,
       })
@@ -489,7 +545,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     } catch (reason) {
       set({ error: String(reason) })
     } finally {
-      set({ loading: false })
+      await finishCatalogLoad()
     }
   },
   openSession: async (session) => {

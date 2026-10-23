@@ -467,7 +467,11 @@ export function WorkspaceNavigation({
                             (session) =>
                               sessionGroup(session, workspace.projects, workspace.generalCwd) ===
                               `project:${sessionKey(project.path)}`,
-                          ) && <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>}
+                          ) && (
+                            <p className="sidebar-empty-session px-2 py-2 text-xs text-muted-foreground">
+                              暂无会话
+                            </p>
+                          )}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>

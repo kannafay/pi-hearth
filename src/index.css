@@ -496,6 +496,9 @@ select {
 
 .sidebar-project-sessions .sidebar-session-link {
   border-width: 0;
+}
+
+.sidebar-project-sessions :is(.sidebar-session-link, .sidebar-empty-session) {
   padding-left: calc(var(--spacing) * 8);
 }
 

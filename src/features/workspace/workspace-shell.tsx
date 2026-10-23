@@ -75,6 +75,21 @@ export function WorkspaceShell() {
 
   useEffect(() => {
     if (!desktop) return
+    const unsubscribe = useConversationStore.subscribe((state, previous) => {
+      const finished =
+        state.status === 'ready' &&
+        (state.lastLocalActivityAt !== previous.lastLocalActivityAt ||
+          (previous.activeRunId !== null && state.activeRunId === null))
+      if (
+        state.instanceId !== previous.instanceId ||
+        state.sessionFile !== previous.sessionFile ||
+        state.messages.length !== previous.messages.length ||
+        finished
+      )
+        useWorkspaceStore.getState().syncActiveSession()
+      if (finished) void useWorkspaceStore.getState().refresh()
+    })
+    useWorkspaceStore.getState().syncActiveSession()
     void useWorkspaceStore.getState().initialize()
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void useWorkspaceStore.getState().refresh()
@@ -84,6 +99,7 @@ export function WorkspaceShell() {
     }
     window.addEventListener('focus', refresh)
     return () => {
+      unsubscribe()
       clearInterval(timer)
       window.removeEventListener('focus', refresh)
     }

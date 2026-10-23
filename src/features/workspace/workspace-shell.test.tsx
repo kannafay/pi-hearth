@@ -1,12 +1,13 @@
 import { useImperativeHandle, type HTMLAttributes, type ReactNode, type Ref } from 'react'
 import type { PanelImperativeHandle } from 'react-resizable-panels'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
 import { controlWindow } from '@/lib/desktop'
+import type { PiEvent } from '@/lib/generated/pi'
 import { WorkspaceShell } from './workspace-shell'
 
 const { resizePanel } = vi.hoisted(() => ({ resizePanel: vi.fn() }))
@@ -66,6 +67,94 @@ beforeEach(() => {
   vi.mocked(controlWindow).mockClear()
   resizePanel.mockClear()
 })
+
+test.each([false, true])(
+  'local session events update navigation immediately and refresh only at completion (batched: %s)',
+  (batched) => {
+    const path = 'D:/projects/hearth'
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const syncActiveSession = vi.fn(useWorkspaceStore.getState().syncActiveSession)
+    useWorkspaceStore.setState({
+      projectPath: path,
+      projects: [{ path, name: '测试' }],
+      refresh,
+      syncActiveSession,
+    })
+    useConversationStore.setState({
+      instanceId: 'local',
+      sessionId: 'native',
+      sessionFile: 'native.jsonl',
+      connectionTarget: { projectPath: path, sessionPath: null },
+    })
+    const view = render(<WorkspaceShell />)
+    expect(screen.getByText('暂无会话')).toBeVisible()
+    let sequence = 0
+    const receive = (data: PiEvent['data'][]) => {
+      act(() =>
+        useConversationStore.getState().receive(
+          data.map((data) => ({
+            data,
+            sequence: ++sequence,
+            instanceId: 'local',
+            sessionId: 'native',
+            projectPath: path,
+            runId: 'run',
+          })),
+        ),
+      )
+    }
+    const user = {
+      id: 'run-user',
+      role: 'user',
+      text: '新会话立即出现',
+      thinking: '',
+      status: 'complete',
+      error: null,
+      startedAt: 2000,
+    }
+    const start: PiEvent['data'][] = [
+      { type: 'run_started', message: user },
+      {
+        type: 'message_started',
+        message: { ...user, id: 'reply', role: 'assistant', text: '', status: 'streaming' },
+      },
+    ]
+    const finish: PiEvent['data'] = {
+      type: 'run_finished',
+      status: 'complete',
+      error: null,
+      finishedAt: 3000,
+    }
+    if (batched) {
+      receive([...start, finish])
+    } else {
+      receive(start)
+      expect(screen.queryByText('暂无会话')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '新会话立即出现' })).toBeVisible()
+      expect(refresh).not.toHaveBeenCalled()
+      syncActiveSession.mockClear()
+      for (const delta of ['稳定', '显示'])
+        receive([
+          {
+            type: 'message_delta',
+            messageId: 'reply',
+            contentIndex: 0,
+            kind: 'text',
+            delta,
+          },
+        ])
+      expect(syncActiveSession).not.toHaveBeenCalled()
+      expect(refresh).not.toHaveBeenCalled()
+      receive([finish])
+    }
+    expect(screen.queryByText('暂无会话')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新会话立即出现' })).toBeVisible()
+    expect(refresh).toHaveBeenCalledTimes(1)
+    view.unmount()
+    act(() => useConversationStore.setState({ lastLocalActivityAt: 4000 }))
+    expect(refresh).toHaveBeenCalledTimes(1)
+  },
+)
 
 test('header search remains available when the sidebar is collapsed', async () => {
   const user = userEvent.setup()

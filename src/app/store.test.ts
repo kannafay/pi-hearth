@@ -230,6 +230,167 @@ function finishLocalReply() {
   )
 }
 
+test('a blank or still-connecting draft never creates a sidebar session', () => {
+  useWorkspaceStore.setState({ projectPath: session.cwd })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+  })
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions).toEqual([])
+  finishLocalReply()
+  useConversationStore.setState({ status: 'connecting' })
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions).toEqual([])
+})
+
+test('a native user message enters the project sidebar before its first reply finishes', () => {
+  useWorkspaceStore.setState({ projectPath: session.cwd })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+    connectionTarget: { projectPath: session.cwd, sessionPath: null },
+  })
+  useConversationStore.getState().receive([
+    {
+      instanceId: 'pi-1',
+      sessionId: session.id,
+      projectPath: session.cwd,
+      runId: 'local-run',
+      sequence: 1,
+      data: {
+        type: 'run_started',
+        message: {
+          id: 'local-run-user',
+          role: 'user',
+          text: '你好',
+          thinking: '',
+          status: 'complete',
+          error: null,
+          startedAt: 2000,
+        },
+      },
+    },
+  ])
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions).toEqual([
+    { ...session, title: '你好', modified: 2000, messageCount: 1 },
+  ])
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe(session.path)
+  expect(loadCatalog).not.toHaveBeenCalled()
+})
+
+test('local metadata preserves catalog titles, preferences and path identity without duplicates', () => {
+  useWorkspaceStore.setState({
+    ...catalog,
+    projectPath: session.cwd,
+    sessionPreferences: { [session.path]: { pinned: true, archived: false } },
+  })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path.toUpperCase(),
+  })
+  finishLocalReply()
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions).toEqual([
+    { ...session, path: session.path.toUpperCase(), modified: 3000 },
+  ])
+  expect(useWorkspaceStore.getState().sessionPreferences[session.path]?.pinned).toBe(true)
+})
+
+test('a general conversation uses its connection target instead of a stale selected project', () => {
+  useWorkspaceStore.setState({ projectPath: session.cwd, generalCwd: 'general' })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+    connectionTarget: { projectPath: null, sessionPath: null },
+  })
+  finishLocalReply()
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions[0].cwd).toBe('general')
+})
+
+test('completion queues a fresh catalog behind an older request without losing the local session', async () => {
+  useWorkspaceStore.setState({
+    ...catalog,
+    sessions: [],
+    initialized: true,
+    projectPath: session.cwd,
+  })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+  })
+  let finish!: (catalog: WorkspaceCatalog) => void
+  vi.mocked(loadCatalog)
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    .mockResolvedValueOnce({ ...catalog, sessions: [{ ...session, modified: 2800 }] })
+  const pending = useWorkspaceStore.getState().refresh()
+  finishLocalReply()
+  useWorkspaceStore.getState().syncActiveSession()
+  await useWorkspaceStore.getState().refresh()
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().sessions[0].title).toBe('你好')
+  finish({ ...catalog, sessions: [] })
+  await pending
+  expect(loadCatalog).toHaveBeenCalledTimes(2)
+  expect(useWorkspaceStore.getState().sessions).toEqual([{ ...session, modified: 2800 }])
+  expect(useWorkspaceStore.getState().refreshRequested).toBe(false)
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('periodic catalogs retain an active new session until persistence but respect idle deletions', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+    status: 'running',
+  })
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [] })
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().sessions).toEqual([session])
+  useConversationStore.setState({ status: 'ready' })
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().sessions).toEqual([])
+})
+
+test('completion during startup connection runs its queued catalog as soon as startup finishes', async () => {
+  let connected!: () => void
+  vi.mocked(useConversationStore.getState().connect).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        connected = resolve
+      }),
+  )
+  vi.mocked(loadCatalog).mockResolvedValueOnce({ ...catalog, sessions: [] })
+  const startup = useWorkspaceStore.getState().initialize()
+  await vi.waitFor(() => expect(connected).toBeTypeOf('function'))
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: session.id,
+    sessionFile: session.path,
+    connectionTarget: { projectPath: session.cwd, sessionPath: null },
+  })
+  finishLocalReply()
+  useWorkspaceStore.getState().syncActiveSession()
+  await useWorkspaceStore.getState().refresh()
+  connected()
+  await startup
+  expect(loadCatalog).toHaveBeenCalledTimes(2)
+  expect(useWorkspaceStore.getState().sessions).toEqual([session])
+  expect(useWorkspaceStore.getState().loading).toBe(false)
+})
+
 test('refresh after a local reply updates the sidebar without reconnecting or clearing the transcript', async () => {
   useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
   useConversationStore.setState({ instanceId: 'pi-1', sessionFile: session.path })
