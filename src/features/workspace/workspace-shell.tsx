@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
+import { themeOptions } from '@/app/theme-options'
 import { useMediaQuery } from '@/app/use-media-query'
 import { IconButton } from '@/components/icon-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -35,6 +36,8 @@ export function WorkspaceShell() {
     setInspectorOpen,
     attachmentPreview,
     setAttachmentPreview,
+    theme,
+    setTheme,
   } = workspace
   const conversation = useConversationStore(
     useShallow((state) => ({
@@ -60,6 +63,9 @@ export function WorkspaceShell() {
   const desktop = isDesktop()
   const projectName = projectPath?.split(/[\\/]/).filter(Boolean).at(-1)
   const session = workspace.sessions.find((session) => session.path === conversation.sessionFile)
+  const themeIndex = themeOptions.findIndex((item) => item.value === theme)
+  const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]
+  const nextTheme = themeOptions[(themeIndex + 1) % themeOptions.length]
 
   useEffect(() => {
     if (!desktop) return
@@ -135,6 +141,13 @@ export function WorkspaceShell() {
           disabled={dialogOpen && !searchOpen}
         >
           <Search />
+        </IconButton>
+        <IconButton
+          label={`切换主题（当前：${themeLabel}）`}
+          title={`主题：${themeLabel}，点击切换为${nextTheme.label}`}
+          onClick={() => setTheme(nextTheme.value)}
+        >
+          <ThemeIcon />
         </IconButton>
         <div data-tauri-drag-region className="h-full flex-1" />
         <IconButton

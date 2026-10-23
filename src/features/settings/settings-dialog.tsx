@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Activity, Archive, Info, Palette, SlidersHorizontal } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
+import { themeOptions } from '@/app/theme-options'
 import { useConversationStore } from '@/features/conversation/store'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
@@ -27,12 +28,6 @@ const sections = [
   { value: 'about', label: '关于', icon: Info },
 ] as const
 
-const themes = [
-  { value: 'system', label: '跟随系统' },
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-]
-
 export function SettingsDialog({
   open,
   onOpenChange,
@@ -41,6 +36,8 @@ export function SettingsDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { theme, setTheme } = useWorkspaceStore()
+  const { label: themeLabel, icon: ThemeIcon } =
+    themeOptions.find((item) => item.value === theme) ?? themeOptions[0]
   const status = useConversationStore((state) => state.status)
   const [version, setVersion] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +102,7 @@ export function SettingsDialog({
                     </p>
                   </div>
                   <Select
-                    items={themes}
+                    items={themeOptions}
                     value={theme}
                     onValueChange={(value) => {
                       if (value === 'system' || value === 'light' || value === 'dark')
@@ -113,13 +110,17 @@ export function SettingsDialog({
                     }}
                   >
                     <SelectTrigger aria-label="界面主题" className="w-32 shrink-0">
-                      <SelectValue />
+                      <SelectValue>
+                        <ThemeIcon aria-hidden className="size-3.5 stroke-[1.6]" />
+                        <span>{themeLabel}</span>
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {themes.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.label}
+                        {themeOptions.map(({ value, label, icon: Icon }) => (
+                          <SelectItem key={value} value={value}>
+                            <Icon aria-hidden className="size-3.5 self-center stroke-[1.6]" />
+                            {label}
                           </SelectItem>
                         ))}
                       </SelectGroup>
