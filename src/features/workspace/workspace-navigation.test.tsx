@@ -1,6 +1,6 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { WorkspaceNavigation } from './workspace-navigation'
@@ -328,4 +328,160 @@ test('only the replying session shows progress and terminal events always clear 
       .receive([{ ...event, sequence: 4, data: { type: 'disconnected', error: '连接已断开' } }]),
   )
   expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
+})
+
+describe('animated navigation filters', () => {
+  const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate')
+  let animations: { finish: () => void; cancel: ReturnType<typeof vi.fn> }[]
+
+  beforeEach(() => {
+    animations = []
+    Object.defineProperty(Element.prototype, 'animate', {
+      configurable: true,
+      value: vi.fn(() => {
+        let finish!: () => void
+        let reject!: (error: Error) => void
+        const finished = new Promise<void>((resolve, fail) => {
+          finish = resolve
+          reject = fail
+        })
+        const animation = {
+          finished,
+          finish,
+          cancel: vi.fn(() => reject(new DOMException('Cancelled', 'AbortError'))),
+        }
+        animations.push(animation)
+        return animation as unknown as Animation
+      }),
+    })
+  })
+
+  afterEach(() => {
+    if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate)
+    else delete (Element.prototype as Partial<Element>).animate
+  })
+
+  function renderFilters() {
+    const session = {
+      path: 'project.jsonl',
+      id: 'project',
+      cwd: project.path,
+      title: '项目会话',
+      modified: Date.now(),
+      messageCount: 2,
+    }
+    useWorkspaceStore.setState({
+      projects: [project],
+      projectPath: project.path,
+      generalCwd: 'general',
+      sessions: [session, { ...session, path: 'chat.jsonl', cwd: 'general', title: '普通会话' }],
+    })
+    const rendered = render(
+      <WorkspaceNavigation
+        desktop
+        onAdd={vi.fn()}
+        onCreate={vi.fn()}
+        onSettings={vi.fn()}
+        onInstructions={vi.fn()}
+      />,
+    )
+    return {
+      ...rendered,
+      viewport: rendered.container.querySelector<HTMLDivElement>('[data-scroll-area]')!,
+    }
+  }
+
+  const select = (name: string) => fireEvent.click(screen.getByRole('tab', { name }))
+  const finish = async (index: number) => act(async () => animations[index].finish())
+
+  test('the tab responds immediately, content waits for fade-out and each tab keeps its scroll', async () => {
+    const { viewport } = renderFilters()
+    viewport.scrollTop = 160
+    fireEvent.scroll(viewport)
+    select('聊天')
+    expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('项目会话')).toBeInTheDocument()
+    expect(viewport).toHaveAttribute('inert')
+    await finish(0)
+    expect(screen.queryByText('项目会话')).not.toBeInTheDocument()
+    expect(viewport).not.toHaveAttribute('inert')
+    expect(viewport.scrollTop).toBe(0)
+    await finish(1)
+    viewport.scrollTop = 72
+    fireEvent.scroll(viewport)
+    select('全部')
+    await finish(2)
+    expect(viewport.scrollTop).toBe(160)
+    await finish(3)
+    select('聊天')
+    await finish(4)
+    expect(viewport.scrollTop).toBe(72)
+  })
+
+  test('rapid selection replaces pending fades and switching during entry uses the latest tab', async () => {
+    const { unmount } = renderFilters()
+    select('项目')
+    select('聊天')
+    expect(animations[0].cancel).toHaveBeenCalled()
+    await finish(0)
+    expect(screen.getByText('项目会话')).toBeInTheDocument()
+    await finish(1)
+    expect(screen.queryByText('项目会话')).not.toBeInTheDocument()
+    select('项目')
+    expect(animations[2].cancel).toHaveBeenCalled()
+    await finish(3)
+    expect(screen.getByText('项目会话')).toBeInTheDocument()
+    expect(screen.queryByText('普通会话')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '项目' })).toHaveAttribute('aria-selected', 'true')
+    unmount()
+    expect(animations[4].cancel).toHaveBeenCalled()
+  })
+
+  test('returning to the displayed tab cancels the pending content replacement', async () => {
+    renderFilters()
+    select('聊天')
+    select('全部')
+    await finish(0)
+    await finish(1)
+    expect(screen.getByText('项目会话')).toBeInTheDocument()
+    expect(screen.getByText('普通会话')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  test('reduced motion switches immediately without starting a fade', () => {
+    const matchMedia = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...matchMedia(query),
+      matches: query === '(prefers-reduced-motion: reduce)',
+    }))
+    renderFilters()
+    select('聊天')
+    expect(screen.queryByText('项目会话')).not.toBeInTheDocument()
+    expect(screen.getByText('普通会话')).toBeInTheDocument()
+    expect(animations).toHaveLength(0)
+  })
+
+  test('enabling reduced motion during a fade reveals the selected content immediately', () => {
+    const matchMedia = window.matchMedia
+    const media = Object.assign(new EventTarget(), {
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+    })
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) =>
+      query === media.media ? (media as MediaQueryList) : matchMedia(query),
+    )
+    renderFilters()
+    select('聊天')
+    act(() => {
+      media.matches = true
+      media.dispatchEvent(new Event('change'))
+    })
+    expect(animations[0].cancel).toHaveBeenCalled()
+    expect(animations).toHaveLength(1)
+    expect(screen.queryByText('项目会话')).not.toBeInTheDocument()
+    expect(screen.getByText('普通会话')).toBeInTheDocument()
+  })
 })

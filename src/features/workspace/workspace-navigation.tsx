@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { Tabs } from '@base-ui/react/tabs'
 import {
   Archive,
@@ -31,6 +31,7 @@ import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import { sessionKey, sessionPreference, visibleSessions } from '@/lib/session-preferences'
+import { useNavigationTabs } from './use-navigation-tabs'
 
 const samePath = (a: string, b: string | null) =>
   a.replaceAll('\\', '/').toLowerCase() === b?.replaceAll('\\', '/').toLowerCase()
@@ -60,7 +61,8 @@ export function WorkspaceNavigation({
   const { status, sessionFile } = useConversationStore(
     useShallow((state) => ({ status: state.status, sessionFile: state.sessionFile })),
   )
-  const [filter, setFilter] = useState('all')
+  const { filter, contentFilter, leaving, viewportRef, rememberScroll, selectFilter } =
+    useNavigationTabs()
   const tooltipId = useId()
   const busy = ['running', 'stopping'].includes(status)
   const sessions = visibleSessions(workspace.sessions, workspace.sessionPreferences)
@@ -194,7 +196,7 @@ export function WorkspaceNavigation({
       </div>
       <Tabs.Root
         value={filter}
-        onValueChange={(value) => setFilter(String(value))}
+        onValueChange={(value) => selectFilter(String(value))}
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="mx-3 mt-3 mb-5 flex h-8 items-center">
@@ -221,12 +223,16 @@ export function WorkspaceNavigation({
             <Tabs.Indicator className="sidebar-tab-indicator absolute top-(--active-tab-top) left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) rounded-md bg-sidebar-accent shadow-xs" />
           </Tabs.List>
         </div>
-        <Tabs.Panel value={filter} className="flex min-h-0 flex-1 flex-col">
+        <Tabs.Panel value={filter} aria-busy={leaving} className="flex min-h-0 flex-1 flex-col">
           <ScrollArea
-            className="min-h-0 flex-1"
+            ref={viewportRef}
+            onScroll={rememberScroll}
+            inert={leaving}
+            data-sidebar-tab-content={contentFilter}
+            className="min-h-0 flex-1 overflow-hidden"
             viewportClassName="h-full overflow-x-hidden overflow-y-auto px-3"
           >
-            {filter !== 'chats' && (
+            {contentFilter !== 'chats' && (
               <section aria-label="项目" className="mb-6">
                 <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">项目</h2>
@@ -369,7 +375,7 @@ export function WorkspaceNavigation({
                 )}
               </section>
             )}
-            {filter !== 'projects' && (
+            {contentFilter !== 'projects' && (
               <section aria-label="聊天">
                 <div className="mb-1 flex h-7 items-center justify-between px-2">
                   <h2 className="text-xs font-normal text-muted-foreground">聊天</h2>
