@@ -5,7 +5,7 @@ export function useWindowResizeMotion() {
     const root = document.documentElement
     let timer: ReturnType<typeof setTimeout> | undefined
     const resize = () => {
-      root.setAttribute('data-window-resizing', '')
+      if (!root.hasAttribute('data-window-resizing')) root.setAttribute('data-window-resizing', '')
       clearTimeout(timer)
       timer = setTimeout(() => root.removeAttribute('data-window-resizing'), 200)
     }
