@@ -64,12 +64,13 @@ export function SessionRenameDialog({
             void save()
           }}
         >
-          <div className="space-y-2">
-            <label htmlFor={id} className="text-sm">
+          <div className="grid gap-2">
+            <label htmlFor={id} className="text-sm leading-5">
               会话标题
             </label>
             <Input
               id={id}
+              className="focus-visible:ring-1"
               autoFocus
               maxLength={160}
               value={title}
