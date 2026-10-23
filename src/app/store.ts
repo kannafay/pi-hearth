@@ -14,10 +14,12 @@ import { releaseAttachments } from '@/lib/attachments'
 import {
   loadCatalog,
   addProject,
+  updateProject,
   removeProject,
   updateSessionPreference,
   deleteArchivedSessions,
   type CreateProjectOptions,
+  type UpdateProjectOptions,
 } from '@/lib/workspace'
 import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
 import {
@@ -98,6 +100,7 @@ interface WorkspaceState {
     options?: { preserveDraft?: boolean },
   ) => Promise<void>
   addProject: (options: CreateProjectOptions) => Promise<void>
+  updateProject: (options: UpdateProjectOptions) => Promise<void>
   reloadCurrent: () => Promise<void>
 }
 
@@ -518,6 +521,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       archivedProjects: get().archivedProjects.filter((path) => !samePath(path, project.path)),
     })
     await get().newConversation(project.path, { preserveDraft })
+  },
+  updateProject: async (options) => {
+    if (busy() && samePath(options.path, get().projectPath))
+      throw new Error('请先停止当前项目的任务。')
+    if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
+    sessionRevision++
+    set({ sessionActionPending: options.path, error: null })
+    try {
+      const project = await updateProject(options)
+      set((state) => ({
+        projects: state.projects.some((item) => samePath(item.path, project.path))
+          ? state.projects.map((item) => (samePath(item.path, project.path) ? project : item))
+          : [...state.projects, project],
+      }))
+      if (options.instructions !== undefined && samePath(project.path, get().projectPath))
+        await get().reloadCurrent()
+    } finally {
+      set({ sessionActionPending: null })
+    }
   },
   reloadCurrent: async () => {
     if (busy()) return

@@ -4,6 +4,7 @@ import { useConversationStore } from '@/features/conversation/store'
 import {
   loadCatalog,
   addProject,
+  updateProject,
   updateSessionPreference,
   deleteArchivedSessions,
 } from '@/lib/workspace'
@@ -14,6 +15,7 @@ import type { PiEvent, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 vi.mock('@/lib/workspace', () => ({
   loadCatalog: vi.fn(),
   addProject: vi.fn(),
+  updateProject: vi.fn(),
   updateSessionPreference: vi.fn(),
   deleteArchivedSessions: vi.fn(),
 }))
@@ -338,8 +340,19 @@ test('a changed session cannot hide a disconnected assistant behind an automatic
 
 test('creating a project uses the returned canonical folder and starts its own session', async () => {
   vi.mocked(addProject).mockResolvedValue({ path: 'D:\\新项目', name: '新项目' })
-  await useWorkspaceStore.getState().addProject({ sourcePath: null, name: '新项目' })
-  expect(addProject).toHaveBeenCalledWith({ sourcePath: null, name: '新项目', parentPath: '' })
+  await useWorkspaceStore.getState().addProject({
+    sourcePath: null,
+    name: '新项目',
+    instructions: 'Project rules',
+    expectedInstructions: '',
+  })
+  expect(addProject).toHaveBeenCalledWith({
+    sourcePath: null,
+    name: '新项目',
+    parentPath: '',
+    instructions: 'Project rules',
+    expectedInstructions: '',
+  })
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\新项目')
 })
 
@@ -360,6 +373,57 @@ test('project creation uses the latest directory preference while its database w
     name: 'New',
     parentPath: 'D:/New Location',
   })
+})
+
+test('renaming a project preserves its source, order, pins, sessions and current connection', async () => {
+  useWorkspaceStore.setState({
+    ...catalog,
+    projectPath: session.cwd,
+    selectedSessionPath: session.path,
+    pinnedProjects: [session.cwd],
+    projectOrder: [session.cwd],
+  })
+  const project = { path: session.cwd, name: 'Renamed' }
+  vi.mocked(updateProject).mockResolvedValueOnce(project)
+  await useWorkspaceStore.getState().updateProject({ path: session.cwd, name: project.name })
+  expect(updateProject).toHaveBeenCalledExactlyOnceWith({ path: session.cwd, name: project.name })
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    projects: [project],
+    projectPath: session.cwd,
+    selectedSessionPath: session.path,
+    sessions: [session],
+    pinnedProjects: [session.cwd],
+    projectOrder: [session.cwd],
+    sessionActionPending: null,
+  })
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('saving changed instructions reloads only the current project and failed saves retain its name', async () => {
+  useWorkspaceStore.setState({ ...catalog, projectPath: session.cwd })
+  useConversationStore.setState({ sessionFile: session.path })
+  vi.mocked(updateProject).mockRejectedValueOnce(new Error('外部修改'))
+  const options = {
+    path: session.cwd,
+    name: 'Saved',
+    instructions: 'New',
+    expectedInstructions: '',
+  }
+  await expect(useWorkspaceStore.getState().updateProject(options)).rejects.toThrow('外部修改')
+  expect(useWorkspaceStore.getState().projects).toEqual(catalog.projects)
+  expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  vi.mocked(updateProject).mockResolvedValueOnce({ path: session.cwd, name: 'Saved' })
+  await useWorkspaceStore.getState().updateProject(options)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    session.path,
+    { force: true },
+  )
+  vi.mocked(useConversationStore.getState().connect).mockClear()
+  vi.mocked(updateProject).mockResolvedValueOnce({ path: 'D:/other', name: 'Other' })
+  await useWorkspaceStore.getState().updateProject({ ...options, path: 'D:/other' })
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
 })
 
 test('opening a session during new-chat startup keeps the latest selection', async () => {

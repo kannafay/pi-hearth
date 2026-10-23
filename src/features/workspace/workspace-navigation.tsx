@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom'
 import { Tabs } from '@base-ui/react/tabs'
 import {
   Archive,
-  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -130,15 +129,15 @@ export function WorkspaceNavigation({
                 />
               }
             >
-              <span className="sidebar-row-title min-w-0 flex-1 truncate text-left">
-                {session.title}
+              <span className="sidebar-row-title flex min-w-0 flex-1 items-center gap-2 text-left">
+                <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                {pinned && (
+                  <Pin
+                    aria-hidden
+                    className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
+                  />
+                )}
               </span>
-              {pinned && (
-                <Pin
-                  aria-hidden
-                  className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
-                />
-              )}
             </TooltipTrigger>
             <TooltipContent
               variant="card"
@@ -350,15 +349,15 @@ export function WorkspaceNavigation({
                             ) : (
                               <Folder className="size-4 shrink-0 stroke-[1.5] text-muted-foreground" />
                             )}
-                            <span className="sidebar-row-title min-w-0 flex-1 truncate">
-                              {project.name}
+                            <span className="sidebar-row-title flex min-w-0 flex-1 items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                              {hasPath(workspace.pinnedProjects, project.path) && (
+                                <Pin
+                                  aria-hidden
+                                  className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
+                                />
+                              )}
                             </span>
-                            {hasPath(workspace.pinnedProjects, project.path) && (
-                              <Pin
-                                aria-hidden
-                                className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
-                              />
-                            )}
                           </TooltipTrigger>
                           <TooltipContent
                             variant="card"
@@ -415,8 +414,8 @@ export function WorkspaceNavigation({
                                 disabled={busy}
                                 onClick={() => onInstructions(project)}
                               >
-                                <FileText className="size-3.5" />
-                                项目指令
+                                <Settings className="size-3.5" />
+                                项目设置
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 disabled={

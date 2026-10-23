@@ -14,9 +14,16 @@ export type CreateProjectOptions = {
   sourcePath: string | null
   name: string | null
   parentPath?: string
+  instructions?: string
+  expectedInstructions?: string
+}
+export type UpdateProjectOptions = Omit<CreateProjectOptions, 'sourcePath' | 'parentPath'> & {
+  path: string
 }
 export const addProject = (options: CreateProjectOptions) =>
   invoke<ProjectInfo>('workspace_add_project', options)
+export const updateProject = (options: UpdateProjectOptions) =>
+  invoke<ProjectInfo>('workspace_update_project', options)
 export const removeProject = (path: string) => invoke<void>('workspace_remove_project', { path })
 export const updateSessionPreference = (path: string, preference: SessionPreference) =>
   invoke<WorkspaceCatalog['sessionPreferences']>('workspace_update_session', { path, preference })

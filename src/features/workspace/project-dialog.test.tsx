@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { selectProjectDirectory } from '@/lib/desktop'
 import { listenForProjectFolderDrop, resolveProjectDirectory } from '@/lib/project-directory'
+import { readInstructions } from '@/lib/workspace'
 import { ProjectDialog } from './project-dialog'
 
 vi.mock('@/lib/desktop', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/lib/project-directory', () => ({
   listenForProjectFolderDrop: vi.fn().mockResolvedValue(() => {}),
   resolveProjectDirectory: vi.fn(),
 }))
+vi.mock('@/lib/workspace', () => ({ readInstructions: vi.fn() }))
 const defaultDirectory = 'C:/Documents/Pi Hearth/Projects'
 
 beforeEach(() => {
@@ -24,7 +26,13 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (path) => path ?? defaultDirectory)
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
-  useWorkspaceStore.setState({ addProject: vi.fn().mockResolvedValue(undefined) })
+  vi.mocked(readInstructions)
+    .mockReset()
+    .mockImplementation(async (path) => ({ path: `${path}/AGENTS.md`, content: '' }))
+  useWorkspaceStore.setState({
+    addProject: vi.fn().mockResolvedValue(undefined),
+    updateProject: vi.fn().mockResolvedValue(undefined),
+  })
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -78,6 +86,89 @@ test('the project name remains independent from the selected folder name', async
     sourcePath: 'D:/existing/folder',
     name: 'Design Notes',
   })
+})
+
+test('new projects submit instructions together with their name', async () => {
+  const user = userEvent.setup()
+  const onClose = vi.fn()
+  render(<ProjectDialog onClose={onClose} />)
+  await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'New')
+  await user.type(screen.getByRole('textbox', { name: '项目指令' }), '使用中文回答。')
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
+  expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
+    sourcePath: null,
+    name: 'New',
+    instructions: '使用中文回答。',
+    expectedInstructions: '',
+  })
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
+test('selecting a source loads its rules and submits an explicit edit without losing existing content', async () => {
+  const user = userEvent.setup()
+  vi.mocked(selectProjectDirectory).mockResolvedValueOnce('D:/source')
+  vi.mocked(readInstructions).mockResolvedValueOnce({
+    path: 'D:/source/AGENTS.md',
+    content: 'Existing rules.\n',
+  })
+  render(<ProjectDialog onClose={vi.fn()} />)
+  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  const instructions = screen.getByRole('textbox', { name: '项目指令' })
+  expect(instructions).toHaveValue('Existing rules.\n')
+  await user.type(instructions, '使用中文回答。')
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
+  expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
+    sourcePath: 'D:/source',
+    name: null,
+    instructions: 'Existing rules.\n使用中文回答。',
+    expectedInstructions: 'Existing rules.\n',
+  })
+})
+
+test('project settings edits the shared name and instructions form while preserving the source', async () => {
+  const user = userEvent.setup()
+  const onClose = vi.fn()
+  const project = { name: 'Alias', path: 'D:/source' }
+  vi.mocked(readInstructions).mockResolvedValueOnce({
+    path: 'D:/source/AGENTS.md',
+    content: 'Original rules.',
+  })
+  vi.mocked(useWorkspaceStore.getState().updateProject).mockRejectedValueOnce(
+    new Error('指令文件已被其他程序修改'),
+  )
+  render(<ProjectDialog project={project} onClose={onClose} />)
+  expect(screen.getByRole('dialog', { name: '项目设置' })).toBeVisible()
+  const name = screen.getByRole('textbox', { name: '项目名称' })
+  await waitFor(() => expect(name).toBeEnabled())
+  expect(name).toHaveValue('Alias')
+  expect(screen.getByText(project.path)).toBeVisible()
+  expect(screen.queryByRole('button', { name: /文件夹/ })).not.toBeInTheDocument()
+  await user.clear(name)
+  await user.type(name, 'New alias')
+  await user.clear(screen.getByRole('textbox', { name: '项目指令' }))
+  await user.click(screen.getByRole('button', { name: '保存设置' }))
+  expect(useWorkspaceStore.getState().updateProject).toHaveBeenCalledExactlyOnceWith({
+    path: project.path,
+    name: 'New alias',
+    instructions: '',
+    expectedInstructions: 'Original rules.',
+  })
+  expect(screen.getByRole('alert')).toHaveTextContent('指令文件已被其他程序修改')
+  expect(name).toHaveValue('New alias')
+  expect(onClose).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: '保存设置' }))
+  expect(onClose).toHaveBeenCalledOnce()
+  expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
+  expect(listenForProjectFolderDrop).not.toHaveBeenCalled()
+})
+
+test('unreadable existing instructions block saving instead of replacing them with empty rules', async () => {
+  vi.mocked(readInstructions).mockRejectedValueOnce(new Error('无法读取项目指令文件'))
+  render(<ProjectDialog project={{ name: 'Alias', path: 'D:/source' }} onClose={vi.fn()} />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法读取项目指令文件')
+  expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
+  expect(screen.getByRole('textbox', { name: '项目指令' })).toBeDisabled()
+  expect(useWorkspaceStore.getState().updateProject).not.toHaveBeenCalled()
 })
 
 test('canceling a folder change preserves the source and removing it keeps the project name', async () => {

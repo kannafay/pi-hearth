@@ -571,6 +571,8 @@ pub async fn workspace_add_project(
     source_path: Option<String>,
     name: Option<String>,
     parent_path: Option<String>,
+    instructions: Option<String>,
+    expected_instructions: Option<String>,
 ) -> Result<ProjectInfo, String> {
     let _lock = workspace.gate.lock().await;
     let data = app_data(&app)?;
@@ -588,7 +590,38 @@ pub async fn workspace_add_project(
         }
     };
     let project = prepare_project(source_path.as_deref(), name.as_deref(), &parent).await?;
-    let mut prefs = preferences(&data).await?;
+    let project = save_project(&data, project, instructions, expected_instructions).await?;
+    workspace.search.lock().await.catalog = None;
+    Ok(project)
+}
+
+#[tauri::command]
+pub async fn workspace_update_project(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    path: String,
+    name: Option<String>,
+    instructions: Option<String>,
+    expected_instructions: Option<String>,
+) -> Result<ProjectInfo, String> {
+    let _lock = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let project = prepare_project(Some(&path), name.as_deref(), Path::new("")).await?;
+    let project = save_project(&data, project, instructions, expected_instructions).await?;
+    workspace.search.lock().await.catalog = None;
+    Ok(project)
+}
+
+async fn save_project(
+    data: &Path,
+    project: ProjectInfo,
+    instructions: Option<String>,
+    expected_instructions: Option<String>,
+) -> Result<ProjectInfo, String> {
+    if instructions.is_some() {
+        project_instructions(project.path.clone(), instructions, expected_instructions).await?;
+    }
+    let mut prefs = preferences(data).await?;
     if let Some(existing) = prefs
         .projects
         .iter_mut()
@@ -598,10 +631,9 @@ pub async fn workspace_add_project(
     } else {
         prefs.projects.push(project.clone());
     }
-    let mut removed = storage::settings(&data).await?.removed_projects;
+    let mut removed = storage::settings(data).await?.removed_projects;
     removed.retain(|path| !same_path(path, &project.path));
-    storage::save_projects(&data, &prefs, removed).await?;
-    workspace.search.lock().await.catalog = None;
+    storage::save_projects(data, &prefs, removed).await?;
     Ok(project)
 }
 
@@ -1074,6 +1106,107 @@ mod tests {
         );
         assert!(existing_project_directory(&root.join("missing")).is_err());
         assert_eq!(tokio::fs::read_to_string(file).await.unwrap(), "keep");
+    }
+
+    #[tokio::test]
+    async fn project_settings_save_name_and_rules_without_moving_the_source() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-settings-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let created = prepare_project(None, Some("source"), &root).await.unwrap();
+        let source = PathBuf::from(&created.path);
+        let rules = source.join("AGENTS.md");
+        save_project(
+            &root,
+            created.clone(),
+            Some("Original rules".into()),
+            Some(String::new()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&rules).await.unwrap(),
+            "Original rules"
+        );
+        let renamed = prepare_project(Some(&created.path), Some("New name"), Path::new(""))
+            .await
+            .unwrap();
+        let saved = save_project(
+            &root,
+            renamed,
+            Some("New rules".into()),
+            Some("Original rules".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved.path, created.path);
+        assert_eq!(source.file_name().unwrap(), "source");
+        assert_eq!(
+            tokio::fs::read_to_string(&rules).await.unwrap(),
+            "New rules"
+        );
+        let prefs = preferences(&root).await.unwrap();
+        assert_eq!(prefs.projects.len(), 1);
+        assert_eq!(prefs.projects[0].name, "New name");
+
+        tokio::fs::write(&rules, "External rules").await.unwrap();
+        let mut conflicting = saved;
+        conflicting.name = "Must not be saved".into();
+        assert!(
+            save_project(
+                &root,
+                conflicting,
+                Some("Stale edit".into()),
+                Some("New rules".into())
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            preferences(&root).await.unwrap().projects[0].name,
+            "New name"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(&rules).await.unwrap(),
+            "External rules"
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_project_rules_are_untouched_by_name_only_saves() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/project-settings-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("source");
+        tokio::fs::create_dir_all(&source).await.unwrap();
+        let file = source.join("CLAUDE.md");
+        tokio::fs::write(&file, "Existing shared rules")
+            .await
+            .unwrap();
+        let project = prepare_project(Some(source.to_str().unwrap()), Some("Alias"), Path::new(""))
+            .await
+            .unwrap();
+        save_project(&root, project.clone(), None, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&file).await.unwrap(),
+            "Existing shared rules"
+        );
+        assert!(!source.join("AGENTS.md").exists());
+        save_project(
+            &root,
+            project,
+            Some("Updated shared rules".into()),
+            Some("Existing shared rules".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&file).await.unwrap(),
+            "Updated shared rules"
+        );
+        assert!(!source.join("AGENTS.md").exists());
     }
 
     #[tokio::test]
