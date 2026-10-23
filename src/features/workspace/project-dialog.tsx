@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Folder, FolderOpen, FolderPlus, LoaderCircle, X } from 'lucide-react'
+import { FolderOpen, FolderPlus, LoaderCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -197,11 +197,11 @@ export function ProjectDialog({
       }}
     >
       <DialogContent
-        className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden ${project ? 'sm:max-w-160' : 'rounded-2xl sm:max-w-136'}`}
+        className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden ${project ? 'sm:max-w-160' : 'sm:max-w-136'}`}
       >
-        <DialogHeader className={project ? undefined : 'border-0 pb-0'}>
+        <DialogHeader>
           <DialogTitle>{project ? `${project.name} · 项目指令` : '创建项目'}</DialogTitle>
-          <DialogDescription className={project ? undefined : 'sr-only'}>
+          <DialogDescription>
             {project
               ? '保存到项目的指令文件，该项目的所有会话与 Pi CLI 均可使用。'
               : '填写项目名称，或添加源文件夹。未添加文件夹时，在设置的保存位置创建项目。'}
@@ -234,32 +234,30 @@ export function ProjectDialog({
                   />
                 </div>
               ) : (
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-0 flex w-10 items-center justify-center border-r text-muted-foreground">
-                        <Folder aria-hidden className="size-4 stroke-[1.5]" />
-                      </span>
-                      <Input
-                        aria-label="项目名称"
-                        aria-describedby={source ? 'project-name-hint' : undefined}
-                        placeholder={sourceName || '项目名称'}
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        disabled={saving || selecting}
-                        className="h-10 rounded-xl pl-13"
-                        autoFocus
-                      />
-                    </div>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label htmlFor="project-name" className="block text-sm">
+                      项目名称
+                    </label>
+                    <Input
+                      id="project-name"
+                      aria-label="项目名称"
+                      aria-describedby={source ? 'project-name-hint' : undefined}
+                      placeholder={sourceName || '项目名称'}
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      disabled={saving || selecting}
+                      autoFocus
+                    />
                     {source && (
                       <p id="project-name-hint" className="text-xs text-muted-foreground">
                         可留空，使用文件夹名称作为项目名。
                       </p>
                     )}
                   </div>
-                  <section aria-label="源文件夹" className="space-y-2.5">
+                  <section aria-label="源文件夹" className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-medium">源文件夹</h3>
+                      <h3>源文件夹</h3>
                       {selecting && (
                         <span
                           role="status"
@@ -273,7 +271,7 @@ export function ProjectDialog({
                     <div
                       ref={sourceArea}
                       aria-label="源文件夹拖放区"
-                      className={`overflow-hidden rounded-xl border border-dashed transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                      className={`overflow-hidden rounded-lg border border-dashed transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
                       onDragOver={(event) => {
                         if (!actionPending.current && event.dataTransfer.types.includes('Files')) {
                           event.preventDefault()
@@ -337,17 +335,14 @@ export function ProjectDialog({
                           <p className="mb-1 text-xs text-muted-foreground">
                             {dragging ? '松开以添加文件夹' : '拖拽文件夹到此处'}
                           </p>
-                          <div className="flex flex-wrap justify-center gap-2">
-                            <Button
-                              variant="secondary"
-                              className="rounded-full"
-                              disabled={saving || selecting}
-                              onClick={() => void chooseDirectory('source')}
-                            >
-                              <FolderPlus className="stroke-[1.5]" />
-                              添加文件夹
-                            </Button>
-                          </div>
+                          <Button
+                            variant="outline"
+                            disabled={saving || selecting}
+                            onClick={() => void chooseDirectory('source')}
+                          >
+                            <FolderPlus className="stroke-[1.5]" />
+                            添加文件夹
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -377,16 +372,8 @@ export function ProjectDialog({
               )}
             </div>
           </ScrollArea>
-          <DialogFooter
-            className={
-              project ? undefined : 'mx-0 mb-0 gap-3 border-0 bg-transparent px-0 pt-2 pb-0'
-            }
-          >
-            <Button
-              variant={project ? 'outline' : 'ghost'}
-              disabled={saving || selecting}
-              onClick={onClose}
-            >
+          <DialogFooter>
+            <Button variant="outline" disabled={saving || selecting} onClick={onClose}>
               取消
             </Button>
             <Button type="submit" disabled={!canSubmit}>
