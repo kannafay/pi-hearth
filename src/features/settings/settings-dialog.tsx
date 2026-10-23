@@ -44,7 +44,7 @@ function SettingsPanel({
 }) {
   return (
     <TabsContent value={value} className="settings-panel m-0 flex min-h-0 flex-col">
-      <div className="shrink-0 px-7 pt-7">
+      <div className="shrink-0 px-7 pt-5">
         <SettingsPageHeader title={title} description={description} />
       </div>
       <ScrollArea
