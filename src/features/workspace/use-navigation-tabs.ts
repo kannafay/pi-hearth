@@ -28,7 +28,7 @@ export function useNavigationTabs() {
   }
 
   function enter(element: HTMLElement, from: Keyframe) {
-    const incoming = animate(element, [from, { opacity: 1, transform: 'none' }], 180)
+    const incoming = animate(element, [from, { opacity: 1, transform: 'none' }], 150)
     animation.current = incoming
     void incoming.finished.then(
       () => {
@@ -92,7 +92,7 @@ export function useNavigationTabs() {
       const outgoing = animate(
         element,
         [from, { opacity: 0, transform: `translateX(${-offset}px)` }],
-        60,
+        50,
       )
       animation.current = outgoing
       void outgoing.finished.then(

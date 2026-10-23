@@ -171,11 +171,14 @@ pub async fn load_catalog(data: &Path) -> Result<WorkspaceCatalog, String> {
         .map_err(|_| "无法创建普通对话工作目录。")?;
     let general = dunce::canonicalize(general).map_err(|_| "无法访问普通对话目录。")?;
     let sessions = list(data, &prefs).await?;
+    let removed = storage::settings(data).await?.removed_projects;
     let mut projects = prefs.projects;
+    projects.retain(|project| !removed.iter().any(|path| same_path(path, &project.path)));
     for session in &sessions {
         let path = Path::new(&session.cwd);
         if path.is_dir()
             && path != general
+            && !removed.iter().any(|path| same_path(path, &session.cwd))
             && !projects
                 .iter()
                 .any(|project| same_path(&project.path, &session.cwd))
@@ -256,6 +259,38 @@ pub async fn workspace_catalog(
 ) -> Result<WorkspaceCatalog, String> {
     let _lock = workspace.gate.lock().await;
     load_catalog(&app_data(&app)?).await
+}
+
+async fn remove_project(data: &Path, path: &str) -> Result<(), String> {
+    let mut prefs = preferences(data).await?;
+    prefs
+        .projects
+        .retain(|project| !same_path(&project.path, path));
+    if prefs
+        .selection
+        .project_path
+        .as_deref()
+        .is_some_and(|selected| same_path(selected, path))
+    {
+        prefs.selection = Selection::default();
+    }
+    let mut removed = storage::settings(data).await?.removed_projects;
+    if !removed.iter().any(|item| same_path(item, path)) {
+        removed.push(path.to_owned());
+    }
+    storage::save_projects(data, &prefs, removed).await
+}
+
+#[tauri::command]
+pub async fn workspace_remove_project(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    path: String,
+) -> Result<(), String> {
+    let _lock = workspace.gate.lock().await;
+    remove_project(&app_data(&app)?, &path).await?;
+    workspace.search.lock().await.catalog = None;
+    Ok(())
 }
 
 async fn delete_archived(
@@ -563,7 +598,10 @@ pub async fn workspace_add_project(
     } else {
         prefs.projects.push(project.clone());
     }
-    save(&data, &prefs).await?;
+    let mut removed = storage::settings(&data).await?.removed_projects;
+    removed.retain(|path| !same_path(path, &project.path));
+    storage::save_projects(&data, &prefs, removed).await?;
+    workspace.search.lock().await.catalog = None;
     Ok(project)
 }
 
@@ -743,6 +781,57 @@ mod tests {
         }
         save(&root, &prefs).await.unwrap();
         (root, prefs, sessions)
+    }
+
+    #[tokio::test]
+    async fn removing_projects_preserves_sources_and_history_and_can_be_added_again() {
+        let (data, mut prefs, sessions) = archived_fixture().await;
+        let source = data.join("source");
+        tokio::fs::create_dir_all(&source).await.unwrap();
+        let file = source.join("keep.txt");
+        tokio::fs::write(&file, "keep source files").await.unwrap();
+        let path = source.to_string_lossy().into_owned();
+        prefs.projects.push(ProjectInfo {
+            path: path.clone(),
+            name: "Custom name".into(),
+        });
+        prefs.selection = Selection {
+            project_path: Some(path.clone()),
+            session_path: Some(sessions[0].path.clone()),
+        };
+        save(&data, &prefs).await.unwrap();
+        remove_project(&data, &path).await.unwrap();
+        let saved = preferences(&data).await.unwrap();
+        assert!(saved.projects.is_empty());
+        assert!(saved.selection.project_path.is_none());
+        assert!(saved.selection.session_path.is_none());
+        assert_eq!(
+            tokio::fs::read_to_string(&file).await.unwrap(),
+            "keep source files"
+        );
+        assert!(
+            sessions
+                .iter()
+                .all(|session| Path::new(&session.path).is_file())
+        );
+        assert_eq!(
+            storage::settings(&data).await.unwrap().removed_projects,
+            [path.clone()]
+        );
+        storage::save_projects(&data, &prefs, Vec::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            preferences(&data).await.unwrap().projects[0].name,
+            "Custom name"
+        );
+        assert!(
+            storage::settings(&data)
+                .await
+                .unwrap()
+                .removed_projects
+                .is_empty()
+        );
     }
 
     #[tokio::test]

@@ -14,12 +14,26 @@ import { releaseAttachments } from '@/lib/attachments'
 import {
   loadCatalog,
   addProject,
+  removeProject,
   updateSessionPreference,
   deleteArchivedSessions,
   type CreateProjectOptions,
 } from '@/lib/workspace'
 import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
-import { sessionKey, sessionPreference, type SessionPreferences } from '@/lib/session-preferences'
+import {
+  sessionKey,
+  sessionPreference,
+  visibleSessions,
+  type SessionPreferences,
+} from '@/lib/session-preferences'
+import {
+  moveRelative,
+  orderedProjects,
+  hasPath,
+  sessionGroup,
+  type NavigationKind,
+  type SortEdge,
+} from '@/lib/navigation-order'
 
 export type Theme = AppTheme
 
@@ -31,6 +45,19 @@ interface WorkspaceState {
   sessionPreferences: SessionPreferences
   sessionActionPending: string | null
   expandedProjects: Record<string, boolean>
+  projectOrder: string[]
+  sessionOrder: string[]
+  pinnedProjects: string[]
+  archivedProjects: string[]
+  toggleProjectPinned: (project: ProjectInfo) => void
+  setProjectArchived: (project: ProjectInfo, archived: boolean) => Promise<void>
+  removeProject: (project: ProjectInfo) => Promise<void>
+  reorderNavigation: (
+    kind: NavigationKind,
+    source: string,
+    target: string,
+    edge: SortEdge,
+  ) => boolean
   setProjectExpanded: (path: string, open: boolean) => void
   toggleSessionPinned: (session: SessionInfo) => Promise<void>
   setSessionArchived: (session: SessionInfo, archived: boolean) => Promise<boolean>
@@ -124,6 +151,98 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   sessionPreferences: {},
   sessionActionPending: null,
   expandedProjects: {},
+  projectOrder: [],
+  sessionOrder: [],
+  pinnedProjects: [],
+  archivedProjects: [],
+  toggleProjectPinned: (project) => {
+    const key = sessionKey(project.path)!
+    set((state) => ({
+      pinnedProjects: hasPath(state.pinnedProjects, key)
+        ? state.pinnedProjects.filter((path) => sessionKey(path) !== key)
+        : [...state.pinnedProjects, key],
+    }))
+  },
+  setProjectArchived: async (project, archived) => {
+    if (archived && busy() && samePath(project.path, get().projectPath)) return
+    const key = sessionKey(project.path)!
+    set((state) => ({
+      archivedProjects: archived
+        ? [...new Set([...state.archivedProjects, key])]
+        : state.archivedProjects.filter((path) => sessionKey(path) !== key),
+    }))
+    if (archived && samePath(project.path, get().projectPath)) await get().newConversation(null)
+  },
+  removeProject: async (project) => {
+    if (busy() && samePath(project.path, get().projectPath))
+      throw new Error('请先停止当前项目的任务。')
+    if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
+    sessionRevision++
+    set({ sessionActionPending: project.path, error: null })
+    try {
+      await removeProject(project.path)
+      const key = sessionKey(project.path)!
+      set((state) => ({
+        projects: state.projects.filter((item) => !samePath(item.path, project.path)),
+        projectOrder: state.projectOrder.filter((path) => sessionKey(path) !== key),
+        pinnedProjects: state.pinnedProjects.filter((path) => sessionKey(path) !== key),
+        archivedProjects: state.archivedProjects.filter((path) => sessionKey(path) !== key),
+        expandedProjects: Object.fromEntries(
+          Object.entries(state.expandedProjects).filter(([path]) => path !== key),
+        ),
+      }))
+      if (samePath(project.path, get().projectPath)) await get().newConversation(null)
+    } finally {
+      set({ sessionActionPending: null })
+    }
+  },
+  reorderNavigation: (kind, source, target, edge) => {
+    const state = get()
+    if (state.sessionActionPending) return false
+    if (kind === 'project') {
+      const projects = orderedProjects(
+        state.projects,
+        state.projectOrder,
+        state.pinnedProjects,
+      ).filter((project) => !hasPath(state.archivedProjects, project.path))
+      if (hasPath(state.pinnedProjects, source) !== hasPath(state.pinnedProjects, target))
+        return false
+      const projectOrder = moveRelative(
+        projects.map((project) => project.path),
+        source,
+        target,
+        edge,
+      )
+      if (!projectOrder) return false
+      set({ projectOrder })
+    } else {
+      const sessions = visibleSessions(
+        state.sessions,
+        state.sessionPreferences,
+        state.sessionOrder,
+      ).filter((session) => !hasPath(state.archivedProjects, session.cwd))
+      const from = sessions.find((session) => samePath(session.path, source))
+      const to = sessions.find((session) => samePath(session.path, target))
+      if (
+        !from ||
+        !to ||
+        sessionGroup(from, state.projects, state.generalCwd) !==
+          sessionGroup(to, state.projects, state.generalCwd) ||
+        sessionPreference(state.sessionPreferences, source).pinned !==
+          sessionPreference(state.sessionPreferences, target).pinned
+      )
+        return false
+      const sessionOrder = moveRelative(
+        sessions.map((session) => session.path),
+        source,
+        target,
+        edge,
+      )
+      if (!sessionOrder) return false
+      set({ sessionOrder })
+    }
+    return true
+  },
   setProjectExpanded: (path, open) =>
     set((state) => ({
       expandedProjects: { ...state.expandedProjects, [sessionKey(path)!]: open },
@@ -226,6 +345,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         navigationWidth: settings.navigationWidth,
         inspectorWidth: settings.inspectorWidth,
         expandedProjects: settings.expandedProjects,
+        projectOrder: settings.projectOrder ?? [],
+        sessionOrder: settings.sessionOrder ?? [],
+        pinnedProjects: settings.pinnedProjects ?? [],
+        archivedProjects: settings.archivedProjects ?? [],
         projectsDirectory: settings.projectsDirectory,
         customProjectsDirectory,
         settingsReady: true,
@@ -267,14 +390,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const session = catalog.sessions.find(
         (session) =>
           samePath(session.path, catalog.selection.sessionPath) &&
-          !sessionPreference(catalog.sessionPreferences ?? {}, session.path).archived,
+          !sessionPreference(catalog.sessionPreferences ?? {}, session.path).archived &&
+          !hasPath(get().archivedProjects, session.cwd),
       )
       const projectPath = session
         ? samePath(session.cwd, catalog.generalCwd)
           ? null
           : session.cwd
-        : (catalog.projects.find((project) => samePath(project.path, catalog.selection.projectPath))
-            ?.path ?? null)
+        : (catalog.projects.find(
+            (project) =>
+              samePath(project.path, catalog.selection.projectPath) &&
+              !hasPath(get().archivedProjects, project.path),
+          )?.path ?? null)
       set({
         ...catalogState(catalog),
         projectPath,
@@ -386,7 +513,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const projects = get().projects.some((item) => samePath(item.path, project.path))
       ? get().projects.map((item) => (samePath(item.path, project.path) ? project : item))
       : [...get().projects, project]
-    set({ projects })
+    set({
+      projects,
+      archivedProjects: get().archivedProjects.filter((path) => !samePath(path, project.path)),
+    })
     await get().newConversation(project.path, { preserveDraft })
   },
   reloadCurrent: async () => {
@@ -409,6 +539,10 @@ const persistedKeys = [
   'navigationWidth',
   'inspectorWidth',
   'expandedProjects',
+  'projectOrder',
+  'sessionOrder',
+  'pinnedProjects',
+  'archivedProjects',
   'projectsDirectory',
   'customProjectsDirectory',
 ] as const

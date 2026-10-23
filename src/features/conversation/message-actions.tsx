@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import { IconButton } from '@/components/icon-button'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 export function messageTime(timestamp?: number) {
@@ -40,6 +48,7 @@ export function MessageActions({
 }) {
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false)
   const reset = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(
     () => () => {
@@ -101,7 +110,12 @@ export function MessageActions({
         </IconButton>
       )}
       {onRegenerate && (
-        <IconButton label="重新回答" className={button} disabled={disabled} onClick={onRegenerate}>
+        <IconButton
+          label="重新回答"
+          className={button}
+          disabled={disabled}
+          onClick={() => setConfirmRegenerate(true)}
+        >
           <RotateCcw />
         </IconButton>
       )}
@@ -110,6 +124,29 @@ export function MessageActions({
           {error || '已复制'}
         </span>
       )}
+      <Dialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
+        <DialogContent showCloseButton={false} className="sm:max-w-100">
+          <DialogTitle>重新回答？</DialogTitle>
+          <DialogDescription>
+            将从这条消息重新生成回复，当前回复及其后的对话将被替换。
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRegenerate(false)}>
+              取消
+            </Button>
+            <Button
+              disabled={disabled}
+              onClick={() => {
+                if (!confirmRegenerate || disabled) return
+                setConfirmRegenerate(false)
+                onRegenerate?.()
+              }}
+            >
+              确认重新回答
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

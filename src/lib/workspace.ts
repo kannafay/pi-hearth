@@ -17,6 +17,7 @@ export type CreateProjectOptions = {
 }
 export const addProject = (options: CreateProjectOptions) =>
   invoke<ProjectInfo>('workspace_add_project', options)
+export const removeProject = (path: string) => invoke<void>('workspace_remove_project', { path })
 export const updateSessionPreference = (path: string, preference: SessionPreference) =>
   invoke<WorkspaceCatalog['sessionPreferences']>('workspace_update_session', { path, preference })
 export const deleteArchivedSessions = (paths: string[]) =>

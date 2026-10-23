@@ -33,13 +33,13 @@ test('a name alone creates a project in the configured location', async () => {
   const user = userEvent.setup()
   render(<ProjectDialog onClose={onClose} />)
   expect(await screen.findByText(defaultDirectory)).toBeVisible()
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled()
   expect(screen.queryByRole('button', { name: '新建文件夹' })).not.toBeInTheDocument()
   expect(screen.queryByText('此电脑')).not.toBeInTheDocument()
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), '   ')
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled()
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'New Project')
-  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
     sourcePath: null,
     name: 'New Project',
@@ -58,7 +58,7 @@ test('an existing folder can be added without a project name', async () => {
   expect(name).toHaveValue('')
   expect(name).not.toHaveAttribute('readonly')
   expect(name).toHaveAttribute('placeholder', 'project')
-  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
     sourcePath: 'D:\\existing\\project',
     name: null,
@@ -73,7 +73,7 @@ test('the project name remains independent from the selected folder name', async
   await user.click(screen.getByRole('button', { name: '添加文件夹' }))
   expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue('Design')
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), ' Notes')
-  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
     sourcePath: 'D:/existing/folder',
     name: 'Design Notes',
@@ -94,9 +94,9 @@ test('canceling a folder change preserves the source and removing it keeps the p
   expect(name).toHaveValue('Draft')
   await user.click(screen.getByRole('button', { name: '移除文件夹' }))
   expect(name).toHaveValue('Draft')
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeEnabled()
   await user.clear(name)
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled()
   expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
 })
 
@@ -122,11 +122,12 @@ test('folder selection blocks duplicate pickers and dialog dismissal until it fi
   expect(screen.getByRole('button', { name: '添加文件夹' })).toBeEnabled()
 })
 
-test('the creation location can be changed without selecting a source folder', async () => {
+test('the creation location comes from settings and has no quick-change action', async () => {
   const user = userEvent.setup()
-  vi.mocked(selectProjectDirectory).mockResolvedValueOnce('D:/Projects')
+  useWorkspaceStore.setState({ projectsDirectory: 'D:/Projects' })
   render(<ProjectDialog onClose={vi.fn()} />)
-  await user.click(screen.getByRole('button', { name: '更改' }))
+  expect(screen.getByRole('dialog', { name: '新建项目' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '更改' })).not.toBeInTheDocument()
   expect(useWorkspaceStore.getState().projectsDirectory).toBe('D:/Projects')
   expect(screen.getByText('D:/Projects')).toBeVisible()
   expect(screen.getByRole('button', { name: '添加文件夹' })).toBeEnabled()
@@ -136,6 +137,7 @@ test('the creation location can be changed without selecting a source folder', a
     sourcePath: null,
     name: 'New',
   })
+  expect(selectProjectDirectory).not.toHaveBeenCalled()
 })
 
 test('creation errors keep the selected folder available for retry', async () => {
@@ -147,11 +149,11 @@ test('creation errors keep the selected folder available for retry', async () =>
   )
   render(<ProjectDialog onClose={onClose} />)
   await user.click(screen.getByRole('button', { name: '添加文件夹' }))
-  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(screen.getByRole('alert')).toHaveTextContent('无法访问目录')
   expect(screen.getByText('D:/existing')).toBeVisible()
   expect(onClose).not.toHaveBeenCalled()
-  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(onClose).toHaveBeenCalledOnce()
 })
 
@@ -180,7 +182,7 @@ test('native folder drops use the drop zone and account for display scaling', as
   expect(await screen.findByText('D:/source')).toBeVisible()
   expect(resolveProjectDirectory).toHaveBeenCalledWith('D:/source')
   expect(selectProjectDirectory).not.toHaveBeenCalled()
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeEnabled()
 })
 
 test('drops outside the source area are ignored and files or multiple folders are rejected', async () => {
@@ -199,7 +201,7 @@ test('drops outside the source area are ignored and files or multiple folders ar
     onDrop({ type: 'drop', paths: ['D:/one', 'D:/two'], position: new PhysicalPosition(200, 250) }),
   )
   expect(screen.getByRole('alert')).toHaveTextContent('请选择一个源文件夹')
-  expect(screen.getByRole('button', { name: '创建项目' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled()
   expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
   await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
 })

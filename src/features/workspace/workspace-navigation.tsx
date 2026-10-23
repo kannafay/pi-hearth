@@ -1,8 +1,10 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useId } from 'react'
+import { useId, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Tabs } from '@base-ui/react/tabs'
 import {
   Archive,
+  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -12,6 +14,7 @@ import {
   MoreHorizontal,
   Plus,
   Pin,
+  Trash2,
   Settings,
   SquarePen,
 } from 'lucide-react'
@@ -30,6 +33,9 @@ import { useConversationStore } from '@/features/conversation/store'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import { sessionKey, sessionPreference, visibleSessions } from '@/lib/session-preferences'
 import { useNavigationTabs } from './use-navigation-tabs'
+import { hasPath, orderedProjects, sessionGroup } from '@/lib/navigation-order'
+import { useNavigationSort } from './use-navigation-sort'
+import { ProjectDeleteDialog } from './project-delete-dialog'
 
 const navigationFilters = [
   ['all', '全部', LayoutGrid],
@@ -66,10 +72,34 @@ export function WorkspaceNavigation({
   const { filter, contentFilter, leaving, viewportRef, rememberScroll, selectFilter } =
     useNavigationTabs()
   const tooltipId = useId()
+  const [deleteProject, setDeleteProject] = useState<ProjectInfo | null>(null)
+  const {
+    rootRef: sortRootRef,
+    descriptionId: sortDescriptionId,
+    sorting,
+    preview: sortPreview,
+    previewRef: sortPreviewRef,
+    announcement: sortAnnouncement,
+    onPointerDownCapture: startSort,
+    onKeyDownCapture: keySort,
+    onClickCapture: suppressSortClick,
+  } = useNavigationSort(
+    desktop && !leaving && !workspace.sessionActionPending,
+    workspace.reorderNavigation,
+  )
   const busy = ['running', 'stopping'].includes(status)
   const projectExpanded = (path: string) =>
     workspace.expandedProjects[sessionKey(path)!] ?? samePath(path, workspace.projectPath)
-  const sessions = visibleSessions(workspace.sessions, workspace.sessionPreferences)
+  const projects = orderedProjects(
+    workspace.projects,
+    workspace.projectOrder,
+    workspace.pinnedProjects,
+  ).filter((project) => !hasPath(workspace.archivedProjects, project.path))
+  const sessions = visibleSessions(
+    workspace.sessions,
+    workspace.sessionPreferences,
+    workspace.sessionOrder,
+  ).filter((session) => !hasPath(workspace.archivedProjects, session.cwd))
   const rows = (sessions: SessionInfo[]) =>
     sessions.map((session) => {
       const selected = samePath(session.path, sessionFile)
@@ -77,18 +107,24 @@ export function WorkspaceNavigation({
       return (
         <div
           key={session.path}
+          data-sort-kind="session"
+          data-sort-path={sessionKey(session.path)!}
+          data-sort-group={sessionGroup(session, workspace.projects, workspace.generalCwd)}
+          data-sort-pinned={pinned}
           data-selected={selected}
           data-responding={busy && selected ? true : undefined}
-          className="sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
+          className="sidebar-sort-item sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
-          <Tooltip>
+          <Tooltip disabled={sorting}>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
                   className="sidebar-session-link h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-inherit"
                   aria-current={selected ? 'page' : undefined}
-                  aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)}`}
+                  data-sort-handle
+                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                  aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)} ${sortDescriptionId}`}
                   disabled={!desktop || busy}
                   onClick={() => void workspace.openSession(session)}
                 />
@@ -97,6 +133,12 @@ export function WorkspaceNavigation({
               <span className="sidebar-row-title min-w-0 flex-1 truncate text-left">
                 {session.title}
               </span>
+              {pinned && (
+                <Pin
+                  aria-hidden
+                  className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
+                />
+              )}
             </TooltipTrigger>
             <TooltipContent
               variant="card"
@@ -180,13 +222,36 @@ export function WorkspaceNavigation({
       )
     })
   const chats = sessions.filter(
-    (session) =>
-      samePath(session.cwd, workspace.generalCwd) ||
-      !workspace.projects.some((project) => samePath(project.path, session.cwd)),
+    (session) => sessionGroup(session, workspace.projects, workspace.generalCwd) === 'chats',
   )
 
   return (
-    <nav aria-label="项目与会话" className="workspace-navigation flex h-full min-h-0 flex-col pb-2">
+    <nav
+      ref={sortRootRef}
+      onPointerDownCapture={(event) => startSort(event)}
+      onKeyDownCapture={(event) => keySort(event)}
+      onClickCapture={(event) => suppressSortClick(event)}
+      aria-label="项目与会话"
+      className="workspace-navigation flex h-full min-h-0 flex-col pb-2"
+    >
+      <p id={sortDescriptionId} className="sr-only">
+        可拖拽排序，或按 Alt 加上、下方向键调整，只能在同一置顶分区内移动。
+      </p>
+      <span role="status" aria-live="polite" className="sr-only">
+        {sortAnnouncement}
+      </span>
+      {sortPreview &&
+        createPortal(
+          <div
+            ref={sortPreviewRef}
+            aria-hidden="true"
+            className="sidebar-sort-preview"
+            style={{ left: sortPreview.left, top: sortPreview.top, width: sortPreview.width }}
+          >
+            {sortPreview.label}
+          </div>,
+          document.body,
+        )}
       <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
         <Button
           variant="ghost"
@@ -252,23 +317,29 @@ export function WorkspaceNavigation({
                   </Button>
                 </div>
                 <div className="flex flex-col gap-1">
-                  {workspace.projects.map((project) => (
+                  {projects.map((project) => (
                     <Collapsible
                       key={project.path}
+                      data-sort-kind="project"
+                      data-sort-path={sessionKey(project.path)!}
+                      data-sort-group="projects"
+                      data-sort-pinned={hasPath(workspace.pinnedProjects, project.path)}
                       open={projectExpanded(project.path)}
                       onOpenChange={(open) => workspace.setProjectExpanded(project.path, open)}
-                      className="flex flex-col"
+                      className="sidebar-sort-item flex flex-col"
                     >
                       <div className="sidebar-project-row flex h-7.5 min-w-0 items-center rounded-md">
-                        <Tooltip>
+                        <Tooltip disabled={sorting}>
                           <TooltipTrigger
                             render={
                               <CollapsibleTrigger
                                 render={
                                   <button
                                     type="button"
-                                    className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)}`}
+                                    data-sort-handle
+                                    aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                                    className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] font-normal outline-none select-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    aria-describedby={`${tooltipId}-project-${encodeURIComponent(project.path)} ${sortDescriptionId}`}
                                   />
                                 }
                               />
@@ -282,6 +353,12 @@ export function WorkspaceNavigation({
                             <span className="sidebar-row-title min-w-0 flex-1 truncate">
                               {project.name}
                             </span>
+                            {hasPath(workspace.pinnedProjects, project.path) && (
+                              <Pin
+                                aria-hidden
+                                className="mr-0.5 size-3 shrink-0 fill-current text-muted-foreground/70"
+                              />
+                            )}
                           </TooltipTrigger>
                           <TooltipContent
                             variant="card"
@@ -326,16 +403,41 @@ export function WorkspaceNavigation({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
                               <DropdownMenuItem
+                                disabled={!desktop}
+                                onClick={() => workspace.toggleProjectPinned(project)}
+                              >
+                                <Pin className="size-3.5" />
+                                {hasPath(workspace.pinnedProjects, project.path)
+                                  ? '取消置顶'
+                                  : '置顶项目'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 disabled={busy}
                                 onClick={() => onInstructions(project)}
                               >
+                                <FileText className="size-3.5" />
                                 项目指令
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                disabled={!desktop || busy}
-                                onClick={() => void workspace.newConversation(project.path)}
+                                disabled={
+                                  !desktop ||
+                                  (busy && samePath(project.path, workspace.projectPath))
+                                }
+                                onClick={() => void workspace.setProjectArchived(project, true)}
                               >
-                                新对话
+                                <Archive className="size-3.5" />
+                                归档项目
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={
+                                  !desktop ||
+                                  (busy && samePath(project.path, workspace.projectPath))
+                                }
+                                onClick={() => setDeleteProject(project)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                删除项目
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -343,16 +445,24 @@ export function WorkspaceNavigation({
                       </div>
                       <CollapsibleContent className="sidebar-project-sessions">
                         <div className="flex flex-col gap-1 pt-1">
-                          {rows(sessions.filter((session) => samePath(session.cwd, project.path)))}
-                          {!sessions.some((session) => samePath(session.cwd, project.path)) && (
-                            <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>
+                          {rows(
+                            sessions.filter(
+                              (session) =>
+                                sessionGroup(session, workspace.projects, workspace.generalCwd) ===
+                                `project:${sessionKey(project.path)}`,
+                            ),
                           )}
+                          {!sessions.some(
+                            (session) =>
+                              sessionGroup(session, workspace.projects, workspace.generalCwd) ===
+                              `project:${sessionKey(project.path)}`,
+                          ) && <p className="px-2 py-2 text-xs text-muted-foreground">暂无会话</p>}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
                   ))}
                 </div>
-                {!workspace.projects.length && (
+                {!projects.length && (
                   <Button
                     variant="ghost"
                     className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
@@ -396,6 +506,7 @@ export function WorkspaceNavigation({
         <Settings className="size-4 stroke-[1.6]" />
         设置
       </Button>
+      <ProjectDeleteDialog project={deleteProject} onClose={() => setDeleteProject(null)} />
     </nav>
   )
 }

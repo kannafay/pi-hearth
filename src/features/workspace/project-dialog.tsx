@@ -94,7 +94,7 @@ export function ProjectDialog({
           setError('每个项目请选择一个源文件夹。')
           return
         }
-        void chooseDirectory('source', event.paths[0])
+        void chooseDirectory(event.paths[0])
       }
     })
       .then((stop) => {
@@ -158,21 +158,18 @@ export function ProjectDialog({
     }
   }
 
-  async function chooseDirectory(target: 'source' | 'location', path?: string) {
+  async function chooseDirectory(path?: string) {
     if (actionPending.current) return
     actionPending.current = true
     const request = ++selectionVersion.current
     setSelecting(true)
     setError('')
     try {
-      const value =
-        path ??
-        (await selectProjectDirectory(target === 'source' ? '添加源文件夹' : '新项目保存位置'))
+      const value = path ?? (await selectProjectDirectory('添加源文件夹'))
       if (value) {
         const directory = await resolveProjectDirectory(value)
         if (request !== selectionVersion.current) return
-        if (target === 'source') setSource(directory)
-        else useWorkspaceStore.getState().setProjectsDirectory(directory)
+        setSource(directory)
       }
     } catch (reason) {
       if (request === selectionVersion.current) setError(String(reason))
@@ -200,7 +197,7 @@ export function ProjectDialog({
         className={`max-h-[calc(100dvh-var(--titlebar-height)-3rem)] overflow-hidden ${project ? 'sm:max-w-160' : 'sm:max-w-136'}`}
       >
         <DialogHeader>
-          <DialogTitle>{project ? `${project.name} · 项目指令` : '创建项目'}</DialogTitle>
+          <DialogTitle>{project ? `${project.name} · 项目指令` : '新建项目'}</DialogTitle>
           <DialogDescription>
             {project
               ? '保存到项目的指令文件，该项目的所有会话与 Pi CLI 均可使用。'
@@ -323,7 +320,7 @@ export function ProjectDialog({
                               variant="ghost"
                               size="sm"
                               disabled={saving || selecting}
-                              onClick={() => void chooseDirectory('source')}
+                              onClick={() => void chooseDirectory()}
                             >
                               <FolderOpen className="stroke-[1.5]" />
                               更换文件夹
@@ -338,7 +335,7 @@ export function ProjectDialog({
                           <Button
                             variant="outline"
                             disabled={saving || selecting}
-                            onClick={() => void chooseDirectory('source')}
+                            onClick={() => void chooseDirectory()}
                           >
                             <FolderPlus className="stroke-[1.5]" />
                             添加文件夹
@@ -347,19 +344,9 @@ export function ProjectDialog({
                       )}
                     </div>
                     {!source && (
-                      <div className="flex items-start gap-3 text-xs text-muted-foreground">
-                        <div className="min-w-0 flex-1 space-y-1 leading-5">
-                          <p>未添加源文件夹时，将在以下位置创建项目</p>
-                          <p className="break-all">{createDirectory}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          disabled={saving || selecting}
-                          onClick={() => void chooseDirectory('location')}
-                        >
-                          更改
-                        </Button>
+                      <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+                        <p>未添加源文件夹时，将在以下位置新建项目，可在设置中修改</p>
+                        <p className="break-all">{createDirectory}</p>
                       </div>
                     )}
                   </section>
@@ -377,7 +364,7 @@ export function ProjectDialog({
               取消
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {saving ? (project ? '正在保存…' : '正在创建…') : project ? '保存指令' : '创建项目'}
+              {saving ? (project ? '正在保存…' : '正在创建…') : project ? '保存指令' : '新建项目'}
             </Button>
           </DialogFooter>
         </form>

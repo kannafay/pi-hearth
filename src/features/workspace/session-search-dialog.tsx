@@ -10,6 +10,7 @@ import { isDesktop } from '@/lib/desktop'
 import { searchSessions } from '@/lib/workspace'
 import type { SessionInfo, SessionSearchResult } from '@/lib/generated/pi'
 import { sessionPreference, visibleSessions } from '@/lib/session-preferences'
+import { hasPath } from '@/lib/navigation-order'
 
 function Highlight({ text, query }: { text: string; query: string }) {
   const terms = query.trim().split(/\s+/).filter(Boolean)
@@ -72,7 +73,9 @@ export function SessionSearchDialog({
       matchedIn: 'recent',
     }))
   const shown = (term ? (currentResponse ? response.results : []) : recent).filter(
-    (result) => !sessionPreference(workspace.sessionPreferences, result.session.path).archived,
+    (result) =>
+      !sessionPreference(workspace.sessionPreferences, result.session.path).archived &&
+      !hasPath(workspace.archivedProjects, result.session.cwd),
   )
 
   useEffect(() => {

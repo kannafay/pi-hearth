@@ -14,6 +14,11 @@ const saved: AppSettings = {
   navigationWidth: 312,
   inspectorWidth: 450,
   expandedProjects: { 'd:/project': false },
+  projectOrder: ['d:/project', 'd:/second'],
+  sessionOrder: ['history.jsonl', 'older.jsonl'],
+  pinnedProjects: ['d:/project'],
+  archivedProjects: ['d:/archived'],
+  removedProjects: [],
   thinkingLevel: 'xhigh',
   projectsDirectory: 'D:/saved-projects',
   customProjectsDirectory: 'D:/saved-projects',
@@ -38,7 +43,8 @@ test('startup restores SQL preferences before the workspace becomes ready', asyn
   expect(useWorkspaceStore.getState().settingsReady).toBe(false)
   resolve(saved)
   await first
-  const { thinkingLevel, ...layout } = saved
+  const { thinkingLevel, removedProjects, ...layout } = saved
+  expect(removedProjects).toEqual([])
   expect(useWorkspaceStore.getState()).toMatchObject({
     ...layout,
     settingsReady: true,

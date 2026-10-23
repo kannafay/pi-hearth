@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/scroll-area'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
 import { sessionKey } from '@/lib/session-preferences'
+import { hasPath, orderedProjects } from '@/lib/navigation-order'
 
 type ProjectOption = { name: string; path: string | null }
 
@@ -19,18 +20,27 @@ export function ConversationProjectPicker({
   disabled?: boolean
   onCreateProject?: () => void
 }) {
-  const { projects, projectPath, newConversation } = useWorkspaceStore(
-    useShallow((state) => ({
-      projects: state.projects,
-      projectPath: state.projectPath,
-      newConversation: state.newConversation,
-    })),
-  )
+  const { projects, projectPath, newConversation, projectOrder, pinnedProjects, archivedProjects } =
+    useWorkspaceStore(
+      useShallow((state) => ({
+        projects: state.projects,
+        projectPath: state.projectPath,
+        newConversation: state.newConversation,
+        projectOrder: state.projectOrder,
+        pinnedProjects: state.pinnedProjects,
+        archivedProjects: state.archivedProjects,
+      })),
+    )
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const items = useMemo<ProjectOption[]>(
-    () => [{ name: '不使用项目', path: null }, ...projects],
-    [projects],
+    () => [
+      { name: '不使用项目', path: null },
+      ...orderedProjects(projects, projectOrder, pinnedProjects).filter(
+        (project) => !hasPath(archivedProjects, project.path),
+      ),
+    ],
+    [projects, projectOrder, pinnedProjects, archivedProjects],
   )
   const selected = items.find((item) => sessionKey(item.path) === sessionKey(projectPath))
   const name = selected?.path ? selected.name : projectPath?.split(/[\\/]/).filter(Boolean).at(-1)

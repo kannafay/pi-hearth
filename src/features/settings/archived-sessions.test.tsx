@@ -124,3 +124,23 @@ test('a failed deletion disables repeat submission and keeps remaining conversat
   expect(screen.getByRole('button', { name: '删除所选' })).toBeEnabled()
   expect(screen.getByText('已选 2 项')).toBeVisible()
 })
+
+test('archived projects restore with their sessions and their delete action first asks for confirmation', async () => {
+  useWorkspaceStore.setState({
+    archivedProjects: ['project'],
+    removeProject: vi.fn().mockResolvedValue(undefined),
+  })
+  const user = userEvent.setup()
+  preview()
+  const projects = screen.getByRole('region', { name: '归档项目' })
+  expect(within(projects).getByText('测试')).toBeVisible()
+  await user.click(within(projects).getByRole('button', { name: '删除项目 测试' }))
+  const dialog = await screen.findByRole('dialog', { name: '删除项目“测试”？' })
+  expect(useWorkspaceStore.getState().removeProject).not.toHaveBeenCalled()
+  await user.click(within(dialog).getByRole('button', { name: '取消' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(within(projects).getByRole('button', { name: '恢复项目 测试' }))
+  expect(screen.queryByRole('region', { name: '归档项目' })).not.toBeInTheDocument()
+  expect(useWorkspaceStore.getState().archivedProjects).toEqual([])
+  expect(useWorkspaceStore.getState().sessions).toEqual(sessions)
+})

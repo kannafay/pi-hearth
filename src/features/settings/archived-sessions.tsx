@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { Archive, ArchiveRestore, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Folder, Trash2 } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,7 +15,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDesktop } from '@/lib/desktop'
 import { sessionPreference } from '@/lib/session-preferences'
-import type { SessionInfo } from '@/lib/generated/pi'
+import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
+import { hasPath, orderedProjects } from '@/lib/navigation-order'
+import { ProjectDeleteDialog } from '@/features/workspace/project-delete-dialog'
 import { SettingsPageHeader } from './settings-page-header'
 
 function ArchivedSessionTitle({ title }: { title: string }) {
@@ -61,8 +63,16 @@ export function ArchivedSessions() {
     setSessionArchived,
     deleteArchivedSessions,
     projects,
+    projectOrder,
+    pinnedProjects,
+    archivedProjects,
+    setProjectArchived,
   } = useWorkspaceStore()
   const [error, setError] = useState('')
+  const [deleteProject, setDeleteProject] = useState<ProjectInfo | null>(null)
+  const archivedProjectList = orderedProjects(projects, projectOrder, pinnedProjects).filter(
+    (project) => hasPath(archivedProjects, project.path),
+  )
   const [selected, setSelected] = useState(new Set<string>())
   const [deleteTargets, setDeleteTargets] = useState<SessionInfo[]>([])
   const deletePresence = useDialogPresence(deleteTargets.length ? deleteTargets : null)
@@ -121,13 +131,54 @@ export function ArchivedSessions() {
     <>
       <SettingsPageHeader
         title="归档"
-        description="归档的聊天会保留在本机，可随时恢复。"
+        description="归档的项目和聊天会保留在本机，可随时恢复。"
         className="pb-4"
       />
       {error && (
         <p role="alert" className="pt-4 text-xs text-destructive">
           {error}
         </p>
+      )}
+      {archivedProjectList.length > 0 && (
+        <section aria-label="归档项目" className="border-b py-4">
+          <h3 className="mb-2 text-xs text-muted-foreground">项目</h3>
+          <ul className="divide-y">
+            {archivedProjectList.map((project) => (
+              <li key={project.path} className="flex min-w-0 items-center gap-2.5 py-2">
+                <Folder className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px]">{project.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                    {project.path}
+                  </p>
+                </div>
+                <IconButton
+                  label={`恢复项目 ${project.name}`}
+                  title="恢复项目"
+                  size="icon-sm"
+                  disabled={!desktop || busy}
+                  className="text-muted-foreground"
+                  onClick={() => void setProjectArchived(project, false)}
+                >
+                  <ArchiveRestore className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  label={`删除项目 ${project.name}`}
+                  title="删除项目"
+                  size="icon-sm"
+                  disabled={!desktop || busy}
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => setDeleteProject(project)}
+                >
+                  <Trash2 className="size-3.5" />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {archivedProjectList.length > 0 && archived.length > 0 && (
+        <h3 className="mt-4 text-xs text-muted-foreground">会话</h3>
       )}
       {archived.length ? (
         <>
@@ -225,12 +276,13 @@ export function ArchivedSessions() {
             })}
           </ul>
         </>
-      ) : (
+      ) : !archivedProjectList.length ? (
         <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
           <Archive aria-hidden className="size-6 stroke-[1.5] opacity-60" />
           <p className="text-sm">暂无归档会话</p>
         </div>
-      )}
+      ) : null}
+      <ProjectDeleteDialog project={deleteProject} onClose={() => setDeleteProject(null)} />
       <Dialog
         open={deleteTargets.length > 0}
         onOpenChangeComplete={deletePresence.onOpenChangeComplete}

@@ -158,6 +158,11 @@ pub struct AppSettings {
     pub inspector_width: f64,
     #[ts(type = "Record<string, boolean>")]
     pub expanded_projects: std::collections::HashMap<String, bool>,
+    pub project_order: Vec<String>,
+    pub session_order: Vec<String>,
+    pub pinned_projects: Vec<String>,
+    pub archived_projects: Vec<String>,
+    pub removed_projects: Vec<String>,
     pub thinking_level: Option<String>,
     pub projects_directory: String,
     pub custom_projects_directory: String,
@@ -172,6 +177,11 @@ impl Default for AppSettings {
             navigation_width: 300.0,
             inspector_width: 400.0,
             expanded_projects: Default::default(),
+            project_order: Vec::new(),
+            session_order: Vec::new(),
+            pinned_projects: Vec::new(),
+            archived_projects: Vec::new(),
+            removed_projects: Vec::new(),
             thinking_level: None,
             projects_directory: String::new(),
             custom_projects_directory: String::new(),
@@ -200,6 +210,18 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub expanded_projects: Option<std::collections::HashMap<String, bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_order: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub session_order: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pinned_projects: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub archived_projects: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub thinking_level: Option<String>,

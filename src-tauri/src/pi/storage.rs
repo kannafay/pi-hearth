@@ -198,6 +198,26 @@ pub(super) async fn save_preferences(data: &Path, preferences: &Preferences) -> 
     save_preferences_and_remove_documents(data, preferences, Vec::new()).await
 }
 
+pub(super) async fn save_projects(
+    data: &Path,
+    preferences: &Preferences,
+    removed_projects: Vec<String>,
+) -> Result<(), String> {
+    let preferences = preferences.clone();
+    with_database(data, move |connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(database_error)?;
+        write_preferences(&transaction, &preferences)?;
+        write_settings(
+            &transaction,
+            &serde_json::json!({"removedProjects": removed_projects}),
+        )?;
+        transaction.commit().map_err(database_error)
+    })
+    .await
+}
+
 pub(super) async fn save_preferences_and_remove_documents(
     data: &Path,
     preferences: &Preferences,
@@ -551,6 +571,49 @@ mod tests {
         assert!(matches!(reopened.theme, AppTheme::Dark));
         assert_eq!(reopened.navigation_width, 312.0);
         assert_eq!(reopened.thinking_level.as_deref(), Some("xhigh"));
+    }
+
+    #[tokio::test]
+    async fn navigation_order_and_project_flags_survive_catalog_saves() {
+        let root = fixture();
+        let defaults = settings(&root).await.unwrap();
+        assert!(defaults.project_order.is_empty());
+        assert!(defaults.session_order.is_empty());
+        assert!(defaults.pinned_projects.is_empty());
+        assert!(defaults.archived_projects.is_empty());
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                project_order: Some(vec!["project-b".into(), "project-a".into()]),
+                session_order: Some(vec!["chat-b".into(), "chat-a".into()]),
+                pinned_projects: Some(vec!["project-b".into()]),
+                archived_projects: Some(vec!["archived-project".into()]),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        save_preferences(&root, &Preferences::default())
+            .await
+            .unwrap();
+        let saved = settings(&root).await.unwrap();
+        assert_eq!(saved.project_order, ["project-b", "project-a"]);
+        assert_eq!(saved.session_order, ["chat-b", "chat-a"]);
+        assert_eq!(saved.pinned_projects, ["project-b"]);
+        assert_eq!(saved.archived_projects, ["archived-project"]);
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                archived_projects: Some(Vec::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let restored = settings(&root).await.unwrap();
+        assert!(restored.archived_projects.is_empty());
+        assert_eq!(restored.project_order, saved.project_order);
+        assert_eq!(restored.pinned_projects, saved.pinned_projects);
     }
 
     #[tokio::test]

@@ -191,7 +191,7 @@ test('backdrop dismisses settings and project dialogs, but header clicks preserv
   await user.type(name, 'draft-project')
   expect(workspace).toHaveAttribute('inert')
   await user.click(screen.getByRole('button', { name: '收起侧栏' }))
-  expect(screen.getByRole('dialog', { name: '创建项目' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: '新建项目' })).toBeVisible()
   expect(name).toHaveValue('draft-project')
   await user.click(document.querySelector('[data-slot="dialog-overlay"]')!)
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
