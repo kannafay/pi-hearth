@@ -1,5 +1,7 @@
 mod desktop;
 mod pi;
+#[cfg(windows)]
+mod theme;
 #[cfg(not(windows))]
 mod tray_menu;
 #[cfg(windows)]
@@ -63,6 +65,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            #[cfg(windows)]
+            theme::get_system_theme,
             #[cfg(not(windows))]
             tray_menu::tray_ready,
             #[cfg(not(windows))]

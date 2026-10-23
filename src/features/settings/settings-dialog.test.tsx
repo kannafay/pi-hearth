@@ -12,6 +12,13 @@ vi.mock('@/lib/desktop', () => ({
   isDesktop: vi.fn(),
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('@/lib/system-theme', () => ({
+  usesNativeSystemTheme: () => true,
+  observeSystemTheme: async (onChange: (dark: boolean) => void) => {
+    onChange(false)
+    return () => {}
+  },
+}))
 
 function SettingsHarness() {
   useTheme()
@@ -69,7 +76,7 @@ test('theme selection updates the document and can return to the system theme', 
   await user.click(await screen.findByRole('option', { name: '跟随系统' }))
   expect(document.documentElement).not.toHaveClass('dark')
   expect(useWorkspaceStore.getState().theme).toBe('system')
-  expect(setWindowTheme).toHaveBeenLastCalledWith(null)
+  expect(setWindowTheme).toHaveBeenLastCalledWith('light')
 })
 
 test('vertical settings tabs use arrows and Enter, and closing restores focus', async () => {

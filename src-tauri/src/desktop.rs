@@ -52,6 +52,8 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
+    crate::theme::install(app.handle())?;
+    #[cfg(windows)]
     let menu = crate::tray_menu::create(app)?;
     #[cfg(not(windows))]
     crate::tray_menu::create(app)?;
