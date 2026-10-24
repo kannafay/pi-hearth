@@ -225,6 +225,26 @@ test('double-clicking the sidebar separator resets its saved width and reopening
   expect(useWorkspaceStore.getState().navigationWidth).toBe(300)
 })
 
+test('double-clicking the inspector separator restores its default width and keeps it open', async () => {
+  useWorkspaceStore.setState({ inspectorWidth: 480 })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  const inspector = screen.getByRole('complementary', { name: '项目查看面板' })
+  await user.click(within(inspector).getByRole('tab', { name: '文件' }))
+  await user.dblClick(screen.getByRole('separator', { name: '调整查看面板宽度' }))
+  expect(resizePanel).toHaveBeenCalledExactlyOnceWith('inspector', '400px')
+  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 400 })
+  expect(inspector).toBeVisible()
+  expect(within(inspector).getByRole('tab', { name: '文件' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await user.click(within(inspector).getByRole('button', { name: '关闭查看面板' }))
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 400 })
+})
+
 test('the docked inspector preserves its selected tab when closed and reopened', async () => {
   const user = userEvent.setup()
   render(<WorkspaceShell />)

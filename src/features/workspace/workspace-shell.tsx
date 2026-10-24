@@ -355,6 +355,13 @@ export function WorkspaceShell() {
                   className="workspace-panel-separator w-(--workspace-inset) bg-transparent after:w-2.5"
                   data-panel-open={dockedInspectorOpen}
                   disabled={!dockedInspectorOpen}
+                  disableDoubleClick
+                  onDoubleClick={() => {
+                    if (!dockedInspectorOpen) return
+                    const width = useWorkspaceStore.getInitialState().inspectorWidth
+                    inspectorPanel.panelRef.current?.resize(`${width}px`)
+                    setInspectorWidth(width)
+                  }}
                 />
                 <ResizablePanel
                   id="inspector"
