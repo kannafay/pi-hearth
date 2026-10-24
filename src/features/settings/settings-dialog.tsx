@@ -137,7 +137,7 @@ export function SettingsDialog({
             <p className={`text-sm font-medium ${compact ? 'shrink-0' : 'mb-6 px-2 pt-1'}`}>设置</p>
             {compact ? (
               <Select items={sections} value={section} onValueChange={selectSection}>
-                <SelectTrigger aria-label="设置分类" className="min-w-0 flex-1">
+                <SelectTrigger aria-label="设置分类" className="w-40 min-w-0">
                   <SelectValue>
                     <SectionIcon aria-hidden className="size-4 stroke-[1.6]" />
                     <span>{currentSection.label}</span>
