@@ -361,7 +361,8 @@ export function WorkspaceShell() {
                   style={{ overflow: 'hidden' }}
                 >
                   <div
-                    className="workspace-panel-content"
+                    data-slot="workspace-inspector-frame"
+                    className="workspace-panel-content bg-card"
                     data-side="right"
                     data-panel-open={dockedInspectorOpen}
                     aria-hidden={!dockedInspectorOpen}

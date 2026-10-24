@@ -18,7 +18,7 @@ export function Inspector({
   return (
     <aside
       aria-label="项目查看面板"
-      className="flex h-full min-h-0 flex-col bg-card text-sm text-card-foreground"
+      className="flex h-full min-h-0 flex-col text-sm text-card-foreground"
     >
       <Tabs
         value={tab}
