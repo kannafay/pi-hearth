@@ -178,7 +178,7 @@ impl Default for AppSettings {
             sidebar_open: true,
             inspector_open: false,
             navigation_width: 300.0,
-            inspector_width: 400.0,
+            inspector_width: 300.0,
             expanded_projects: Default::default(),
             project_order: Vec::new(),
             session_order: Vec::new(),

@@ -246,8 +246,8 @@ test('double-clicking the inspector separator restores its default width and kee
   await user.click(within(inspector).getByRole('tab', { name: '文件' }))
   resizePanel.mockClear()
   await user.dblClick(screen.getByRole('separator', { name: '调整查看面板宽度' }))
-  expect(resizePanel).toHaveBeenCalledExactlyOnceWith('inspector', '400px')
-  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 400 })
+  expect(resizePanel).toHaveBeenCalledExactlyOnceWith('inspector', '300px')
+  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 300 })
   expect(inspector).toBeVisible()
   expect(within(inspector).getByRole('tab', { name: '文件' })).toHaveAttribute(
     'aria-selected',
@@ -255,7 +255,7 @@ test('double-clicking the inspector separator restores its default width and kee
   )
   await user.click(within(inspector).getByRole('button', { name: '关闭查看面板' }))
   await user.click(screen.getByRole('button', { name: '打开查看面板' }))
-  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 400 })
+  expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 300 })
 })
 
 test('the docked inspector preserves its selected tab when closed and reopened', async () => {
