@@ -48,6 +48,7 @@ export function WorkspaceFloatingPanel({
   return (
     <WorkspaceDialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        className="workspace-floating-panel"
         showCloseButton={false}
         layout="drawer"
         side={side}
