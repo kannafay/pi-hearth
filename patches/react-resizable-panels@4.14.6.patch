@@ -1,0 +1,31 @@
+diff --git a/dist/react-resizable-panels.js b/dist/react-resizable-panels.js
+index b0c0e98674b5a261a4c8c86c702fe2a8c14c56e1..20a85c057ee691a50d0e212c1412152a8c5d8f58 100644
+--- a/dist/react-resizable-panels.js
++++ b/dist/react-resizable-panels.js
+@@ -1547,6 +1547,26 @@ function zt({
+       return s && W(u, l);
+     },
+     resize: (s) => {
++      // A responsive render can precede the group's resize observer. Update both
++      // its pixel basis and constraints before converting an imperative size.
++      const pending = n(), measured = Pe({ axis: pending.axis });
++      if (pending.axisSize > 0 && measured > 0 && pending.axisSize !== measured) {
++        const constraints = ft(pending.axis), requested = go({
++          axis: pending.axis,
++          nextAxisSize: measured,
++          prevAxisSize: pending.axisSize,
++          prevLayout: pending.layout
++        });
++        me(pending.axis, {
++          defaultLayoutDeferred: false,
++          derivedItemConstraints: constraints,
++          axisSize: measured,
++          layout: ve({ layout: requested, itemConstraints: constraints }),
++          requestedAxisSize: measured,
++          requestedLayout: requested,
++          separatorToItems: pending.separatorToItems
++        });
++      }
+       const { axis: u } = n(), { element: l } = r(), d = Pe({ axis: u }), h = Le({
+         axisSize: d,
+         itemElement: l,

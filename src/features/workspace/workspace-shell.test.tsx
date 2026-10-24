@@ -1,4 +1,4 @@
-import { useImperativeHandle, type HTMLAttributes, type ReactNode, type Ref } from 'react'
+import { useImperativeHandle, useRef, type HTMLAttributes, type ReactNode, type Ref } from 'react'
 import type { PanelImperativeHandle } from 'react-resizable-panels'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -30,19 +30,27 @@ vi.mock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   ResizablePanel: ({
     id,
+    defaultSize,
     panelRef,
     children,
   }: {
     id?: string
+    defaultSize?: number | string
     panelRef?: Ref<PanelImperativeHandle | null>
     children: ReactNode
   }) => {
+    const pixels = useRef(Number.parseFloat(String(defaultSize ?? 0)))
     useImperativeHandle(panelRef, () => ({
-      collapse: () => {},
+      collapse: () => {
+        pixels.current = 0
+      },
       expand: () => {},
-      resize: (size) => resizePanel(id, size),
-      getSize: () => ({ inPixels: 0, asPercentage: 0 }),
-      isCollapsed: () => false,
+      resize: (size) => {
+        pixels.current = Number.parseFloat(String(size))
+        resizePanel(id, size)
+      },
+      getSize: () => ({ inPixels: pixels.current, asPercentage: 0 }),
+      isCollapsed: () => pixels.current === 0,
     }))
     return <div>{children}</div>
   },

@@ -71,9 +71,9 @@ export function WorkspaceShell() {
   const floatingSidebarOpen = floatingSidebar.narrow === narrow && floatingSidebar.open
   const dockedSidebarOpen = sidebarOpen && !narrow
   const sidebarVisible = narrow ? floatingSidebarOpen : sidebarOpen
-  const navigationPanel = useAnimatedPanel(dockedSidebarOpen, navigationWidth)
+  const navigationPanel = useAnimatedPanel(sidebarOpen, navigationWidth, !narrow)
   const dockedInspectorOpen = inspectorOpen && !compact
-  const inspectorPanel = useAnimatedPanel(dockedInspectorOpen, inspectorWidth)
+  const inspectorPanel = useAnimatedPanel(inspectorOpen, inspectorWidth, !compact)
   const contentDialogOpen =
     settingsOpen ||
     searchOpen ||
@@ -355,6 +355,7 @@ export function WorkspaceShell() {
                 <ResizablePanel
                   id="inspector"
                   {...inspectorPanel}
+                  groupResizeBehavior="preserve-pixel-size"
                   collapsible
                   minSize="300px"
                   maxSize="560px"
