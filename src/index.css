@@ -171,12 +171,7 @@ body,
 }
 
 body {
-  min-width: 640px;
   -webkit-font-smoothing: antialiased;
-}
-
-html[data-surface='tray-menu'] body {
-  min-width: 0;
 }
 
 .tray-menu-card {
