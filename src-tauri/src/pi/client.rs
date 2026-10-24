@@ -2,6 +2,7 @@ use super::{
     config::{local_agent_directory, prepare_config, redact},
     process_tree::ProcessTree,
     protocol::{Conversation, JsonLines},
+    session_pool::{FileRevision, MAX_OPEN_SESSIONS, RetainedSession},
     tool_output::{ToolOutput, mask, result_text},
     types::*,
 };
@@ -29,6 +30,7 @@ enum Control {
     Renew {
         instance_id: String,
         channel: Channel<PiEvent>,
+        preserve: bool,
         reply: oneshot::Sender<Result<RuntimeSnapshot, String>>,
     },
     Rewind {
@@ -94,6 +96,7 @@ pub struct PiClient {
     source_directory: PathBuf,
     config_revision: u64,
     runtime: Arc<tauri::async_runtime::JoinHandle<()>>,
+    file_revision: Arc<std::sync::Mutex<Option<FileRevision>>>,
     #[cfg(test)]
     process_id: u32,
 }
@@ -110,6 +113,7 @@ struct Pending {
     prompt_run: Option<String>,
     deadline: Instant,
     history: bool,
+    writes: bool,
 }
 
 struct Approval {
@@ -235,6 +239,8 @@ impl PiClient {
         let (sender, mut receiver) = mpsc::channel::<ScopedControl>(32);
         let runtime_instance_id = instance_id.clone();
         let runtime_project_path = project_path.clone();
+        let file_revision = Arc::new(std::sync::Mutex::new(None));
+        let runtime_revision = file_revision.clone();
         let runtime = tauri::async_runtime::spawn(async move {
             let _tree = tree;
             let mut conversation = Conversation::new(runtime_instance_id, runtime_project_path);
@@ -267,7 +273,7 @@ impl PiClient {
                             None => None,
                         };
                         match control {
-                            Some(Control::Renew { instance_id, channel: next, reply }) => {
+                            Some(Control::Renew { instance_id, channel: next, preserve, reply }) => {
                                 if conversation.snapshot.active_run_id.is_some() {
                                     let _ = reply.send(Err("请先停止当前回复再新建聊天。".into())); continue;
                                 }
@@ -278,7 +284,8 @@ impl PiClient {
                                 for (_, request) in pending.drain() {
                                     let _ = request.reply.send(Err("已切换到新的会话。".into()));
                                 }
-                                conversation.renew(instance_id);
+                                if preserve { conversation.snapshot.instance_id = instance_id; }
+                                else { conversation.renew(instance_id); }
                                 channel = next;
                                 let _ = reply.send(Ok(conversation.snapshot.clone()));
                             }
@@ -333,7 +340,8 @@ impl PiClient {
                                     exit_error = Some("Pi 输入管道已中断，请重新连接。".into()); break;
                                 }
                                 let deadline = if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
-                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries" });
+                                let writes = matches!(body["type"].as_str(), Some("prompt" | "set_model" | "set_thinking_level" | "set_session_name"));
+                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes });
                             }
                             Some(Control::Subscribe { channel: next, reply }) => { channel = next; let _ = reply.send(conversation.snapshot.clone()); }
                             Some(Control::Snapshot { reply }) => { let _ = reply.send(conversation.snapshot.clone()); }
@@ -387,6 +395,9 @@ impl PiClient {
                                     if record["type"] == "response" {
                                         if let Some(request) = record["id"].as_str().and_then(|id| pending.remove(id)) {
                                             conversation.response(&record);
+                                            if request.writes && record["success"] == true {
+                                                *runtime_revision.lock().unwrap() = conversation.snapshot.session_file.as_deref().and_then(FileRevision::read);
+                                            }
                                             let result: Result<Value, String> = if record["success"] == true { Ok(record["data"].clone()) } else { Err(record["error"].as_str().unwrap_or("Pi 拒绝了命令。").into()) };
                                             if request.prompt_run.as_ref() == conversation.snapshot.active_run_id.as_ref() && request.prompt_run.is_some() {
                                                 match &result {
@@ -436,6 +447,7 @@ impl PiClient {
                                         }
                                         if record["type"] == "agent_settled" {
                                             approvals.clear();
+                                            *runtime_revision.lock().unwrap() = conversation.snapshot.session_file.as_deref().and_then(FileRevision::read);
                                         }
                                     }
                                 }
@@ -509,6 +521,7 @@ impl PiClient {
             source_directory: source_agent_dir.to_owned(),
             config_revision,
             runtime: Arc::new(runtime),
+            file_revision,
             #[cfg(test)]
             process_id,
         }))
@@ -565,6 +578,7 @@ impl PiClient {
         self.control(Control::Renew {
             instance_id: instance_id.clone(),
             channel,
+            preserve: false,
             reply,
         })
         .await?;
@@ -579,11 +593,60 @@ impl PiClient {
             source_directory: self.source_directory.clone(),
             config_revision: self.config_revision,
             runtime: self.runtime.clone(),
+            file_revision: self.file_revision.clone(),
             #[cfg(test)]
             process_id: self.process_id,
         });
         renewal.0 = None;
+        client.remember_revision(&snapshot);
         Ok((client, snapshot))
+    }
+
+    async fn reattach(
+        &self,
+        channel: Channel<PiEvent>,
+    ) -> Result<(Arc<Self>, RuntimeSnapshot), String> {
+        let mut transition = SessionRenewal(Some(self.runtime.clone()));
+        let instance_id = Uuid::new_v4().to_string();
+        let (reply, receive) = oneshot::channel();
+        self.control(Control::Renew {
+            instance_id: instance_id.clone(),
+            channel,
+            preserve: true,
+            reply,
+        })
+        .await?;
+        let snapshot = timeout(Duration::from_secs(5), receive)
+            .await
+            .map_err(|_| "恢复会话订阅超时。")?
+            .map_err(|_| "Pi 连接已关闭。")??;
+        let client = Arc::new(Self {
+            instance_id,
+            project_path: self.project_path.clone(),
+            commands: self.commands.clone(),
+            actions: Mutex::new(()),
+            action_token: self.action_token.clone(),
+            session_directory: self.session_directory.clone(),
+            source_directory: self.source_directory.clone(),
+            config_revision: self.config_revision,
+            runtime: self.runtime.clone(),
+            file_revision: self.file_revision.clone(),
+            #[cfg(test)]
+            process_id: self.process_id,
+        });
+        transition.0 = None;
+        Ok((client, snapshot))
+    }
+
+    pub(super) fn abort_runtime(&self) {
+        self.runtime.abort();
+    }
+
+    fn remember_revision(&self, snapshot: &RuntimeSnapshot) {
+        *self.file_revision.lock().unwrap() = snapshot
+            .session_file
+            .as_deref()
+            .and_then(FileRevision::read);
     }
 
     fn configuration_unchanged(&self) -> bool {
@@ -658,10 +721,12 @@ impl PiClient {
         self.control(Control::Restore { messages, reply })
             .await
             .map_err(|_| "Pi 连接已关闭。")?;
-        timeout(Duration::from_secs(30), receive)
+        let snapshot = timeout(Duration::from_secs(30), receive)
             .await
             .map_err(|_| "恢复历史超时。")?
-            .map_err(|_| "Pi 连接已关闭。")?
+            .map_err(|_| "Pi 连接已关闭。")??;
+        self.remember_revision(&snapshot);
+        Ok(snapshot)
     }
 
     pub async fn decide(&self, approval_id: String, allow: bool) -> Result<(), String> {
@@ -892,10 +957,156 @@ fn configuration_revision(source: &Path, project: &Path) -> Result<u64, String> 
 #[derive(Default)]
 pub struct PiManager {
     runtime: Mutex<Option<Arc<PiClient>>>,
+    retained: Mutex<Vec<RetainedSession>>,
     read_only: Mutex<Option<(RuntimeSnapshot, ToolOutput)>>,
 }
 
+impl Drop for PiManager {
+    fn drop(&mut self) {
+        if let Some(client) = self.runtime.get_mut().take() {
+            client.abort_runtime();
+        }
+        self.retained.get_mut().clear();
+    }
+}
+
 impl PiManager {
+    // Rebind a loaded native session without parsing its history or spawning Pi.
+    pub async fn resume_existing(
+        &self,
+        file: &str,
+        channel: Channel<PiEvent>,
+    ) -> Result<Option<RuntimeSnapshot>, String> {
+        let Some(revision) = FileRevision::read(file) else {
+            return Ok(None);
+        };
+        let mut runtime = self.runtime.lock().await;
+        if let Some(current) = runtime.as_ref() {
+            let _actions = current.actions.lock().await;
+            if current
+                .snapshot()
+                .await
+                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+            {
+                return Err("请先停止当前回复再切换会话。".into());
+            }
+        }
+        let mut retained = self.retained.lock().await;
+        let Some(index) = retained
+            .iter()
+            .position(|entry| entry.file.path == revision.path)
+        else {
+            return Ok(None);
+        };
+        let mut entry = retained.remove(index);
+        drop(retained);
+        if entry.expired(Instant::now())
+            || entry.file != revision
+            || !entry.client.configuration_unchanged()
+        {
+            crate::developer::record("Pi 会话", || "文件或配置变化，重新加载".into());
+            entry.client.shutdown().await;
+            return Ok(None);
+        }
+        self.retain_current(&mut runtime).await?;
+        let result = entry.client.reattach(channel).await;
+        match result {
+            Ok((client, snapshot)) => {
+                entry.owned = false;
+                *runtime = Some(client);
+                *self.read_only.lock().await = None;
+                self.trim_retained().await;
+                crate::developer::record("Pi 会话", || {
+                    format!("复用 session={}", snapshot.session_id)
+                });
+                Ok(Some(snapshot))
+            }
+            Err(_) => {
+                entry.client.shutdown().await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn retain_current(&self, runtime: &mut Option<Arc<PiClient>>) -> Result<(), String> {
+        let Some(current) = runtime.clone() else {
+            return Ok(());
+        };
+        let _actions = current.actions.lock().await;
+        let snapshot = current.snapshot().await;
+        if snapshot
+            .as_ref()
+            .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+        {
+            return Err("请先停止当前回复再切换会话。".into());
+        }
+        let revision = snapshot
+            .as_ref()
+            .ok()
+            .and_then(|snapshot| snapshot.session_file.as_deref())
+            .and_then(FileRevision::read);
+        let valid = revision.is_some()
+            && *current.file_revision.lock().unwrap() == revision
+            && current.configuration_unchanged();
+        if valid {
+            // Rotate the action scope on departure, not just on return. Late
+            // requests from the previous UI can no longer act on the parked Pi.
+            let result = current.reattach(Channel::new(|_| Ok(()))).await;
+            *runtime = None;
+            match result {
+                Ok((client, snapshot)) => {
+                    let entry = RetainedSession {
+                        client,
+                        file: revision.unwrap(),
+                        since: Instant::now(),
+                        owned: true,
+                    };
+                    self.retained.lock().await.push(entry);
+                    crate::developer::record("Pi 会话", || {
+                        format!("保留 session={}", snapshot.session_id)
+                    });
+                }
+                Err(_) => current.shutdown().await,
+            }
+        } else {
+            *runtime = None;
+            let _cleanup = SessionRenewal(Some(current.runtime.clone()));
+            current.shutdown().await;
+        }
+        Ok(())
+    }
+
+    async fn trim_retained(&self) {
+        let mut retained = self.retained.lock().await;
+        let mut removed = Vec::new();
+        while retained.len() >= MAX_OPEN_SESSIONS {
+            removed.push(retained.remove(0));
+        }
+        drop(retained);
+        for entry in removed {
+            crate::developer::record("Pi 会话", || "达到保留上限，释放空闲实例".into());
+            entry.client.shutdown().await;
+        }
+    }
+
+    pub async fn release_idle(&self) {
+        let mut retained = self.retained.lock().await;
+        let mut removed = Vec::new();
+        let mut index = 0;
+        while index < retained.len() {
+            if retained[index].expired(Instant::now()) {
+                removed.push(retained.remove(index));
+            } else {
+                index += 1;
+            }
+        }
+        drop(retained);
+        for entry in removed {
+            crate::developer::record("Pi 会话", || "释放超时或已删除的空闲实例".into());
+            entry.client.shutdown().await;
+        }
+    }
+
     pub async fn connect(
         &self,
         project_path: String,
@@ -913,6 +1124,11 @@ impl PiManager {
         channel: Channel<PiEvent>,
         options: OpenOptions,
     ) -> Result<RuntimeSnapshot, String> {
+        if let Some(file) = options.session_file.as_deref()
+            && let Some(snapshot) = self.resume_existing(file, channel.clone()).await?
+        {
+            return Ok(snapshot);
+        }
         self.connect_options(project_path, data_dir, channel, Some(options))
             .await
     }
@@ -930,9 +1146,18 @@ impl PiManager {
         }
         let project_path = path.to_str().ok_or("项目路径不是有效 UTF-8。")?.to_owned();
         let mut runtime = self.runtime.lock().await;
-        let source_directory = runtime
+        let mut source_directory = runtime
             .as_ref()
             .map(|client| client.source_directory.clone());
+        if source_directory.is_none() {
+            source_directory = self
+                .retained
+                .lock()
+                .await
+                .last()
+                .map(|entry| entry.client.source_directory.clone());
+        }
+        let mut inherit = None;
         if let Some(current) = runtime.clone() {
             let _actions = current.actions.lock().await;
             if current.project_path == project_path && options.is_none() {
@@ -952,7 +1177,9 @@ impl PiManager {
                         options.session_file.is_none()
                             && options.session_directory == current.session_directory
                     })
-                    && snapshot.is_ok()
+                    && snapshot.as_ref().is_ok_and(|snapshot| {
+                        snapshot.messages.is_empty() && snapshot.tools.is_empty()
+                    })
                     && current.configuration_unchanged()
                 {
                     let result = current.new_session(channel.clone()).await;
@@ -968,10 +1195,40 @@ impl PiManager {
                         }
                     }
                 }
+                if current.project_path == project_path
+                    && current.configuration_unchanged()
+                    && options
+                        .as_ref()
+                        .is_some_and(|options| options.session_file.is_none())
+                {
+                    inherit = snapshot.ok();
+                }
             }
-            current.shutdown().await;
+            let reopening_current = options
+                .as_ref()
+                .and_then(|options| options.session_file.as_deref())
+                .is_some_and(|file| {
+                    current
+                        .file_revision
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .is_some_and(|revision| {
+                            FileRevision::read(file)
+                                .is_some_and(|target| target.path == revision.path)
+                        })
+                });
+            if reopening_current {
+                *runtime = None;
+                let _cleanup = SessionRenewal(Some(current.runtime.clone()));
+                current.shutdown().await;
+            } else {
+                drop(_actions);
+                self.retain_current(&mut runtime).await?;
+            }
         }
         *runtime = None;
+        self.trim_retained().await;
         *self.read_only.lock().await = None;
         let client = if let Some(source) = source_directory {
             PiClient::spawn_with_source(
@@ -985,6 +1242,7 @@ impl PiManager {
         } else {
             PiClient::spawn(project_path, data_dir, channel.clone(), options.as_ref()).await?
         };
+        let mut initialization = SessionRenewal(Some(client.runtime.clone()));
         let initialize = async {
             client.check_guard().await?;
             client.request(json!({"type":"get_state"}), None).await?;
@@ -1021,16 +1279,47 @@ impl PiManager {
             if let Some(options) = options {
                 client.restore(options.history).await?;
             }
+            if let Some(model) = inherit
+                .as_ref()
+                .and_then(|snapshot| snapshot.model.as_ref())
+                && snapshot.models.iter().any(|available| {
+                    available.provider == model.provider && available.id == model.id
+                })
+            {
+                client
+                    .request(
+                        json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
+                        None,
+                    )
+                    .await?;
+            }
             client.request(json!({"type":"get_state"}), None).await?;
             client
                 .request(json!({"type":"get_available_thinking_levels"}), None)
                 .await?;
+            if let Some(previous) = inherit.as_ref()
+                && client
+                    .snapshot()
+                    .await?
+                    .available_thinking_levels
+                    .contains(&previous.thinking_level)
+            {
+                client
+                    .request(
+                        json!({"type":"set_thinking_level","level":previous.thinking_level}),
+                        None,
+                    )
+                    .await?;
+                client.request(json!({"type":"get_state"}), None).await?;
+            }
             client.subscribe(channel).await
         }
         .await;
         match initialize {
             Ok(snapshot) => {
+                client.remember_revision(&snapshot);
                 *runtime = Some(client);
+                initialization.0 = None;
                 Ok(snapshot)
             }
             Err(error) => {
@@ -1058,11 +1347,12 @@ impl PiManager {
         let runtime = self.runtime.lock().await;
         if let Some(client) = runtime.as_ref() {
             let snapshot = client.snapshot().await?;
-            if snapshot
-                .session_file
-                .as_deref()
-                .is_some_and(|file| super::catalog::same_path(file, path))
-            {
+            if snapshot.session_file.as_deref().is_some_and(|file| {
+                super::catalog::same_path(file, path)
+                    || FileRevision::read(file)
+                        .zip(FileRevision::read(path))
+                        .is_some_and(|(a, b)| a.path == b.path)
+            }) {
                 let _action = client
                     .actions
                     .try_lock()
@@ -1093,7 +1383,12 @@ impl PiManager {
 
     pub async fn disconnect(&self) {
         if let Some(client) = self.runtime.lock().await.take() {
+            let _cleanup = SessionRenewal(Some(client.runtime.clone()));
             client.shutdown().await;
+        }
+        let retained = std::mem::take(&mut *self.retained.lock().await);
+        for entry in retained {
+            entry.client.shutdown().await;
         }
         *self.read_only.lock().await = None;
     }
@@ -1107,17 +1402,8 @@ impl PiManager {
         data: &Path,
     ) -> Result<RuntimeSnapshot, String> {
         let mut runtime = self.runtime.lock().await;
-        if let Some(current) = runtime.as_ref() {
-            if current
-                .snapshot()
-                .await
-                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
-            {
-                return Err("请先停止当前任务再切换会话。".into());
-            }
-            current.shutdown().await;
-        }
-        *runtime = None;
+        self.retain_current(&mut runtime).await?;
+        self.trim_retained().await;
         let instance = Uuid::new_v4().to_string();
         let output = ToolOutput::new(&data.join("tool-output").join(&instance)).await?;
         let config = prepare_config(&local_agent_directory()?, &data.join("pi"))?;
@@ -1166,9 +1452,304 @@ impl PiManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    struct ResidentFixture {
+        root: PathBuf,
+        source: PathBuf,
+        projects: Vec<String>,
+        files: Vec<PathBuf>,
+        histories: Vec<Vec<Value>>,
+        manager: PiManager,
+        initial: RuntimeSnapshot,
+        initial_pid: u32,
+    }
+
+    impl ResidentFixture {
+        async fn new() -> Self {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../work/resident-session-test")
+                .join(Uuid::new_v4().to_string());
+            let source = root.join("source");
+            let directory = root.join("sessions");
+            std::fs::create_dir_all(&source).unwrap();
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(source.join("models.json"), json!({"providers":{"resident-test":{
+                "api":"openai-completions", "baseUrl":"http://127.0.0.1:9/v1", "apiKey":"offline-test-key",
+                "models":[{"id":"model","name":"Offline","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}]
+            }}}).to_string()).unwrap();
+            let mut projects = Vec::new();
+            let mut files = Vec::new();
+            let mut histories = Vec::new();
+            for label in ["A", "B", "C", "D"] {
+                let project = root.join(label);
+                std::fs::create_dir_all(&project).unwrap();
+                let project = dunce::canonicalize(project)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                let history = vec![
+                    json!({"role":"user","content":format!("{label} isolated question"),"timestamp":1000}),
+                    json!({"role":"assistant","content":[{"type":"toolCall","id":format!("{label}-read"),"name":"read","arguments":{"path":"test.txt"}}],"stopReason":"toolUse","timestamp":1100}),
+                    json!({"role":"toolResult","toolCallId":format!("{label}-read"),"toolName":"read","content":[{"type":"text","text":format!("{label} output")}],"isError":false,"timestamp":1200}),
+                    json!({"role":"assistant","content":[{"type":"text","text":format!("{label} final reply")}],"stopReason":"stop","timestamp":1300}),
+                ];
+                let file = directory.join(format!("{label}.jsonl"));
+                let header = json!({"type":"session","version":3,"id":Uuid::new_v4().to_string(),"timestamp":"2026-10-24T00:00:00.000Z","cwd":project});
+                let mut text = format!("{header}\n");
+                for (index, message) in history.iter().enumerate() {
+                    let entry = json!({"type":"message","id":format!("entry-{index}"),"parentId":if index == 0 {None} else {Some(format!("entry-{}",index-1))},"timestamp":"2026-10-24T00:00:01.000Z","message":message});
+                    text.push_str(&format!("{entry}\n"));
+                }
+                std::fs::write(&file, text).unwrap();
+                projects.push(project);
+                files.push(file);
+                histories.push(history);
+            }
+            let client = PiClient::spawn_with_source(
+                projects[0].clone(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                Some(&OpenOptions {
+                    session_directory: directory,
+                    session_file: Some(files[0].to_string_lossy().into_owned()),
+                    history: histories[0].clone(),
+                }),
+                &source,
+            )
+            .await
+            .unwrap();
+            client.check_guard().await.unwrap();
+            client
+                .request(json!({"type":"get_available_models"}), None)
+                .await
+                .unwrap();
+            client
+                .request(
+                    json!({"type":"set_model","provider":"resident-test","modelId":"model"}),
+                    None,
+                )
+                .await
+                .unwrap();
+            client
+                .request(json!({"type":"get_state"}), None)
+                .await
+                .unwrap();
+            client
+                .request(json!({"type":"get_available_thinking_levels"}), None)
+                .await
+                .unwrap();
+            let initial = client.restore(histories[0].clone()).await.unwrap();
+            let initial_pid = client.process_id;
+            let manager = PiManager {
+                runtime: Mutex::new(Some(client)),
+                retained: Mutex::new(Vec::new()),
+                read_only: Mutex::new(None),
+            };
+            Self {
+                root,
+                source,
+                projects,
+                files,
+                histories,
+                manager,
+                initial,
+                initial_pid,
+            }
+        }
+
+        async fn open(&self, index: usize) -> RuntimeSnapshot {
+            self.manager
+                .open(
+                    self.projects[index].clone(),
+                    &self.root.join("data"),
+                    Channel::new(|_| Ok(())),
+                    OpenOptions {
+                        session_directory: self.files[index].parent().unwrap().to_owned(),
+                        session_file: Some(self.files[index].to_string_lossy().into_owned()),
+                        history: self.histories[index].clone(),
+                    },
+                )
+                .await
+                .unwrap()
+        }
+    }
 
     #[tokio::test]
-    async fn new_chats_reuse_the_native_process_and_isolate_session_state() {
+    async fn resident_sessions_reuse_native_processes_preserve_context_and_reject_old_actions() {
+        let fixture = ResidentFixture::new().await;
+        let old = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        let second = fixture.open(1).await;
+        let second_client = fixture.manager.client(&second.instance_id).await.unwrap();
+        let second_pid = second_client.process_id;
+        assert_ne!(second_pid, fixture.initial_pid);
+        assert!(
+            old.request(json!({"type":"set_thinking_level","level":"off"}), None)
+                .await
+                .is_err()
+        );
+        let mut warm_timings = Vec::new();
+        for _ in 0..3 {
+            let started = Instant::now();
+            let returned = fixture.open(0).await;
+            warm_timings.push(started.elapsed().as_millis());
+            let client = fixture.manager.client(&returned.instance_id).await.unwrap();
+            assert_eq!(client.process_id, fixture.initial_pid);
+            assert_ne!(returned.instance_id, fixture.initial.instance_id);
+            assert_eq!(returned.session_id, fixture.initial.session_id);
+            assert_eq!(
+                serde_json::to_value(&returned.messages).unwrap(),
+                serde_json::to_value(&fixture.initial.messages).unwrap()
+            );
+            assert_eq!(returned.tools[0].id, fixture.initial.tools[0].id);
+            assert_eq!(
+                client
+                    .tool_output(returned.tools[0].id.clone(), "output".into(), 0)
+                    .await
+                    .unwrap()
+                    .content,
+                "A output"
+            );
+            let native = client
+                .request(json!({"type":"get_messages"}), None)
+                .await
+                .unwrap()
+                .to_string();
+            assert!(native.contains("A isolated question"));
+            assert!(!native.contains("B isolated question"));
+            let second = fixture.open(1).await;
+            assert_eq!(
+                fixture
+                    .manager
+                    .client(&second.instance_id)
+                    .await
+                    .unwrap()
+                    .process_id,
+                second_pid
+            );
+            assert_eq!(fixture.manager.retained.lock().await.len(), 1);
+        }
+        println!("Warm native session switches: {warm_timings:?} ms; both original PIDs retained");
+        let current = fixture
+            .manager
+            .runtime
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .clone();
+        // Start only the adapter's busy state; get_messages never calls a model.
+        current
+            .request(json!({"type":"get_messages"}), Some("busy-test".into()))
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .manager
+                .resume_existing(fixture.files[0].to_str().unwrap(), Channel::new(|_| Ok(())))
+                .await
+                .is_err()
+        );
+        fixture.manager.release_idle().await;
+        assert!(current.snapshot().await.unwrap().active_run_id.is_some());
+        fixture.manager.disconnect().await;
+        assert!(fixture.manager.retained.lock().await.is_empty());
+        timeout(Duration::from_secs(2), current.commands.closed())
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(2), old.commands.closed())
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(2), second_client.commands.closed())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn resident_sessions_evict_idle_lru_changed_and_deleted_histories_without_touching_the_active_session()
+     {
+        let fixture = ResidentFixture::new().await;
+        let a = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        let b = fixture.open(1).await;
+        let b = fixture.manager.client(&b.instance_id).await.unwrap();
+        fixture.open(2).await;
+        let d = fixture.open(3).await;
+        let active = fixture.manager.client(&d.instance_id).await.unwrap();
+        timeout(Duration::from_secs(2), a.commands.closed())
+            .await
+            .unwrap();
+        assert_eq!(
+            fixture.manager.retained.lock().await.len(),
+            MAX_OPEN_SESSIONS - 1
+        );
+        {
+            let mut retained = fixture.manager.retained.lock().await;
+            retained[0].since = Instant::now() - super::super::session_pool::IDLE_TIMEOUT;
+        }
+        fixture.manager.release_idle().await;
+        timeout(Duration::from_secs(2), b.commands.closed())
+            .await
+            .unwrap();
+        assert!(active.snapshot().await.is_ok());
+        let c_file = fixture.files[2].to_str().unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(c_file)
+            .unwrap()
+            .write_all(b"\n")
+            .unwrap();
+        assert!(
+            fixture
+                .manager
+                .resume_existing(c_file, Channel::new(|_| Ok(())))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(active.snapshot().await.is_ok());
+        fixture.open(0).await;
+        std::fs::write(
+            fixture.source.join("AGENTS.md"),
+            "Changed project instructions",
+        )
+        .unwrap();
+        assert!(
+            fixture
+                .manager
+                .resume_existing(fixture.files[3].to_str().unwrap(), Channel::new(|_| Ok(())))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        fixture.open(1).await;
+        std::fs::remove_file(&fixture.files[0]).unwrap();
+        fixture.manager.release_idle().await;
+        assert!(fixture.manager.retained.lock().await.is_empty());
+        assert!(
+            fixture
+                .manager
+                .runtime
+                .lock()
+                .await
+                .as_ref()
+                .unwrap()
+                .snapshot()
+                .await
+                .is_ok()
+        );
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn new_chats_keep_existing_sessions_and_reuse_empty_native_processes() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../work/process-reuse-test")
             .join(Uuid::new_v4().to_string());
@@ -1262,6 +1843,7 @@ mod tests {
         let manager = PiManager {
             runtime: Mutex::new(Some(initial.clone())),
             read_only: Mutex::new(None),
+            retained: Mutex::new(Vec::new()),
         };
         manager
             .rename_session(
@@ -1302,6 +1884,7 @@ mod tests {
         );
         let mut previous = before;
         let mut timings = Vec::new();
+        let mut empty_process = None;
         for _ in 0..3 {
             let started = Instant::now();
             let next = manager
@@ -1319,8 +1902,12 @@ mod tests {
                 .unwrap();
             timings.push(started.elapsed().as_millis());
             let client = manager.client(&next.instance_id).await.unwrap();
-            assert_eq!(client.process_id, initial.process_id);
-            assert!(client.commands.same_channel(&initial.commands));
+            assert_ne!(client.process_id, initial.process_id);
+            if let Some(process) = empty_process {
+                assert_eq!(client.process_id, process);
+            } else {
+                empty_process = Some(client.process_id);
+            }
             assert_ne!(next.instance_id, previous.instance_id);
             assert_ne!(next.session_id, previous.session_id);
             assert_ne!(next.session_file, previous.session_file);
@@ -1354,7 +1941,11 @@ mod tests {
         );
         initial.shutdown().await;
         assert_eq!(client.snapshot().await.unwrap().thinking_level, "high");
-        assert!(old_received.try_recv().is_err());
+        let unexpected = old_received.try_recv();
+        assert!(
+            unexpected.is_err(),
+            "unexpected old subscription event: {unexpected:?}"
+        );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
         let active_action = client.actions.lock().await;
         timeout(
@@ -1377,7 +1968,7 @@ mod tests {
             previous.session_id
         );
         println!(
-            "Native Pi PID {} retained; cold {} ms; new sessions {:?} ms",
+            "Original Pi PID {} retained; cold {} ms; empty sessions {:?} ms",
             initial.process_id,
             cold.as_millis(),
             timings
@@ -1428,60 +2019,80 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_a_dispatched_new_session_invalidates_the_unfinished_runtime() {
-        let instance_id = Uuid::new_v4().to_string();
-        let runtime_id = instance_id.clone();
-        let (commands, mut receiver) = mpsc::channel::<ScopedControl>(8);
-        let (started, received) = oneshot::channel();
-        let runtime = tauri::async_runtime::spawn(async move {
-            let mut started = Some(started);
-            while let Some(scoped) = receiver.recv().await {
-                match scoped.control {
-                    Control::Snapshot { reply } => {
-                        let _ = reply
-                            .send(Conversation::new(runtime_id.clone(), "project".into()).snapshot);
+    async fn cancelling_dispatched_new_sessions_or_reattachments_invalidates_the_unfinished_runtime()
+     {
+        for preserve in [false, true] {
+            let instance_id = Uuid::new_v4().to_string();
+            let runtime_id = instance_id.clone();
+            let (commands, mut receiver) = mpsc::channel::<ScopedControl>(8);
+            let (started, received) = oneshot::channel();
+            let runtime = tauri::async_runtime::spawn(async move {
+                let mut started = Some(started);
+                while let Some(scoped) = receiver.recv().await {
+                    match scoped.control {
+                        Control::Snapshot { reply } => {
+                            let _ = reply.send(
+                                Conversation::new(runtime_id.clone(), "project".into()).snapshot,
+                            );
+                        }
+                        Control::Request { body, reply, .. } if body["type"] == "new_session" => {
+                            let _ = started.take().unwrap().send(());
+                            // Simulate Pi still replacing the native session after dispatch.
+                            let _reply = reply;
+                            std::future::pending::<()>().await;
+                        }
+                        Control::Renew {
+                            reply,
+                            preserve: true,
+                            ..
+                        } => {
+                            let _ = started.take().unwrap().send(());
+                            let _reply = reply;
+                            std::future::pending::<()>().await;
+                        }
+                        _ => panic!("unexpected command"),
                     }
-                    Control::Request { body, reply, .. } if body["type"] == "new_session" => {
-                        let _ = started.take().unwrap().send(());
-                        // Simulate Pi still replacing the native session after dispatch.
-                        let _reply = reply;
-                        std::future::pending::<()>().await;
-                    }
-                    _ => panic!("unexpected command"),
                 }
-            }
-        });
-        let client = Arc::new(PiClient {
-            instance_id,
-            project_path: "project".into(),
-            commands,
-            actions: Mutex::new(()),
-            action_token: "test".into(),
-            session_directory: "sessions".into(),
-            source_directory: "source".into(),
-            config_revision: 0,
-            runtime: Arc::new(runtime),
-            process_id: 0,
-        });
-        let opening = {
-            let client = client.clone();
-            tokio::spawn(async move { client.new_session(Channel::new(|_| Ok(()))).await })
-        };
-        timeout(Duration::from_secs(2), received)
-            .await
-            .unwrap()
-            .unwrap();
-        opening.abort();
-        assert!(matches!(opening.await, Err(error) if error.is_cancelled()));
-        timeout(Duration::from_secs(2), client.commands.closed())
-            .await
-            .unwrap();
-        assert!(
-            client
-                .request(json!({"type":"get_state"}), None)
+            });
+            let client = Arc::new(PiClient {
+                instance_id,
+                project_path: "project".into(),
+                commands,
+                actions: Mutex::new(()),
+                action_token: "test".into(),
+                session_directory: "sessions".into(),
+                source_directory: "source".into(),
+                config_revision: 0,
+                runtime: Arc::new(runtime),
+                process_id: 0,
+                file_revision: Arc::new(std::sync::Mutex::new(None)),
+            });
+            let opening = {
+                let client = client.clone();
+                tokio::spawn(async move {
+                    if preserve {
+                        client.reattach(Channel::new(|_| Ok(()))).await
+                    } else {
+                        client.new_session(Channel::new(|_| Ok(()))).await
+                    }
+                })
+            };
+            timeout(Duration::from_secs(2), received)
                 .await
-                .is_err()
-        );
+                .unwrap()
+                .unwrap();
+            opening.abort();
+            assert!(matches!(opening.await, Err(error) if error.is_cancelled()));
+            timeout(Duration::from_secs(2), client.commands.closed())
+                .await
+                .unwrap();
+            assert!(
+                client
+                    .request(json!({"type":"get_state"}), None)
+                    .await
+                    .is_err()
+            );
+        }
     }
 
     #[tokio::test]

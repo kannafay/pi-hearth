@@ -409,6 +409,7 @@ async fn delete_archived(
 #[tauri::command]
 pub async fn workspace_delete_archived(
     app: tauri::AppHandle,
+    manager: State<'_, PiManager>,
     workspace: State<'_, WorkspaceManager>,
     paths: Vec<String>,
 ) -> Result<WorkspaceCatalog, String> {
@@ -417,6 +418,7 @@ pub async fn workspace_delete_archived(
     let mut prefs = preferences(&data).await?;
     let sessions = list(&data, &prefs).await?;
     let result = delete_archived(&data, &mut prefs, &sessions, &paths).await;
+    manager.release_idle().await;
     workspace.search.lock().await.catalog = None;
     result?;
     load_catalog(&data).await
@@ -745,63 +747,72 @@ pub async fn pi_open(
     let operation = async {
         let _open_lock = workspace.open_gate.lock().await;
         let data = app_data(&app)?;
-        let (cwd, history, session_id) = if let Some(file) = &session_path {
-            let catalog = load_catalog(&data).await?;
-            let session = catalog
-                .sessions
-                .iter()
-                .find(|session| same_path(&session.path, file))
-                .ok_or("会话文件不存在，请刷新列表。")?;
-            (
-                session.cwd.clone(),
-                helper(&data, json!({"action":"history","path":session.path})).await?,
-                session.id.clone(),
-            )
+        let resumed = if let Some(file) = session_path.as_deref() {
+            manager.resume_existing(file, on_event.clone()).await?
         } else {
-            let general = data.join("workspace");
-            tokio::fs::create_dir_all(&general)
-                .await
-                .map_err(|_| "无法创建聊天目录。")?;
-            (
-                project_path
-                    .clone()
-                    .unwrap_or_else(|| general.to_string_lossy().into()),
-                json!([]),
-                String::new(),
-            )
+            None
         };
-        let history: Vec<Value> =
-            serde_json::from_value(history).map_err(|_| "无法加载会话消息。")?;
-        let snapshot = if !Path::new(&cwd).is_dir() {
-            manager
-                .open_read_only(
-                    cwd,
-                    session_id,
-                    session_path.clone().ok_or("工作目录不存在。")?,
-                    history,
-                    &data,
-                )
-                .await?
+        let snapshot = if let Some(snapshot) = resumed {
+            snapshot
         } else {
-            // New desktop conversations share one store. Existing native histories
-            // remain in their original directory when resumed.
-            let session_dir = session_path
-                .as_deref()
-                .and_then(|file| Path::new(file).parent())
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| data.join("sessions"));
-            manager
-                .open(
-                    cwd,
-                    &data,
-                    on_event,
-                    OpenOptions {
-                        session_directory: session_dir,
-                        session_file: session_path,
-                        history,
-                    },
+            let (cwd, history, session_id) = if let Some(file) = &session_path {
+                let catalog = load_catalog(&data).await?;
+                let session = catalog
+                    .sessions
+                    .iter()
+                    .find(|session| same_path(&session.path, file))
+                    .ok_or("会话文件不存在，请刷新列表。")?;
+                (
+                    session.cwd.clone(),
+                    helper(&data, json!({"action":"history","path":session.path})).await?,
+                    session.id.clone(),
                 )
-                .await?
+            } else {
+                let general = data.join("workspace");
+                tokio::fs::create_dir_all(&general)
+                    .await
+                    .map_err(|_| "无法创建聊天目录。")?;
+                (
+                    project_path
+                        .clone()
+                        .unwrap_or_else(|| general.to_string_lossy().into()),
+                    json!([]),
+                    String::new(),
+                )
+            };
+            let history: Vec<Value> =
+                serde_json::from_value(history).map_err(|_| "无法加载会话消息。")?;
+            if !Path::new(&cwd).is_dir() {
+                manager
+                    .open_read_only(
+                        cwd,
+                        session_id,
+                        session_path.clone().ok_or("工作目录不存在。")?,
+                        history,
+                        &data,
+                    )
+                    .await?
+            } else {
+                // New desktop conversations share one store. Existing native histories
+                // remain in their original directory when resumed.
+                let session_dir = session_path
+                    .as_deref()
+                    .and_then(|file| Path::new(file).parent())
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| data.join("sessions"));
+                manager
+                    .open(
+                        cwd,
+                        &data,
+                        on_event,
+                        OpenOptions {
+                            session_directory: session_dir,
+                            session_file: session_path,
+                            history,
+                        },
+                    )
+                    .await?
+            }
         };
         let _lock = workspace.gate.lock().await;
         let mut prefs = preferences(&data).await?;
@@ -945,8 +956,12 @@ mod tests {
                 .all(|session| Path::new(&session.path).is_file())
         );
         assert_eq!(
-            storage::settings(&data).await.unwrap().removed_projects,
-            [path.clone()]
+            storage::settings(&data)
+                .await
+                .unwrap()
+                .removed_projects
+                .as_slice(),
+            std::slice::from_ref(&path)
         );
         storage::save_projects(&data, &prefs, Vec::new())
             .await

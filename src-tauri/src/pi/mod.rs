@@ -7,6 +7,7 @@ pub(crate) mod process_tree;
 mod protocol;
 mod rewrite;
 mod search;
+mod session_pool;
 pub mod storage;
 mod tool_output;
 mod types;
@@ -136,6 +137,14 @@ pub async fn pi_set_model(
     let result = async {
         let client = manager.client(&instance_id).await?;
         let _action = client.actions.lock().await;
+        let snapshot = client.snapshot().await?;
+        if snapshot
+            .model
+            .as_ref()
+            .is_some_and(|model| model.provider == provider && model.id == model_id)
+        {
+            return Ok(snapshot);
+        }
         client
             .request(
                 json!({"type":"set_model","provider":provider,"modelId":model_id}),
@@ -179,6 +188,9 @@ pub async fn pi_set_thinking_level(
             }
             level
         };
+        if snapshot.thinking_level == level {
+            return Ok(snapshot);
+        }
         client
             .request(json!({"type":"set_thinking_level","level":level}), None)
             .await?;

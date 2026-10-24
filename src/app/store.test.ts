@@ -11,7 +11,9 @@ import {
 } from '@/lib/workspace'
 import { rememberSession } from '@/features/conversation/session-cache'
 import { sessionKey } from '@/lib/session-preferences'
-import type { PiEvent, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
+import type { PiEvent, RuntimeSnapshot, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
+import * as pi from '@/lib/pi'
+import * as thinkingPreference from '@/features/conversation/thinking-preference'
 
 vi.mock('@/lib/workspace', () => ({
   loadCatalog: vi.fn(),
@@ -499,6 +501,48 @@ test('refresh after a local reply updates the sidebar without reconnecting or cl
   vi.mocked(loadCatalog).mockResolvedValue({
     ...catalog,
     sessions: [{ ...session, modified: 4000 }],
+  })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    session.path,
+    { force: true, sessionId: session.id },
+  )
+})
+
+test('restoring thinking preferences does not make the catalog reconnect a resident session', async () => {
+  const snapshot: RuntimeSnapshot = {
+    instanceId: 'resident-pi',
+    projectPath: session.cwd,
+    sessionFile: session.path,
+    sessionId: session.id,
+    readOnly: null,
+    activeRunId: null,
+    sequence: 42,
+    model: { provider: 'test', id: 'model', name: 'Model' },
+    models: [],
+    thinkingLevel: 'low',
+    availableThinkingLevels: ['low', 'high'],
+    messages: [],
+    tools: [],
+    timeline: [],
+  }
+  useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  vi.spyOn(Date, 'now').mockReturnValue(2000)
+  vi.spyOn(pi, 'setPiThinkingLevel').mockResolvedValue(snapshot)
+  vi.spyOn(thinkingPreference, 'saveThinkingPreference').mockResolvedValue()
+  await useConversationStore.getState().changeThinkingLevel('low')
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    sessions: [{ ...session, modified: 1999 }],
+  })
+  await useWorkspaceStore.getState().refresh()
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  expect(useConversationStore.getState().instanceId).toBe('resident-pi')
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    sessions: [{ ...session, modified: 2500 }],
   })
   await useWorkspaceStore.getState().refresh()
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(

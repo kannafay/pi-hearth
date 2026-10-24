@@ -56,6 +56,17 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
+    let cleanup_app = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut timer = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            timer.tick().await;
+            if cleanup_app.state::<Lifecycle>().is_shutting_down() {
+                break;
+            }
+            cleanup_app.state::<PiManager>().release_idle().await;
+        }
+    });
     let _ = tauri::async_runtime::block_on(async {
         let _gate = crate::developer::SETTINGS_GATE.lock().await;
         let data = handle

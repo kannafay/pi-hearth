@@ -134,6 +134,7 @@ function settingsFromSnapshot(snapshot: RuntimeSnapshot) {
     models: snapshot.models,
     thinkingLevel: snapshot.thinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,
+    lastLocalActivityAt: Date.now(),
   }
 }
 

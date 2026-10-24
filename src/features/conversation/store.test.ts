@@ -448,13 +448,14 @@ test('returning to a cached session displays the latest reply immediately and wa
   })
   expect(await useConversationStore.getState().send('暂时不能发送')).toBe(false)
   expect(sendPiMessage).not.toHaveBeenCalled()
+  vi.spyOn(Date, 'now').mockReturnValue(4000)
   hydrate(sessionSnapshot('d:/history/a.jsonl', '后台同步后的最新内容'))
   finish()
   await pending
   expect(useConversationStore.getState()).toMatchObject({
     status: 'ready',
     instanceId: 'pi-d:/history/a.jsonl',
-    lastLocalActivityAt: 3000,
+    lastLocalActivityAt: 4000,
     messages: [{ text: '后台同步后的最新内容' }],
   })
 })
