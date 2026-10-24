@@ -16,6 +16,29 @@ import { getResponseStatus } from './response-status'
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
 const markdownTranslations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
+const markdownPlugins = { code }
+
+const ReplyMarkdown = memo(function ReplyMarkdown({
+  text,
+  streaming,
+}: {
+  text: string
+  streaming: boolean
+}) {
+  return (
+    <Streamdown
+      plugins={markdownPlugins}
+      components={markdownComponents}
+      icons={markdownIcons}
+      translations={markdownTranslations}
+      isAnimating={streaming}
+      mode={streaming ? 'streaming' : 'static'}
+      className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-6 wrap-anywhere"
+    >
+      {text}
+    </Streamdown>
+  )
+})
 
 export const ConversationTurn = memo(function ConversationTurn({
   turn,
@@ -157,17 +180,7 @@ export const ConversationTurn = memo(function ConversationTurn({
               </p>
             )}
             {reply ? (
-              <Streamdown
-                plugins={{ code }}
-                components={markdownComponents}
-                icons={markdownIcons}
-                translations={markdownTranslations}
-                isAnimating={reply.status === 'streaming'}
-                mode={reply.status === 'streaming' ? 'streaming' : 'static'}
-                className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-6 wrap-anywhere"
-              >
-                {reply.text}
-              </Streamdown>
+              <ReplyMarkdown text={reply.text} streaming={reply.status === 'streaming'} />
             ) : null}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}

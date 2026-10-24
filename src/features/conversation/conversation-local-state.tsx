@@ -10,8 +10,14 @@ import {
 
 const LocalState = createContext<Map<string, unknown> | null>(null)
 
-export function ConversationLocalState({ children }: { children: ReactNode }) {
-  const [cache] = useState(() => new Map<string, unknown>())
+export function ConversationLocalState({
+  children,
+  initial,
+}: {
+  children: ReactNode
+  initial?: Map<string, unknown>
+}) {
+  const [cache] = useState(() => initial ?? new Map<string, unknown>())
   return <LocalState.Provider value={cache}>{children}</LocalState.Provider>
 }
 

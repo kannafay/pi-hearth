@@ -304,6 +304,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!paths.length || get().sessionActionPending) return false
     sessionRevision++
     set({ sessionActionPending: paths[0], error: null })
+    const targets = get().sessions.filter((session) =>
+      paths.some((path) => samePath(path, session.path)),
+    )
     const applyCatalog = (catalog: WorkspaceCatalog) => {
       const remaining = new Set(catalog.sessions.map((session) => sessionKey(session.path)))
       set({
@@ -314,9 +317,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       })
       useConversationStore.setState((state) => {
         const sessionCache = new Map(state.sessionCache)
-        for (const path of paths) {
-          const key = sessionKey(path)!
-          if (!remaining.has(key)) sessionCache.delete(key)
+        for (const [key, entry] of sessionCache) {
+          if (
+            targets.some(
+              (target) =>
+                target.id === entry.display.sessionId &&
+                !catalog.sessions.some((session) => session.id === target.id),
+            ) ||
+            paths.some(
+              (path) => !remaining.has(sessionKey(path)) && entry.paths.includes(sessionKey(path)!),
+            )
+          )
+            sessionCache.delete(key)
         }
         return { sessionCache }
       })
@@ -481,7 +493,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedSessionPath: session?.path ?? null,
         initialized: true,
       })
-      await useConversationStore.getState().connect(projectPath, session?.path)
+      if (session)
+        await useConversationStore
+          .getState()
+          .connect(projectPath, session.path, { sessionId: session.id })
+      else await useConversationStore.getState().connect(projectPath, undefined)
       if (request === navigation)
         set({ selectedSessionPath: useConversationStore.getState().sessionFile })
     } catch (reason) {
@@ -579,7 +595,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         conversation.status === 'ready' &&
         !localUpdate
       ) {
-        await conversation.connect(get().projectPath, next.path, { force: true })
+        await conversation.connect(get().projectPath, next.path, {
+          force: true,
+          sessionId: next.id,
+        })
       }
     } catch (reason) {
       set({ error: String(reason) })
@@ -605,7 +624,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
-    await useConversationStore.getState().connect(projectPath, session.path)
+    await useConversationStore
+      .getState()
+      .connect(projectPath, session.path, { sessionId: session.id })
   },
   newConversation: async (projectPath, options) => {
     if (busy()) return
@@ -659,14 +680,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   reloadCurrent: async () => {
     if (busy()) return
-    const path = useConversationStore.getState().sessionFile
+    const conversation = useConversationStore.getState()
+    const session = get().sessions.find((session) => isCurrentSession(session, conversation))
     await useConversationStore
       .getState()
-      .connect(
-        get().projectPath,
-        get().sessions.some((session) => samePath(session.path, path)) ? path : null,
-        { force: true },
-      )
+      .connect(get().projectPath, session?.path ?? null, { force: true, sessionId: session?.id })
   },
 }))
 

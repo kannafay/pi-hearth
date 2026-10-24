@@ -21,11 +21,14 @@ import { getResponseStatus } from './response-status'
 import { modelKey } from './models'
 import {
   rememberSession,
+  findCachedSession,
   sessionDisplay,
   sessionKey,
   touchSession,
   type SessionCache,
+  type ConversationViewState,
 } from './session-cache'
+import { reconcileTranscript } from './reconcile-transcript'
 
 type Status = 'disconnected' | 'connecting' | 'ready' | 'running' | 'stopping'
 type Block = { kind: string; text: string }
@@ -53,15 +56,18 @@ export interface ConversationData {
   connectionStartedAt: number | null
   lastLocalActivityAt: number | null
   blocks: Record<string, Record<number, Block>>
+  runtimeMessageIds: Record<string, string>
+  runtimeToolIds: Record<string, string>
 }
 
 interface ConversationState extends ConversationData {
   sessionCache: SessionCache
+  saveSessionView: (key: string, view: ConversationViewState) => void
   connectionTarget: { projectPath: string | null; sessionPath: string | null } | null
   connect: (
     projectPath: string | null,
     sessionPath?: string | null,
-    options?: { force?: boolean },
+    options?: { force?: boolean; sessionId?: string },
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
@@ -95,6 +101,8 @@ export const emptyConversation: ConversationData = {
   connectionStartedAt: null,
   lastLocalActivityAt: null,
   blocks: {},
+  runtimeMessageIds: {},
+  runtimeToolIds: {},
 }
 
 function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
@@ -148,6 +156,8 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.tools = data.tools
       next.timeline = data.timeline
       next.blocks = {}
+      next.runtimeMessageIds = {}
+      next.runtimeToolIds = {}
       next.lastLocalActivityAt = Date.now()
       break
     case 'run_started':
@@ -366,30 +376,41 @@ export function canReuseNewConversation(state: ConversationState, projectPath: s
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
   sessionCache: new Map(),
+  saveSessionView: (key, view) =>
+    set((state) => {
+      const entry = state.sessionCache.get(key)
+      if (!entry) return state
+      const sessionCache = new Map(state.sessionCache)
+      sessionCache.set(key, { ...entry, view })
+      return { sessionCache }
+    }),
   connectionTarget: null,
   receive: (events) => set((state) => events.reduce(reducePiEvent, state)),
   connect: async (projectPath, sessionPath, options) => {
     const current = get()
     if (['running', 'stopping'].includes(current.status)) return
     const key = sessionKey(sessionPath)
-    if (!options?.force && !key && canReuseNewConversation(current, projectPath)) return
-    if (
-      !options?.force &&
+    const sameSession = Boolean(
       key &&
-      key === sessionKey(current.sessionFile) &&
-      ['ready', 'connecting'].includes(current.status)
+      (options?.sessionId
+        ? current.sessionId === options.sessionId
+        : key === sessionKey(current.sessionFile)),
     )
-      return
+    if (!options?.force && !key && canReuseNewConversation(current, projectPath)) return
+    if (!options?.force && sameSession && ['ready', 'connecting'].includes(current.status)) return
     const request = ++connection
     const requestedThinkingLevel = current.requestedThinkingLevel ?? loadThinkingPreference()
     // Only restore display data. A cached transcript never revives a runtime or approval.
-    const previousCache = key ? current.sessionCache.get(key) : undefined
+    const previousCache = key
+      ? findCachedSession(current.sessionCache, options?.sessionId, sessionPath)
+      : undefined
     let sessionCache = rememberSession(current.sessionCache, current)
-    const cached = key ? (sessionCache.get(key) ?? previousCache) : undefined
+    const found = key
+      ? (findCachedSession(sessionCache, options?.sessionId, sessionPath) ?? previousCache)
+      : undefined
+    const cached = found?.[1]
     const display =
-      key && key === sessionKey(current.sessionFile) && current.messages.length
-        ? sessionDisplay(current)
-        : cached?.display
+      sameSession && current.messages.length ? sessionDisplay(current) : cached?.display
     const settings =
       !key && current.model && ['ready', 'connecting'].includes(current.status) && !current.readOnly
         ? {
@@ -399,7 +420,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             availableThinkingLevels: current.availableThinkingLevels,
           }
         : undefined
-    if (key && cached) sessionCache = touchSession(sessionCache, key, cached)
+    if (found) sessionCache = touchSession(sessionCache, found[0], found[1])
     let restorePreference: Promise<void> | undefined
     queued = []
     set({
@@ -412,6 +433,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       requestedThinkingLevel,
       connectionTarget: { projectPath, sessionPath: sessionPath ?? null },
       sessionFile: sessionPath ?? null,
+      sessionId: options?.sessionId ?? display?.sessionId ?? null,
       status: 'connecting',
       connectionStartedAt: Date.now(),
       activity: '正在连接…',
@@ -427,6 +449,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               : (get().pendingSettings ?? { model: null, thinkingLevel: requestedThinkingLevel })
           const data = {
             ...fromSnapshot(snapshot),
+            ...(get().sessionId === snapshot.sessionId && !snapshot.activeRunId
+              ? reconcileTranscript(get(), snapshot)
+              : {}),
             requestedThinkingLevel,
             pendingSettings,
             settingsPending: pendingSettings
@@ -468,6 +493,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       activeRunId: null,
       sequence: 0,
       blocks: {},
+      runtimeMessageIds: {},
+      runtimeToolIds: {},
       settingsPending: null,
       pendingSettings: null,
       activity: '',
@@ -538,7 +565,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       activity: message === undefined ? '正在重新回答…' : '正在发送修改…',
     })
     try {
-      await rewritePiMessage(instanceId, runId, messageId, message)
+      await rewritePiMessage(
+        instanceId,
+        runId,
+        get().runtimeMessageIds[messageId] ?? messageId,
+        message,
+      )
       return true
     } catch (reason) {
       if (get().instanceId === instanceId && get().activeRunId === runId)

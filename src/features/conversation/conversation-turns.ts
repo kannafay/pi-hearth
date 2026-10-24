@@ -1,4 +1,5 @@
 import type { ChatMessage, TimelineEntry, ToolCall } from '@/lib/generated/pi'
+import { sessionCacheKey } from './session-cache'
 
 export type ProcessItem =
   | { kind: 'thinking'; id: string; text: string }
@@ -82,6 +83,7 @@ interface Transcript {
   tools: ToolCall[]
   timeline: TimelineEntry[]
   sessionFile: string | null
+  sessionId?: string | null
   instanceId: string | null
 }
 
@@ -124,7 +126,7 @@ export function createConversationViewSelector() {
     const cached = snapshots.get(state)
     if (cached) return cached
     const sameSession =
-      previous?.sessionFile === state.sessionFile && previous?.instanceId === state.instanceId
+      previous !== undefined && sessionCacheKey(previous) === sessionCacheKey(state)
     const structural =
       !previous ||
       !sameSession ||

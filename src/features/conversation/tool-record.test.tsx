@@ -82,3 +82,33 @@ test('expanded command output updates live and displays errors as plain text', a
   expect(screen.getByText('执行失败')).toBeVisible()
   expect(screen.queryByText('first')).not.toBeInTheDocument()
 })
+
+test('cached tool details load from the fresh runtime tool ID after a session restore', async () => {
+  useConversationStore.setState({
+    instanceId: 'new-runtime',
+    status: 'ready',
+    activeRunId: null,
+    runtimeToolIds: { [tool.id]: 'new-tool' },
+  })
+  vi.mocked(loadPiToolOutput).mockResolvedValue({
+    content: '完整历史输出',
+    nextOffset: null,
+    totalBytes: 20,
+  })
+  const user = userEvent.setup()
+  render(
+    <ToolRecord
+      tool={{
+        ...tool,
+        status: 'complete',
+        approvalId: null,
+        output: '输出末尾',
+        outputTruncated: true,
+      }}
+    />,
+  )
+  await user.click(screen.getByRole('button', { expanded: false }))
+  await user.click(screen.getByRole('button', { name: '加载完整输出' }))
+  expect(await screen.findByText('完整历史输出')).toBeVisible()
+  expect(loadPiToolOutput).toHaveBeenCalledExactlyOnceWith('new-runtime', 'new-tool', 'output', 0)
+})

@@ -100,11 +100,15 @@ test('the responding session cannot be renamed while other session titles remain
 
 test('deleting archived sessions removes their catalog entries and cached transcripts', async () => {
   useWorkspaceStore.setState({ sessions: [session], selectedSessionPath: session.path })
-  useConversationStore.setState({ sessionFile: session.path, instanceId: 'cached' })
+  useConversationStore.setState({
+    sessionId: session.id,
+    sessionFile: 'logical-alias.jsonl',
+    instanceId: 'cached',
+  })
   useConversationStore.setState({
     sessionCache: rememberSession(new Map(), useConversationStore.getState()),
   })
-  expect(useConversationStore.getState().sessionCache.has(sessionKey(session.path)!)).toBe(true)
+  expect(useConversationStore.getState().sessionCache.has(`id:${session.id}`)).toBe(true)
   vi.mocked(deleteArchivedSessions).mockResolvedValue({ ...catalog, sessions: [] })
 
   expect(await useWorkspaceStore.getState().deleteArchivedSessions([session.path])).toBe(true)
@@ -112,7 +116,7 @@ test('deleting archived sessions removes their catalog entries and cached transc
   expect(useWorkspaceStore.getState().sessions).toEqual([])
   expect(useWorkspaceStore.getState().selectedSessionPath).toBeNull()
   expect(useWorkspaceStore.getState().sessionActionPending).toBeNull()
-  expect(useConversationStore.getState().sessionCache.has(sessionKey(session.path)!)).toBe(false)
+  expect(useConversationStore.getState().sessionCache.has(`id:${session.id}`)).toBe(false)
 })
 
 test('a partially failed deletion reloads the remaining catalog and releases the action lock', async () => {
@@ -145,7 +149,9 @@ test('startup restores the selected native session and its project', async () =>
     selection: { projectPath: session.cwd, sessionPath: session.path },
   })
   await useWorkspaceStore.getState().initialize()
-  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path, {
+    sessionId: session.id,
+  })
   expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
   expect(useWorkspaceStore.getState().expandedProjects[sessionKey(session.cwd)!]).toBe(true)
 })
@@ -171,7 +177,9 @@ test('projects can contain multiple sessions and each open selects the exact fil
   const second = { ...session, id: 'second', path: 'second.jsonl' }
   useWorkspaceStore.setState({ ...catalog, sessions: [session, second] })
   await useWorkspaceStore.getState().openSession(second)
-  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, second.path)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, second.path, {
+    sessionId: second.id,
+  })
   expect(useWorkspaceStore.getState().selectedSessionPath).toBe(second.path)
   await useWorkspaceStore.getState().newConversation(null)
   expect(useConversationStore.getState().connect).toHaveBeenLastCalledWith(null)
@@ -184,6 +192,7 @@ test('external CLI changes refresh idle history and never reopen a running task'
   await useWorkspaceStore.getState().refresh()
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith(session.cwd, session.path, {
     force: true,
+    sessionId: session.id,
   })
   vi.mocked(useConversationStore.getState().connect).mockClear()
   useConversationStore.setState({ status: 'running' })
@@ -495,7 +504,7 @@ test('refresh after a local reply updates the sidebar without reconnecting or cl
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     session.path,
-    { force: true },
+    { force: true, sessionId: session.id },
   )
 })
 
@@ -532,7 +541,7 @@ test('an explicit reload still reconnects the current session', async () => {
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     session.path,
-    { force: true },
+    { force: true, sessionId: session.id },
   )
 })
 
@@ -678,7 +687,7 @@ test('saving changed instructions reloads only the current project and failed sa
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     session.path,
-    { force: true },
+    { force: true, sessionId: session.id },
   )
   vi.mocked(useConversationStore.getState().connect).mockClear()
   vi.mocked(updateProject).mockResolvedValueOnce({ path: 'D:/other', name: 'Other' })

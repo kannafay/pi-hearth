@@ -1,4 +1,5 @@
 import type { ConversationData } from './store'
+import type { VirtualItem } from '@tanstack/react-virtual'
 import { sessionKey } from '@/lib/session-preferences'
 
 export { sessionKey } from '@/lib/session-preferences'
@@ -16,12 +17,46 @@ type SessionDisplay = Pick<
   | 'availableThinkingLevels'
   | 'lastLocalActivityAt'
 >
-type CachedSession = { display: SessionDisplay; size: number }
+export interface ConversationViewState {
+  offset?: number
+  atEnd: boolean
+  measurements: VirtualItem[]
+  localState: Map<string, unknown>
+}
+type CachedSession = {
+  display: SessionDisplay
+  size: number
+  paths: string[]
+  view?: ConversationViewState
+}
 export type SessionCache = ReadonlyMap<string, CachedSession>
 
 const MAX_SESSIONS = 8
 // Bound retained text and inline media as well as the number of conversations.
 const MAX_CHARACTERS = 16_000_000
+
+export function sessionCacheKey(state: { sessionId?: string | null; sessionFile: string | null }) {
+  return state.sessionId
+    ? `id:${state.sessionId}`
+    : state.sessionFile
+      ? `path:${sessionKey(state.sessionFile)}`
+      : null
+}
+
+export function findCachedSession(
+  cache: SessionCache,
+  sessionId?: string | null,
+  path?: string | null,
+) {
+  if (sessionId) {
+    const key = `id:${sessionId}`
+    const entry = cache.get(key)
+    if (entry) return [key, entry] as const
+    return [...cache].find(([, entry]) => entry.display.sessionId === sessionId)
+  }
+  const key = sessionKey(path)
+  return key ? [...cache].find(([, entry]) => entry.paths.includes(key)) : undefined
+}
 
 export function sessionDisplay(state: ConversationData): SessionDisplay {
   return {
@@ -45,7 +80,7 @@ export function sessionDisplay(state: ConversationData): SessionDisplay {
 }
 
 export function rememberSession(cache: SessionCache, state: ConversationData): SessionCache {
-  const key = sessionKey(state.sessionFile)
+  const key = sessionCacheKey(state)
   if (
     !key ||
     !['ready', 'disconnected'].includes(state.status) ||
@@ -54,6 +89,10 @@ export function rememberSession(cache: SessionCache, state: ConversationData): S
     return cache
 
   const display = sessionDisplay(state)
+  const previous = findCachedSession(cache, state.sessionId, state.sessionFile)
+  const paths = new Set(previous?.[1].paths)
+  const path = sessionKey(state.sessionFile)
+  if (path) paths.add(path)
   const size =
     state.messages.reduce(
       (sum, message) =>
@@ -67,7 +106,9 @@ export function rememberSession(cache: SessionCache, state: ConversationData): S
         ),
       0,
     ) + state.tools.reduce((sum, tool) => sum + tool.arguments.length + tool.output.length + 512, 0)
-  return touchSession(cache, key, { display, size })
+  const next = new Map(cache)
+  if (previous && previous[0] !== key) next.delete(previous[0])
+  return touchSession(next, key, { display, size, paths: [...paths], view: previous?.[1].view })
 }
 
 export function touchSession(cache: SessionCache, key: string, entry: CachedSession): SessionCache {

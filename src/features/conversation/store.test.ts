@@ -459,6 +459,171 @@ test('returning to a cached session displays the latest reply immediately and wa
   })
 })
 
+test('native session IDs reuse aliased history and bind cached message and tool actions to the new runtime', async () => {
+  const prompt = { ...message, id: 'old-user', role: 'user', text: '问题', status: 'complete' }
+  const answer = { ...message, id: 'old-answer', text: '回答', status: 'complete' }
+  const tool: ToolCall = {
+    id: 'old-tool',
+    toolCallId: 'native-call',
+    runId: 'old-run',
+    name: 'read',
+    summary: 'file.txt',
+    arguments: '{}',
+    argumentsTruncated: false,
+    output: '内容',
+    outputTruncated: true,
+    status: 'complete',
+    approvalId: null,
+    durationMs: 20,
+  }
+  const original: RuntimeSnapshot = {
+    ...sessionSnapshot('logical.jsonl'),
+    sessionId: 'native-A',
+    messages: [prompt, answer],
+    tools: [tool],
+    timeline: [
+      { kind: 'message', id: prompt.id },
+      { kind: 'tool', id: tool.id },
+      { kind: 'message', id: answer.id },
+    ],
+  }
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) => hydrate(original))
+  await useConversationStore
+    .getState()
+    .connect('project', 'logical.jsonl', { sessionId: 'native-A' })
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) =>
+    hydrate(sessionSnapshot('B')),
+  )
+  await useConversationStore.getState().connect('project', 'B', { sessionId: 'B' })
+
+  const completed = deferred<void>()
+  let hydrate!: (snapshot: RuntimeSnapshot) => void
+  vi.mocked(connectPi).mockImplementationOnce((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return completed.promise
+  })
+  const reopening = useConversationStore
+    .getState()
+    .connect('project', 'canonical.jsonl', { sessionId: 'native-A' })
+  const cached = useConversationStore.getState()
+  expect(cached.status).toBe('connecting')
+  expect(cached.messages[0]).toBe(prompt)
+  expect(cached.tools[0]).toBe(tool)
+  expect(cached.instanceId).toBeNull()
+  expect(await cached.send('不能提前发送')).toBe(false)
+
+  hydrate({
+    ...original,
+    instanceId: 'fresh-runtime',
+    sessionFile: 'canonical.jsonl',
+    sequence: 80,
+    messages: original.messages.map((item) => ({
+      ...item,
+      id: `fresh-${item.id}`,
+      timestamp: 9000,
+    })),
+    tools: [{ ...tool, id: 'fresh-tool', runId: 'fresh-run', durationMs: null }],
+    timeline: [
+      { kind: 'message', id: 'fresh-old-user' },
+      { kind: 'tool', id: 'fresh-tool' },
+      { kind: 'message', id: 'fresh-old-answer' },
+    ],
+  })
+  completed.resolve()
+  await reopening
+  const ready = useConversationStore.getState()
+  expect(ready.messages).toBe(cached.messages)
+  expect(ready.tools).toBe(cached.tools)
+  expect(ready.timeline).toBe(cached.timeline)
+  expect(ready).toMatchObject({
+    status: 'ready',
+    instanceId: 'fresh-runtime',
+    sequence: 80,
+    runtimeMessageIds: { 'old-user': 'fresh-old-user', 'old-answer': 'fresh-old-answer' },
+    runtimeToolIds: { 'old-tool': 'fresh-tool' },
+  })
+  expect(ready.sessionCache.get('id:native-A')?.paths).toEqual(['logical.jsonl', 'canonical.jsonl'])
+  vi.mocked(rewritePiMessage).mockResolvedValueOnce()
+  expect(await ready.rewrite(prompt.id, '修改')).toBe(true)
+  expect(rewritePiMessage).toHaveBeenCalledWith(
+    'fresh-runtime',
+    expect.any(String),
+    'fresh-old-user',
+    '修改',
+  )
+  useConversationStore.getState().receive([
+    event(
+      81,
+      {
+        type: 'transcript_replaced',
+        messages: [],
+        tools: [],
+        timeline: [],
+      },
+      'fresh-runtime',
+      null,
+    ),
+  ])
+  expect(useConversationStore.getState().runtimeMessageIds).toEqual({})
+  expect(useConversationStore.getState().runtimeToolIds).toEqual({})
+})
+
+test('background hydration updates an externally changed reply while retaining the unchanged prompt', async () => {
+  const prompt = { ...message, id: 'old-user', role: 'user', text: '问题', status: 'complete' }
+  const original = {
+    ...sessionSnapshot('A'),
+    messages: [prompt, { ...message, id: 'old-answer', text: '旧回复', status: 'complete' }],
+    timeline: [
+      { kind: 'message', id: 'old-user' },
+      { kind: 'message', id: 'old-answer' },
+    ],
+  }
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) => hydrate(original))
+  await useConversationStore.getState().connect('project', 'A', { sessionId: 'A' })
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) =>
+    hydrate({
+      ...original,
+      messages: [
+        { ...prompt, id: 'new-user' },
+        { ...message, id: 'new-answer', text: '外部更新', status: 'complete' },
+      ],
+      timeline: [
+        { kind: 'message', id: 'new-user' },
+        { kind: 'message', id: 'new-answer' },
+      ],
+    }),
+  )
+  await useConversationStore.getState().connect('project', 'A', { force: true, sessionId: 'A' })
+  const state = useConversationStore.getState()
+  expect(state.messages[0]).toBe(prompt)
+  expect(state.messages[1].text).toBe('外部更新')
+  expect(state.timeline).toEqual([
+    { kind: 'message', id: 'old-user' },
+    { kind: 'message', id: 'new-answer' },
+  ])
+  expect(state.runtimeMessageIds).toEqual({ 'old-user': 'new-user' })
+})
+
+test('a different native ID at the same path never revives the previous transcript', async () => {
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) =>
+    hydrate({ ...sessionSnapshot('history.jsonl'), sessionId: 'old' }),
+  )
+  await useConversationStore.getState().connect('project', 'history.jsonl', { sessionId: 'old' })
+  const completed = deferred<void>()
+  vi.mocked(connectPi).mockReturnValueOnce(completed.promise)
+  const reopening = useConversationStore
+    .getState()
+    .connect('project', 'history.jsonl', { sessionId: 'replacement' })
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'connecting',
+    sessionId: 'replacement',
+    messages: [],
+    tools: [],
+  })
+  completed.resolve()
+  await reopening
+})
+
 test('failed reconnects and cancellation preserve cached history and stale hydrations cannot replace another session', async () => {
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _events, file) => {
     hydrate(sessionSnapshot(file!))
@@ -724,14 +889,14 @@ test('the recent-session cache evicts old and oversized histories', async () => 
   // Touch the oldest remaining entry before adding another conversation.
   await useConversationStore.getState().connect('project', '1')
   await useConversationStore.getState().connect('project', '9')
-  expect(useConversationStore.getState().sessionCache.has('1')).toBe(true)
-  expect(useConversationStore.getState().sessionCache.has('2')).toBe(false)
+  expect(useConversationStore.getState().sessionCache.has('id:1')).toBe(true)
+  expect(useConversationStore.getState().sessionCache.has('id:2')).toBe(false)
   vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) => {
     hydrate(sessionSnapshot('huge', 'x'.repeat(16_000_001)))
   })
   await useConversationStore.getState().connect('project', 'huge')
   expect(useConversationStore.getState().messages[0].text.length).toBe(16_000_001)
-  expect(useConversationStore.getState().sessionCache.has('huge')).toBe(false)
+  expect(useConversationStore.getState().sessionCache.has('id:huge')).toBe(false)
   let finish!: () => void
   vi.mocked(connectPi).mockImplementationOnce(
     () =>
@@ -750,8 +915,8 @@ test('the recent-session cache evicts old and oversized histories', async () => 
     })
     await useConversationStore.getState().connect('project', file)
   }
-  expect(useConversationStore.getState().sessionCache.has('large-a')).toBe(false)
-  expect(useConversationStore.getState().sessionCache.has('large-b')).toBe(true)
+  expect(useConversationStore.getState().sessionCache.has('id:large-A')).toBe(false)
+  expect(useConversationStore.getState().sessionCache.has('id:large-B')).toBe(true)
 })
 
 test('tools interleave with messages and cumulative output replaces the previous preview', () => {

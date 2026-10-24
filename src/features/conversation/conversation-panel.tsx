@@ -8,6 +8,7 @@ import { createConversationViewSelector } from './conversation-turns'
 import { ConversationTurn } from './conversation-turn'
 import { ConversationWelcome } from './conversation-welcome'
 import { ConversationLocalState } from './conversation-local-state'
+import { sessionCacheKey, type ConversationViewState } from './session-cache'
 
 const selectView = createConversationViewSelector()
 type ScrollController = { toEnd: () => void }
@@ -45,9 +46,13 @@ const ConversationRow = memo(function ConversationRow({
 const ConversationMessages = memo(function ConversationMessages({
   controller,
   onActionStart,
+  session,
+  view,
 }: {
   controller: RefObject<ScrollController | null>
   onActionStart: () => void
+  session: string
+  view: ConversationViewState
 }) {
   const ids = useConversationStore((state) => selectView(state).ids)
   const viewport = useRef<HTMLDivElement>(null)
@@ -81,6 +86,8 @@ const ConversationMessages = memo(function ConversationMessages({
     useAnimationFrameWithResizeObserver: true,
     rangeExtractor,
     enabled: ids.length > 0,
+    initialOffset: view.offset ?? 0,
+    initialMeasurementsCache: view.measurements,
   })
 
   useLayoutEffect(() => {
@@ -94,9 +101,23 @@ const ConversationMessages = memo(function ConversationMessages({
   useLayoutEffect(() => {
     if (ids.length && !initialized.current) {
       initialized.current = true
-      virtualizer.scrollToEnd()
+      if (view.offset !== undefined && !view.atEnd) virtualizer.scrollToOffset(view.offset)
+      else virtualizer.scrollToEnd()
     }
-  }, [ids, virtualizer])
+  }, [ids, virtualizer, view])
+
+  useLayoutEffect(() => {
+    const node = viewport.current
+    return () => {
+      if (!node || !initialized.current) return
+      useConversationStore.getState().saveSessionView(session, {
+        offset: node.scrollTop,
+        atEnd: node.scrollHeight - node.scrollTop - node.clientHeight <= 80,
+        measurements: virtualizer.takeSnapshot(),
+        localState: view.localState,
+      })
+    }
+  }, [session, virtualizer, view])
 
   return (
     <ScrollArea
@@ -154,6 +175,35 @@ const ConversationMessages = memo(function ConversationMessages({
   )
 })
 
+function ConversationView({
+  session,
+  controller,
+  onActionStart,
+}: {
+  session: string
+  controller: RefObject<ScrollController | null>
+  onActionStart: () => void
+}) {
+  const [view] = useState<ConversationViewState>(
+    () =>
+      useConversationStore.getState().sessionCache.get(session)?.view ?? {
+        atEnd: true,
+        measurements: [],
+        localState: new Map(),
+      },
+  )
+  return (
+    <ConversationLocalState initial={view.localState}>
+      <ConversationMessages
+        session={session}
+        view={view}
+        controller={controller}
+        onActionStart={onActionStart}
+      />
+    </ConversationLocalState>
+  )
+}
+
 export const ConversationPanel = memo(function ConversationPanel({
   onCreateProject,
 }: {
@@ -162,19 +212,18 @@ export const ConversationPanel = memo(function ConversationPanel({
   const session = useConversationStore((state) =>
     state.connectionTarget?.sessionPath === null && !state.messages.length && !state.tools.length
       ? null
-      : state.sessionFile,
+      : sessionCacheKey(state),
   )
   const controller = useRef<ScrollController | null>(null)
   const toEnd = useCallback(() => controller.current?.toEnd(), [])
   return (
     <>
-      <ConversationLocalState key={session ?? 'new'}>
-        <ConversationMessages
-          key={session ?? 'new'}
-          controller={controller}
-          onActionStart={toEnd}
-        />
-      </ConversationLocalState>
+      <ConversationView
+        key={session ?? 'new'}
+        session={session ?? 'new'}
+        controller={controller}
+        onActionStart={toEnd}
+      />
       <Composer onSendStart={toEnd} onCreateProject={onCreateProject} />
     </>
   )

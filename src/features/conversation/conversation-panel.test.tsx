@@ -5,7 +5,9 @@ import { Streamdown } from 'streamdown'
 import { ConversationPanel } from './conversation-panel'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from './store'
-import type { ChatMessage, PiEvent, ToolCall } from '@/lib/generated/pi'
+import type { ChatMessage, PiEvent, RuntimeSnapshot, ToolCall } from '@/lib/generated/pi'
+import * as pi from '@/lib/pi'
+import * as thinkingPreference from './thinking-preference'
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 vi.mock('streamdown', () => ({
@@ -41,7 +43,9 @@ beforeEach(() => {
         0,
         Math.min(options.top ?? 0, this.scrollHeight - this.clientHeight),
       )
-      this.dispatchEvent(new Event('scroll'))
+      queueMicrotask(() => {
+        if (this.isConnected) this.dispatchEvent(new Event('scroll'))
+      })
     },
   })
   vi.mocked(Streamdown).mockClear()
@@ -51,6 +55,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo)
   else Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
 })
@@ -671,6 +676,125 @@ test('streaming text, thoughts and tool changes do not render visible historical
   )
   expect(screen.getByText('历史回复 999')).toBeVisible()
   expect(document.querySelectorAll('[data-turn-id]').length).toBeLessThan(20)
+})
+
+test('returning to an aliased cached session restores its scroll and editor without rerendering history on hydration', async () => {
+  // Deliver the row measurements a browser supplies after scrolling. jsdom has
+  // neither layout nor ResizeObserver, so estimates alone cannot model a restore.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      targets = new Set<Element>()
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        if (this.targets.has(target)) return
+        this.targets.add(target)
+        queueMicrotask(() => {
+          if (!this.targets.has(target)) return
+          const node = target as HTMLElement
+          const height = node.offsetHeight || node.clientHeight
+          const size = { inlineSize: node.clientWidth, blockSize: height }
+          this.callback(
+            [
+              {
+                target,
+                borderBoxSize: [size],
+                contentBoxSize: [size],
+                devicePixelContentBoxSize: [size],
+                contentRect: { width: node.clientWidth, height } as DOMRectReadOnly,
+              },
+            ],
+            this as unknown as ResizeObserver,
+          )
+        })
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target)
+      }
+      disconnect() {
+        this.targets.clear()
+      }
+    },
+  )
+  const original: RuntimeSnapshot = {
+    instanceId: 'runtime-A',
+    sessionId: 'native-A',
+    sessionFile: 'logical.jsonl',
+    projectPath: 'D:\\项目',
+    readOnly: null,
+    model: null,
+    models: [],
+    thinkingLevel: 'off',
+    availableThinkingLevels: [],
+    activeRunId: null,
+    sequence: 0,
+    tools: [],
+    ...historyFixture(100),
+  }
+  useConversationStore.setState({ ...original, status: 'ready' })
+  vi.spyOn(pi, 'setPiThinkingLevel').mockResolvedValue(original)
+  vi.spyOn(thinkingPreference, 'saveThinkingPreference').mockResolvedValue()
+  const connect = vi.spyOn(pi, 'connectPi').mockImplementationOnce(async (_project, hydrate) => {
+    hydrate({
+      ...original,
+      instanceId: 'runtime-B',
+      sessionId: 'native-B',
+      sessionFile: 'B.jsonl',
+      ...historyFixture(1),
+    })
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  await screen.findByText('历史回复 99')
+  const viewport = screen.getByRole('log', { name: '对话消息' })
+  fireEvent.wheel(viewport, { deltaY: -1000 })
+  fireEvent.scroll(viewport, { target: { scrollTop: 4600 } })
+  await waitFor(() => expect(screen.queryByText('历史回复 99')).not.toBeInTheDocument())
+  const question = screen.getAllByText(/^历史问题 /)[0]
+  await user.click(within(question.closest('article')!).getByRole('button', { name: '编辑消息' }))
+  const editor = screen.getByRole('textbox', { name: '编辑消息内容' })
+  await user.clear(editor)
+  await user.type(editor, '切换后保留的草稿')
+  const offset = viewport.scrollTop
+
+  await act(async () => {
+    await useConversationStore.getState().connect('D:\\项目', 'B.jsonl', { sessionId: 'native-B' })
+  })
+  expect(screen.queryByRole('textbox', { name: '编辑消息内容' })).not.toBeInTheDocument()
+  let hydrate!: (snapshot: RuntimeSnapshot) => void
+  let finish!: () => void
+  connect.mockImplementationOnce((_project, onSnapshot) => {
+    hydrate = onSnapshot
+    return new Promise<void>((resolve) => {
+      finish = resolve
+    })
+  })
+  let opening!: Promise<void>
+  act(() => {
+    opening = useConversationStore
+      .getState()
+      .connect('D:\\项目', 'canonical.jsonl', { sessionId: 'native-A' })
+  })
+  const restoredEditor = await screen.findByRole('textbox', { name: '编辑消息内容' })
+  expect(restoredEditor).toHaveValue('切换后保留的草稿')
+  const restoredViewport = screen.getByRole('log', { name: '对话消息' })
+  await waitFor(() => expect(restoredViewport.scrollTop).toBeCloseTo(offset, 0))
+  vi.mocked(Streamdown).mockClear()
+  await act(async () => {
+    hydrate({
+      ...original,
+      instanceId: 'fresh-A',
+      sessionFile: 'canonical.jsonl',
+      messages: original.messages.map((item) => ({ ...item, id: `fresh-${item.id}` })),
+      timeline: original.timeline.map((entry) => ({ ...entry, id: `fresh-${entry.id}` })),
+    })
+    finish()
+    await opening
+  })
+  expect(screen.getByRole('log', { name: '对话消息' })).toBe(restoredViewport)
+  expect(screen.getByRole('textbox', { name: '编辑消息内容' })).toBe(restoredEditor)
+  expect(restoredViewport.scrollTop).toBeCloseTo(offset, 0)
+  expect(Streamdown).not.toHaveBeenCalled()
 })
 
 test('focused editors stay mounted and drafts survive scrolling out and back into the virtual list', async () => {

@@ -29,6 +29,7 @@ const toolLabels: Record<string, string> = {
 }
 
 function useOutputPage(instanceId: string | null, toolId: string, section: 'arguments' | 'output') {
+  const runtimeToolId = useConversationStore((state) => state.runtimeToolIds[toolId] ?? toolId)
   const [page, setPage] = useConversationLocalState<ToolLogPage | null>(
     `tool:${toolId}:${section}`,
     null,
@@ -41,7 +42,7 @@ function useOutputPage(instanceId: string | null, toolId: string, section: 'argu
     setError('')
     try {
       const offset = page?.nextOffset ?? 0
-      const next = await loadPiToolOutput(instanceId, toolId, section, offset)
+      const next = await loadPiToolOutput(instanceId, runtimeToolId, section, offset)
       setPage({ ...next, content: (offset ? (page?.content ?? '') : '') + next.content })
     } catch (reason) {
       setError(String(reason))
