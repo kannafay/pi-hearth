@@ -679,7 +679,6 @@ select {
   overflow: hidden;
   border: 1px solid var(--workspace-border);
   border-radius: var(--workspace-radius);
-  background: var(--background);
 }
 
 .menu-popup {

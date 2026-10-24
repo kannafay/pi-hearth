@@ -316,7 +316,7 @@ export function WorkspaceShell() {
             <div className="workspace-content-inset h-full min-w-0 flex-1">
               <ResizablePanelGroup
                 orientation="horizontal"
-                className="workspace-surface workspace-panel-group"
+                className="workspace-panel-group"
                 onLayoutChanged={(layout, { isUserInteraction }) => {
                   if (!isUserInteraction || compact) return
                   const open = layout.inspector > 0
@@ -326,7 +326,10 @@ export function WorkspaceShell() {
                 }}
               >
                 <ResizablePanel id="conversation" minSize="400px">
-                  <main aria-label="对话工作区" className="flex h-full min-h-0 flex-col">
+                  <main
+                    aria-label="对话工作区"
+                    className="workspace-surface flex h-full min-h-0 flex-col bg-background"
+                  >
                     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
                       <Tooltip>
                         <TooltipTrigger
@@ -348,7 +351,8 @@ export function WorkspaceShell() {
                   </main>
                 </ResizablePanel>
                 <ResizableHandle
-                  className="workspace-panel-separator"
+                  aria-label="调整查看面板宽度"
+                  className="workspace-panel-separator w-(--workspace-inset) bg-transparent after:w-2.5"
                   data-panel-open={dockedInspectorOpen}
                   disabled={!dockedInspectorOpen}
                 />
@@ -363,7 +367,7 @@ export function WorkspaceShell() {
                 >
                   <div
                     data-slot="workspace-inspector-frame"
-                    className="workspace-panel-content bg-card"
+                    className="workspace-surface workspace-panel-content bg-card"
                     data-side="right"
                     data-panel-open={dockedInspectorOpen}
                     aria-hidden={!dockedInspectorOpen}
