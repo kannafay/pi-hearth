@@ -31,7 +31,6 @@ export function WorkspaceFloatingPanel({
   title,
   description,
   side,
-  width,
   open,
   onOpenChange,
   keepMounted = false,
@@ -40,7 +39,6 @@ export function WorkspaceFloatingPanel({
   title: string
   description: string
   side: 'left' | 'right'
-  width: number
   open: boolean
   onOpenChange: (open: boolean) => void
   keepMounted?: boolean
@@ -53,7 +51,7 @@ export function WorkspaceFloatingPanel({
         layout="drawer"
         side={side}
         keepMounted={keepMounted}
-        style={{ width }}
+        style={{ width: side === 'left' ? 300 : 400 }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>

@@ -361,21 +361,33 @@ test('backdrop dismisses settings and project dialogs, but header clicks preserv
   expect(workspace).not.toHaveAttribute('inert')
 })
 
-test('compact inspector can be opened and closed from the header while the workspace is locked', async () => {
-  vi.mocked(useMediaQuery).mockReturnValue(true)
+test('compact inspector uses a fixed floating width and preserves its docked width', async () => {
+  let compact = true
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(max-width: 1199px)' ? compact : false,
+  )
   useWorkspaceStore.setState({ inspectorWidth: 460 })
   const user = userEvent.setup()
-  render(<WorkspaceShell />)
+  const view = render(<WorkspaceShell />)
   const workspace = screen.getByRole('main').closest('.workspace-body')
   await user.click(screen.getByRole('button', { name: '打开查看面板' }))
   const drawer = await screen.findByRole('dialog', { name: '项目文件与变更' })
   expect(drawer).toBeVisible()
   expect(drawer).toHaveAttribute('data-side', 'right')
-  expect(drawer).toHaveStyle({ width: '460px' })
+  expect(drawer).toHaveStyle({ width: '400px' })
   expect(workspace).toHaveAttribute('inert')
+  act(() => useWorkspaceStore.getState().setInspectorWidth(520))
+  expect(drawer).toHaveStyle({ width: '400px' })
   await user.click(within(drawer).getByRole('button', { name: '关闭查看面板' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(workspace).not.toHaveAttribute('inert')
+
+  compact = false
+  view.rerender(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  expect(screen.getByRole('complementary', { name: '项目查看面板' })).toBeVisible()
+  await waitFor(() => expect(resizePanel).toHaveBeenCalledWith('inspector', '520px'))
+  expect(useWorkspaceStore.getState().inspectorWidth).toBe(520)
 })
 
 test('narrow windows automatically hide the sidebar without changing its saved width or open preference', async () => {
@@ -401,7 +413,7 @@ test('narrow windows automatically hide the sidebar without changing its saved w
   await user.click(screen.getByRole('button', { name: '展开侧栏' }))
   const drawer = await screen.findByRole('dialog', { name: '项目与会话' })
   expect(drawer).toHaveAttribute('data-side', 'left')
-  expect(drawer).toHaveStyle({ width: '352px' })
+  expect(drawer).toHaveStyle({ width: '300px' })
   expect(within(drawer).getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getAllByRole('navigation')).toHaveLength(1)
   expect(draft.closest('.workspace-body')).toHaveAttribute('inert')
@@ -416,6 +428,7 @@ test('narrow windows automatically hide the sidebar without changing its saved w
   expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('textbox', { name: '消息' })).toBe(draft)
   expect(draft).toHaveValue('缩放时保留草稿')
+  await waitFor(() => expect(resizePanel).toHaveBeenCalledWith('navigation', '352px'))
   expect(useWorkspaceStore.getState()).toMatchObject({ sidebarOpen: true, navigationWidth: 352 })
 })
 

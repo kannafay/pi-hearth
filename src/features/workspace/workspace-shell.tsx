@@ -408,7 +408,6 @@ export function WorkspaceShell() {
           open={narrow && floatingSidebarOpen}
           onOpenChange={setFloatingSidebarOpen}
           side="left"
-          width={navigationWidth}
           title="项目与会话"
           description="选择项目、切换会话或打开设置。"
           keepMounted
@@ -421,7 +420,6 @@ export function WorkspaceShell() {
           open={compact && inspectorOpen}
           onOpenChange={setInspectorOpen}
           side="right"
-          width={inspectorWidth}
           title="项目文件与变更"
           description="查看当前项目的文件和 Git 差异。"
         >
