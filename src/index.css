@@ -54,6 +54,11 @@
 :root {
   --titlebar-height: 40px;
   --workspace-inset: 4px;
+  --panel-duration: 200ms;
+  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --floating-panel-overlay: oklch(0.18 0.006 300 / 4%);
+  --floating-panel-shadow:
+    0 8px 24px -8px oklch(0.12 0.01 300 / 16%), 0 2px 8px -4px oklch(0.12 0.01 300 / 10%);
   --dialog-duration: 240ms;
   --dialog-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --shell-tint: #f5f3f8;
@@ -98,6 +103,8 @@
 }
 
 .dark {
+  --floating-panel-overlay: oklch(0 0 0 / 20%);
+  --floating-panel-shadow: 0 12px 32px -8px oklch(0 0 0 / 50%), 0 2px 8px -4px oklch(0 0 0 / 30%);
   --shell-tint: oklch(0.23 0.008 300);
   --workspace-border: oklch(1 0 0 / 9%);
   --caption-hover: oklch(0.37 0.008 300);
@@ -244,20 +251,23 @@ select {
 }
 
 .workspace-navigation {
-  --muted: var(--background);
-  --sidebar-accent: var(--background);
   --sidebar-row-accent: var(--sidebar-accent);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
 
-.dark .workspace-navigation {
+.workspace-navigation[data-presentation='docked'] {
+  --muted: var(--background);
+  --sidebar-accent: var(--background);
+}
+
+.dark .workspace-navigation[data-presentation='docked'] {
   --muted: oklch(0.3 0.006 300);
   --sidebar-accent: var(--muted);
   --sidebar-row-accent: oklch(0.35 0.006 300);
 }
 
-.workspace-navigation [data-slot='button']:hover {
+.workspace-navigation[data-presentation='docked'] [data-slot='button']:hover {
   background: var(--sidebar-accent);
 }
 
@@ -628,7 +638,7 @@ select {
 }
 
 .workspace-content-inset {
-  transition: padding-left 180ms cubic-bezier(0.2, 0, 0.2, 1);
+  transition: padding-left var(--panel-duration) var(--panel-ease);
 }
 
 .workspace-body[data-sidebar-open='false'] .workspace-content-inset {
@@ -636,7 +646,7 @@ select {
 }
 
 .workspace-panel-group[data-panel-animating] > [data-panel] {
-  transition: flex-grow 180ms cubic-bezier(0.2, 0, 0.2, 1);
+  transition: flex-grow var(--panel-duration) var(--panel-ease);
 }
 
 .workspace-panel-group:has(> [data-separator='active']) > [data-panel] {
@@ -652,8 +662,8 @@ select {
   width: var(--workspace-panel-width, 100%);
   height: 100%;
   transition:
-    opacity 180ms ease-out,
-    transform 180ms cubic-bezier(0.2, 0, 0.2, 1);
+    opacity var(--panel-duration) var(--panel-ease),
+    transform var(--panel-duration) var(--panel-ease);
 }
 
 .workspace-panel-content[data-panel-open='false'] {
@@ -828,7 +838,8 @@ select {
   --dialog-shadow: 0 24px 72px -24px oklch(0 0 0 / 65%), 0 4px 16px -6px oklch(0 0 0 / 35%);
 }
 
-[data-slot='dialog-content'] > :not(.sr-only, [data-slot='dialog-close']) {
+[data-slot='dialog-content']:not([data-dialog-layout='drawer'])
+  > :not(.sr-only, [data-slot='dialog-close']) {
   opacity: 1;
   transform: translateY(0);
   transition:
@@ -845,24 +856,40 @@ select {
   transform: translateY(8px) scale(0.98);
 }
 
-[data-slot='dialog-content']:is([data-starting-style], [data-ending-style])
+[data-slot='dialog-content']:not([data-dialog-layout='drawer']):is(
+    [data-starting-style],
+    [data-ending-style]
+  )
   > :not(.sr-only, [data-slot='dialog-close']) {
   opacity: 0;
   transform: translateY(3px);
+}
+
+[data-dialog-layout='drawer'] {
+  --dialog-duration: var(--panel-duration);
+  --dialog-ease: var(--panel-ease);
+}
+
+[data-slot='dialog-overlay'][data-dialog-layout='drawer'] {
+  background: var(--floating-panel-overlay);
+}
+
+[data-slot='dialog-content'][data-dialog-layout='drawer'] {
+  --dialog-shadow: var(--floating-panel-shadow);
 }
 
 [data-slot='dialog-content'][data-dialog-layout='drawer']:is(
     [data-starting-style],
     [data-ending-style]
   ) {
-  transform: translateX(12px);
+  transform: translateX(8px);
 }
 
 [data-slot='dialog-content'][data-dialog-layout='drawer'][data-side='left']:is(
     [data-starting-style],
     [data-ending-style]
   ) {
-  transform: translateX(-12px);
+  transform: translateX(-8px);
 }
 
 /* Also animate dialogs that are mounted already open. */
@@ -877,11 +904,11 @@ select {
   }
 
   [data-slot='dialog-content'][data-dialog-layout='drawer'] {
-    transform: translateX(12px);
+    transform: translateX(8px);
   }
 
   [data-slot='dialog-content'][data-dialog-layout='drawer'][data-side='left'] {
-    transform: translateX(-12px);
+    transform: translateX(-8px);
   }
 }
 
@@ -943,12 +970,12 @@ select {
   height: 14px;
 }
 
-[data-window-header] button:hover {
+.caption-button:hover {
   color: var(--foreground);
   background: var(--caption-hover);
 }
 
-[data-window-header] button:active {
+.caption-button:active {
   background: var(--caption-pressed);
 }
 

@@ -233,6 +233,39 @@ test('the docked inspector preserves its selected tab when closed and reopened',
   )
 })
 
+test('the inspector mounts only one content view and shares its tab across docked and floating layouts', async () => {
+  let compact = false
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(max-width: 1199px)' ? compact : false,
+  )
+  useWorkspaceStore.setState({ inspectorOpen: true })
+  const user = userEvent.setup()
+  const view = render(<WorkspaceShell />)
+  const contentCount = () => document.querySelectorAll('aside[aria-label="项目查看面板"]').length
+  expect(contentCount()).toBe(1)
+  await user.click(screen.getByRole('tab', { name: '文件' }))
+
+  compact = true
+  view.rerender(<WorkspaceShell />)
+  const floating = await screen.findByRole('dialog', { name: '项目文件与变更' })
+  expect(contentCount()).toBe(1)
+  expect(within(floating).getByRole('tab', { name: '文件' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await user.click(within(floating).getByRole('button', { name: '关闭查看面板' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  expect(contentCount()).toBe(1)
+  expect(screen.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true')
+
+  compact = false
+  view.rerender(<WorkspaceShell />)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(contentCount()).toBe(1)
+  expect(screen.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true')
+})
+
 test('settings blocks the workspace while header controls remain accessible and keep it open', async () => {
   const user = userEvent.setup()
   render(<WorkspaceShell />)
@@ -289,13 +322,17 @@ test('backdrop dismisses settings and project dialogs, but header clicks preserv
 
 test('compact inspector can be opened and closed from the header while the workspace is locked', async () => {
   vi.mocked(useMediaQuery).mockReturnValue(true)
+  useWorkspaceStore.setState({ inspectorWidth: 460 })
   const user = userEvent.setup()
   render(<WorkspaceShell />)
   const workspace = screen.getByRole('main').closest('.workspace-body')
   await user.click(screen.getByRole('button', { name: '打开查看面板' }))
-  expect(await screen.findByRole('dialog', { name: '项目文件与变更' })).toBeVisible()
+  const drawer = await screen.findByRole('dialog', { name: '项目文件与变更' })
+  expect(drawer).toBeVisible()
+  expect(drawer).toHaveAttribute('data-side', 'right')
+  expect(drawer).toHaveStyle({ width: '460px' })
   expect(workspace).toHaveAttribute('inert')
-  await user.click(screen.getByRole('button', { name: '收起查看面板' }))
+  await user.click(within(drawer).getByRole('button', { name: '关闭查看面板' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(workspace).not.toHaveAttribute('inert')
 })
@@ -326,7 +363,7 @@ test('narrow windows automatically hide the sidebar without changing its saved w
   expect(within(drawer).getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getAllByRole('navigation')).toHaveLength(1)
   expect(draft.closest('.workspace-body')).toHaveAttribute('inert')
-  await user.click(screen.getByRole('button', { name: '收起侧栏' }))
+  await user.click(within(drawer).getByRole('button', { name: '关闭侧栏' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(draft.closest('.workspace-body')).not.toHaveAttribute('inert')
 

@@ -7,20 +7,19 @@ import { useMediaQuery } from '@/app/use-media-query'
 import { useWindowResizeMotion } from '@/app/use-window-resize-motion'
 import { IconButton } from '@/components/icon-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
-import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { useDialogPresence } from '@/components/use-dialog-presence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ConversationPanel } from '@/features/conversation/conversation-panel'
 import { AttachmentPreviewDialog } from '@/features/conversation/attachment-preview-dialog'
 import { useConversationStore } from '@/features/conversation/store'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
-import { Inspector } from './inspector'
+import { Inspector, type InspectorTab } from './inspector'
 import { WorkspaceNavigationContent, WorkspaceNavigationDialogs } from './workspace-navigation'
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
 import { useWorkspaceNavigation } from './use-workspace-navigation'
+import { WorkspaceFloatingPanel } from './workspace-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
@@ -52,6 +51,7 @@ export function WorkspaceShell() {
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('changes')
   const [floatingSidebar, setFloatingSidebar] = useState({ narrow: false, open: false })
   const navigationState = useWorkspaceNavigation()
   const setFloatingSidebarOpen = useCallback(
@@ -91,6 +91,7 @@ export function WorkspaceShell() {
   const themeIndex = themeOptions.findIndex((item) => item.value === theme)
   const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]
   const nextTheme = themeOptions[(themeIndex + 1) % themeOptions.length]
+  const inspector = <Inspector tab={inspectorTab} onTabChange={setInspectorTab} />
 
   useEffect(() => {
     if (!desktop) return
@@ -147,6 +148,7 @@ export function WorkspaceShell() {
         desktop={desktop}
         navigation={navigationState}
         onNavigate={() => setFloatingSidebarOpen(false)}
+        onClose={narrow ? () => setFloatingSidebarOpen(false) : undefined}
         onCreate={createProject}
         onSettings={() => {
           setFloatingSidebarOpen(false)
@@ -184,6 +186,7 @@ export function WorkspaceShell() {
           Pi Hearth
         </span>
         <IconButton
+          variant="titlebar"
           label={sidebarVisible ? '收起侧栏' : '展开侧栏'}
           aria-expanded={sidebarVisible}
           disabled={narrow && contentDialogOpen}
@@ -197,6 +200,7 @@ export function WorkspaceShell() {
           <PanelLeft />
         </IconButton>
         <IconButton
+          variant="titlebar"
           label="搜索会话"
           title="搜索会话 (Ctrl+K)"
           onClick={() => {
@@ -208,6 +212,7 @@ export function WorkspaceShell() {
           <Search />
         </IconButton>
         <IconButton
+          variant="titlebar"
           label={`切换主题（当前：${themeLabel}）`}
           title={`主题：${themeLabel}，点击切换为${nextTheme.label}`}
           onClick={() => setTheme(nextTheme.value)}
@@ -216,6 +221,7 @@ export function WorkspaceShell() {
         </IconButton>
         <div data-tauri-drag-region className="h-full flex-1" />
         <IconButton
+          variant="titlebar"
           label={inspectorOpen ? '收起查看面板' : '打开查看面板'}
           aria-expanded={inspectorOpen}
           onClick={() => {
@@ -361,7 +367,7 @@ export function WorkspaceShell() {
                     aria-hidden={!dockedInspectorOpen}
                     inert={!dockedInspectorOpen}
                   >
-                    <Inspector />
+                    {!compact && inspector}
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -370,29 +376,30 @@ export function WorkspaceShell() {
         </ResizablePanelGroup>
       </div>
       {narrow && (
-        <WorkspaceDialog open={floatingSidebarOpen} onOpenChange={setFloatingSidebarOpen}>
-          <DialogContent
-            showCloseButton={false}
-            layout="drawer"
-            side="left"
-            keepMounted
-            style={{ width: navigationWidth }}
-          >
-            <DialogTitle className="sr-only">项目与会话</DialogTitle>
-            <DialogDescription className="sr-only">
-              选择项目、切换会话或打开设置。
-            </DialogDescription>
-            {navigation()}
-          </DialogContent>
-        </WorkspaceDialog>
+        <WorkspaceFloatingPanel
+          open={floatingSidebarOpen}
+          onOpenChange={setFloatingSidebarOpen}
+          side="left"
+          width={navigationWidth}
+          title="项目与会话"
+          description="选择项目、切换会话或打开设置。"
+          keepMounted
+        >
+          {navigation()}
+        </WorkspaceFloatingPanel>
       )}
-      <WorkspaceDialog open={inspectorOpen && compact} onOpenChange={setInspectorOpen}>
-        <DialogContent showCloseButton={false} layout="drawer">
-          <DialogTitle className="sr-only">项目文件与变更</DialogTitle>
-          <DialogDescription className="sr-only">查看当前项目的文件和 Git 差异。</DialogDescription>
-          <Inspector />
-        </DialogContent>
-      </WorkspaceDialog>
+      {compact && (
+        <WorkspaceFloatingPanel
+          open={inspectorOpen}
+          onOpenChange={setInspectorOpen}
+          side="right"
+          width={inspectorWidth}
+          title="项目文件与变更"
+          description="查看当前项目的文件和 Git 差异。"
+        >
+          {inspector}
+        </WorkspaceFloatingPanel>
+      )}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <WorkspaceNavigationDialogs navigation={navigationState} />
       <SessionSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />

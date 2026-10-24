@@ -50,7 +50,7 @@ const dialogContentVariants = cva(
         preview:
           'top-[calc((100dvh+var(--titlebar-height))/2)] grid h-[min(620px,calc(100dvh-var(--titlebar-height)-3rem))] w-[min(900px,calc(100vw-3rem))] grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden p-6 sm:max-w-none',
         drawer:
-          'top-(--titlebar-height) grid h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 translate-x-0 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-100',
+          'top-(--titlebar-height) flex h-[calc(100dvh-var(--titlebar-height)-var(--workspace-inset))] w-100 max-w-[calc(100%-2*var(--workspace-inset))] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[calc(100%-2*var(--workspace-inset))]',
       },
       side: {
         left: '',
@@ -80,7 +80,7 @@ function DialogContent({
 } & VariantProps<typeof dialogContentVariants>) {
   return (
     <DialogPortal keepMounted={keepMounted}>
-      <DialogOverlay />
+      <DialogOverlay data-dialog-layout={layout} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         data-dialog-layout={layout}

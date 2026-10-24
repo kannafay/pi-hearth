@@ -42,6 +42,7 @@ import { hasPath, orderedProjects, sessionGroup } from '@/lib/navigation-order'
 import { useNavigationSort } from './use-navigation-sort'
 import { ProjectDeleteDialog } from './project-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
+import { WorkspacePanelHeader } from './workspace-panel'
 
 const navigationFilters = [
   ['all', '全部', LayoutGrid],
@@ -66,6 +67,7 @@ type NavigationProps = {
   onSettings: () => void
   onInstructions: (project: ProjectInfo) => void
   onNavigate?: () => void
+  onClose?: () => void
 }
 
 export function WorkspaceNavigation(props: NavigationProps) {
@@ -84,6 +86,7 @@ export function WorkspaceNavigationContent({
   onSettings,
   onInstructions,
   onNavigate,
+  onClose,
   navigation,
 }: NavigationProps & { navigation: ReturnType<typeof useWorkspaceNavigation> }) {
   const workspace = useWorkspaceStore()
@@ -277,6 +280,20 @@ export function WorkspaceNavigationContent({
   const chats = sessions.filter(
     (session) => sessionGroup(session, workspace.projects, workspace.generalCwd) === 'chats',
   )
+  const newConversation = (
+    <Button
+      variant="ghost"
+      className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
+      disabled={!desktop || busy}
+      onClick={() => {
+        void workspace.newConversation(null)
+        onNavigate?.()
+      }}
+    >
+      <SquarePen className="size-4 stroke-[1.6]" />
+      新对话
+    </Button>
+  )
 
   return (
     <nav
@@ -285,6 +302,7 @@ export function WorkspaceNavigationContent({
       onKeyDownCapture={(event) => keySort(event)}
       onClickCapture={(event) => suppressSortClick(event)}
       aria-label="项目与会话"
+      data-presentation={onClose ? 'floating' : 'docked'}
       className="workspace-navigation flex h-full min-h-0 flex-col pb-2"
     >
       <p id={sortDescriptionId} className="sr-only">
@@ -305,20 +323,15 @@ export function WorkspaceNavigationContent({
           </div>,
           document.body,
         )}
-      <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
-        <Button
-          variant="ghost"
-          className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
-          disabled={!desktop || busy}
-          onClick={() => {
-            void workspace.newConversation(null)
-            onNavigate?.()
-          }}
-        >
-          <SquarePen className="size-4 stroke-[1.6]" />
-          新对话
-        </Button>
-      </div>
+      {onClose ? (
+        <WorkspacePanelHeader closeLabel="关闭侧栏" onClose={onClose}>
+          {newConversation}
+        </WorkspacePanelHeader>
+      ) : (
+        <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
+          {newConversation}
+        </div>
+      )}
       <Tabs.Root
         value={filter}
         onValueChange={(value, { activationDirection }) =>
