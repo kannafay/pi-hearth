@@ -282,7 +282,7 @@ export function WorkspaceNavigationContent({
   )
   const newConversation = (
     <Button
-      variant="panel"
+      variant="ghost"
       className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
       disabled={!desktop || busy}
       onClick={() => {
@@ -376,7 +376,7 @@ export function WorkspaceNavigationContent({
                   <h2 className="text-xs font-normal text-muted-foreground">项目</h2>
                   <Button
                     aria-label="创建项目"
-                    variant="panel"
+                    variant="ghost"
                     size="icon-xs"
                     disabled={!desktop || busy}
                     onClick={onCreate}
@@ -550,7 +550,7 @@ export function WorkspaceNavigationContent({
                 </div>
                 {!projects.length && (
                   <Button
-                    variant="panel"
+                    variant="ghost"
                     className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
                     disabled={!desktop || busy}
                     onClick={onCreate}
@@ -568,7 +568,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     aria-label="新建普通对话"
                     size="icon-xs"
-                    variant="panel"
+                    variant="ghost"
                     disabled={!desktop || busy}
                     onClick={() => {
                       void workspace.newConversation(null)
@@ -588,7 +588,7 @@ export function WorkspaceNavigationContent({
         </Tabs.Panel>
       </Tabs.Root>
       <Button
-        variant="panel"
+        variant="ghost"
         className="mx-3 mt-3 h-8 justify-start gap-2.5 px-2 text-[13px] text-muted-foreground"
         onClick={onSettings}
       >

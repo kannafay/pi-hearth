@@ -19,7 +19,7 @@ export function WorkspacePanelHeader({
       className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3"
     >
       <div className="min-w-0 flex-1">{children}</div>
-      <IconButton label={closeLabel} variant="panel" size="icon-sm" onClick={onClose}>
+      <IconButton label={closeLabel} size="icon-sm" onClick={onClose}>
         <X className="stroke-[1.5]" />
       </IconButton>
     </div>

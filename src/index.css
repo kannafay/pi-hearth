@@ -57,8 +57,6 @@
   --workspace-radius: 8px;
   --panel-duration: 140ms;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --panel-control-hover: color-mix(in oklch, var(--background), var(--foreground) 5%);
-  --panel-control-selected: color-mix(in oklch, var(--background), var(--foreground) 8%);
   --sidebar-row-selected: var(--background);
   --floating-panel-overlay: oklch(0.18 0.006 300 / 4%);
   --floating-panel-shadow:
@@ -107,8 +105,6 @@
 }
 
 .dark {
-  --panel-control-hover: color-mix(in oklch, var(--background), var(--foreground) 10%);
-  --panel-control-selected: color-mix(in oklch, var(--background), var(--foreground) 14%);
   --sidebar-row-selected: oklch(0.35 0.006 300);
   --floating-panel-overlay: oklch(0 0 0 / 20%);
   --floating-panel-shadow: 0 12px 32px -8px oklch(0 0 0 / 50%), 0 2px 8px -4px oklch(0 0 0 / 30%);
@@ -258,9 +254,15 @@ select {
 }
 
 .workspace-navigation {
-  --sidebar-row-accent: var(--panel-control-selected);
+  --muted: var(--background);
+  --sidebar-accent: var(--muted);
+  --sidebar-row-accent: var(--sidebar-row-selected);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
+}
+
+.dark .workspace-navigation {
+  --muted: oklch(0.3 0.006 300);
 }
 
 @property --sidebar-title-tail-opacity {
@@ -462,6 +464,10 @@ select {
 .workspace-navigation
   :is(.sidebar-session-action, .sidebar-project-action):is(:hover, [aria-expanded='true']) {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.workspace-navigation [data-slot='button']:hover {
+  background: var(--sidebar-accent);
 }
 
 .sidebar-tabs {
