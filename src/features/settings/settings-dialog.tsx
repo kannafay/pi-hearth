@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Activity, Archive, HardDrive, Info, Palette, SlidersHorizontal } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
+import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
@@ -34,6 +35,8 @@ const sections = [
   { value: 'about', label: '关于', icon: Info },
 ] as const
 
+type SettingsSection = (typeof sections)[number]['value']
+
 function SettingsPanel({
   value,
   title,
@@ -46,13 +49,17 @@ function SettingsPanel({
   children: ReactNode
 }) {
   return (
-    <TabsContent value={value} className="settings-panel m-0 flex min-h-0 flex-col">
-      <div className="shrink-0 px-7 pt-5">
+    <TabsContent
+      value={value}
+      aria-label={title}
+      className="settings-panel m-0 flex min-h-0 flex-col"
+    >
+      <div className="shrink-0 px-(--settings-page-inset) pt-5 max-sm:pt-4">
         <SettingsPageHeader title={title} description={description} />
       </div>
       <ScrollArea
         className="flex-1"
-        viewportClassName="h-full overflow-x-hidden overflow-y-auto px-7 pb-7"
+        viewportClassName="h-full overflow-x-hidden overflow-y-auto px-(--settings-page-inset) pb-(--settings-page-inset)"
       >
         {children}
       </ScrollArea>
@@ -71,8 +78,17 @@ export function SettingsDialog({
   const { label: themeLabel, icon: ThemeIcon } =
     themeOptions.find((item) => item.value === theme) ?? themeOptions[0]
   const status = useConversationStore((state) => state.status)
+  const compact = useMediaQuery('(width < 640px)')
+  const [section, setSection] = useState<SettingsSection>('appearance')
+  const currentSection = sections.find((item) => item.value === section) ?? sections[0]
+  const SectionIcon = currentSection.icon
   const [version, setVersion] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  function selectSection(value: unknown) {
+    const next = sections.find((item) => item.value === value)
+    if (next) setSection(next.value)
+  }
   useEffect(() => {
     if (!open || !isDesktop()) return
     let disposed = false
@@ -93,31 +109,65 @@ export function SettingsDialog({
   }, [open])
 
   return (
-    <WorkspaceDialog open={open} onOpenChange={onOpenChange}>
+    <WorkspaceDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) setSection('appearance')
+      }}
+    >
       <DialogContent layout="panel" size="xl" className="settings-dialog">
         <DialogTitle className="sr-only">设置</DialogTitle>
         <DialogDescription className="sr-only">
           Pi Hearth 的外观、模型、归档与运行信息。
         </DialogDescription>
         <Tabs
-          defaultValue="appearance"
+          value={section}
+          onValueChange={selectSection}
           orientation="vertical"
-          className="h-[min(520px,85dvh)] flex-row gap-0"
+          className={`h-[min(520px,85dvh)] gap-0 ${compact ? 'flex-col' : 'flex-row'}`}
         >
-          <div className="w-44 shrink-0 border-r bg-background p-4">
-            <p className="mb-6 px-2 pt-1 text-sm font-medium">设置</p>
-            <TabsList className="h-auto w-full items-stretch gap-1 rounded-none bg-transparent p-0 shadow-none">
-              {sections.map(({ value, label, icon: Icon }) => (
-                <TabsTrigger
-                  key={value}
-                  value={value}
-                  className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-[13px] font-normal text-muted-foreground shadow-none data-active:bg-accent data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:bg-accent after:hidden"
-                >
-                  <Icon className="size-4 stroke-[1.6]" />
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          <div
+            className={
+              compact
+                ? 'flex h-13 shrink-0 items-center gap-3 px-4 pr-12'
+                : 'w-44 shrink-0 border-r bg-background p-4'
+            }
+          >
+            <p className={`text-sm font-medium ${compact ? 'shrink-0' : 'mb-6 px-2 pt-1'}`}>设置</p>
+            {compact ? (
+              <Select items={sections} value={section} onValueChange={selectSection}>
+                <SelectTrigger aria-label="设置分类" className="min-w-0 flex-1">
+                  <SelectValue>
+                    <SectionIcon aria-hidden className="size-4 stroke-[1.6]" />
+                    <span>{currentSection.label}</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {sections.map(({ value, label, icon: Icon }) => (
+                      <SelectItem key={value} value={value}>
+                        <Icon aria-hidden className="size-4 stroke-[1.6]" />
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            ) : (
+              <TabsList className="h-auto w-full items-stretch gap-1 rounded-none bg-transparent p-0 shadow-none">
+                {sections.map(({ value, label, icon: Icon }) => (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-[13px] font-normal text-muted-foreground shadow-none data-active:bg-accent data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:bg-accent after:hidden"
+                  >
+                    <Icon className="size-4 stroke-[1.6]" />
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            )}
           </div>
           <div className="settings-panels min-h-0 min-w-0 flex-1">
             <SettingsPanel value="appearance" title="外观" description="让工作台适合你的使用环境。">

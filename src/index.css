@@ -966,6 +966,17 @@ select {
   }
 }
 
+.settings-dialog {
+  --settings-page-inset: 1.75rem;
+  max-width: min(760px, calc(100% - 2rem));
+}
+
+@media (width < 640px) {
+  .settings-dialog {
+    --settings-page-inset: 1rem;
+  }
+}
+
 .settings-panels {
   position: relative;
   display: grid;

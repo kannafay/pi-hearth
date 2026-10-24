@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useTheme } from '@/app/use-theme'
+import { useMediaQuery } from '@/app/use-media-query'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
 import { getAppVersion, isDesktop, setWindowTheme } from '@/lib/desktop'
 
@@ -13,6 +14,7 @@ vi.mock('@/lib/desktop', () => ({
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
   openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
 vi.mock('@/lib/system-theme', () => ({
   usesNativeSystemTheme: () => true,
   observeSystemTheme: async (onChange: (dark: boolean) => void) => {
@@ -27,6 +29,9 @@ function SettingsHarness() {
 }
 
 beforeEach(() => {
+  vi.mocked(useMediaQuery).mockReturnValue(false)
+  Element.prototype.scrollIntoView = vi.fn()
+  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   vi.mocked(isDesktop).mockReturnValue(false)
   vi.mocked(getAppVersion).mockReset()
@@ -67,8 +72,6 @@ test('a failed desktop command is visible while settings remains usable', async 
 })
 
 test('theme selection updates the document and can return to the system theme', async () => {
-  Element.prototype.scrollIntoView = vi.fn()
-  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
   const user = userEvent.setup()
   render(<SettingsHarness />)
   await waitFor(() => expect(screen.getByRole('tab', { name: '外观' })).toHaveFocus())
@@ -108,6 +111,53 @@ test('vertical settings tabs use arrows and Enter, and closing restores focus', 
   await user.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   await waitFor(() => expect(screen.getByRole('button', { name: '打开设置' })).toHaveFocus())
+  await user.click(screen.getByRole('button', { name: '打开设置' }))
+  expect(screen.getByRole('tab', { name: '外观' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('compact navigation switches pages and preserves archive selection across window layouts', async () => {
+  let compact = true
+  vi.mocked(useMediaQuery).mockImplementation(() => compact)
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  const session = {
+    id: 'compact',
+    path: 'compact.jsonl',
+    cwd: 'general',
+    title: '保留归档选择',
+    modified: 0,
+    messageCount: 2,
+  }
+  useWorkspaceStore.setState({
+    sessions: [session],
+    sessionPreferences: { [session.path]: { pinned: false, archived: true } },
+  })
+  const user = userEvent.setup()
+  const view = render(<SettingsHarness />)
+  expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '设置分类' })).toHaveFocus())
+  await user.keyboard('{ArrowDown}')
+  await user.click(await screen.findByRole('option', { name: '归档' }))
+  const panel = screen.getByRole('tabpanel', { name: '归档' })
+  const checkbox = screen.getByRole('checkbox', { name: '选择 保留归档选择' })
+  await user.click(checkbox)
+  expect(checkbox).toBeChecked()
+
+  compact = false
+  view.rerender(<SettingsHarness />)
+  expect(screen.queryByRole('combobox', { name: '设置分类' })).not.toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: '归档' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel', { name: '归档' })).toBe(panel)
+  expect(screen.getByRole('checkbox', { name: '选择 保留归档选择' })).toBe(checkbox)
+  expect(checkbox).toBeChecked()
+
+  compact = true
+  view.rerender(<SettingsHarness />)
+  expect(screen.getByRole('combobox', { name: '设置分类' })).toHaveTextContent('归档')
+  expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
+  expect(screen.getByRole('tabpanel', { name: '归档' })).toBe(panel)
+  expect(checkbox).toBeChecked()
+  expect(screen.getByRole('button', { name: '恢复所选' })).toBeVisible()
 })
 
 test('the archive settings page restores conversations without deleting native sessions', async () => {

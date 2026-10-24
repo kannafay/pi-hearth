@@ -27,8 +27,8 @@ export function SettingsRow({
   descriptionId?: string
 }) {
   return (
-    <div data-slot="settings-row" className="space-y-4 border-b py-5">
-      <Field orientation="horizontal" className="items-center gap-5">
+    <div data-slot="settings-row" className="@container/field-group space-y-4 border-b py-5">
+      <Field orientation="responsive" className="items-start gap-3 @md/field-group:gap-5">
         <FieldContent>
           {htmlFor ? (
             <FieldLabel id={titleId} htmlFor={htmlFor}>
@@ -42,7 +42,9 @@ export function SettingsRow({
           {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
         </FieldContent>
         {control ? (
-          <div className="shrink-0">{control}</div>
+          <div className="shrink-0 @max-md/field-group:[&>[data-slot=select-trigger]]:w-full">
+            {control}
+          </div>
         ) : value != null ? (
           <span className="shrink-0 text-sm text-muted-foreground">{value}</span>
         ) : null}
