@@ -26,7 +26,6 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
   const files = kind === 'files'
   const title = files ? '文件保存位置' : '新项目保存位置'
   const id = files ? 'file-location' : 'project-location'
-  const projectsDirectory = useWorkspaceStore((state) => state.projectsDirectory)
   const directory = useWorkspaceStore((state) =>
     files ? state.filesDirectory : state.projectsDirectory,
   )
@@ -46,9 +45,7 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
   useEffect(() => {
     if (!desktop) return
     let disposed = false
-    const resolved = files
-      ? resolveFilesDirectory(null, projectsDirectory || null)
-      : resolveProjectDirectory()
+    const resolved = files ? resolveFilesDirectory() : resolveProjectDirectory()
     void resolved.then(
       (path) => {
         if (!disposed) setDefaultDirectory(path)
@@ -60,7 +57,7 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
     return () => {
       disposed = true
     }
-  }, [desktop, files, projectsDirectory])
+  }, [desktop, files])
 
   function setDirectory(path: string) {
     const store = useWorkspaceStore.getState()
@@ -92,7 +89,7 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
       title={title}
       description={
         files
-          ? '保存上传附件和独立生成的文件，默认与项目保存目录同级。'
+          ? '保存上传附件和独立生成的文件，与项目保存位置独立设置。'
           : '未添加源文件夹时，在此目录下创建项目文件夹。'
       }
       htmlFor={id}

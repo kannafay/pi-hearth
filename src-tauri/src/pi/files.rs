@@ -17,12 +17,7 @@ fn resolve_directory(default_projects: &Path, settings: &AppSettings) -> PathBuf
     if !settings.files_directory.is_empty() {
         return PathBuf::from(&settings.files_directory);
     }
-    let projects = if settings.projects_directory.is_empty() {
-        default_projects
-    } else {
-        Path::new(&settings.projects_directory)
-    };
-    default_files_directory(projects)
+    default_files_directory(default_projects)
 }
 
 pub(super) async fn directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -41,7 +36,6 @@ pub(super) async fn uploads(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 pub fn workspace_files_directory(
     app: tauri::AppHandle,
     path: Option<String>,
-    projects_directory: Option<String>,
 ) -> Result<String, String> {
     let directory = if let Some(path) = path {
         let directory = dunce::canonicalize(path).map_err(|_| "文件目录不存在或无法访问。")?;
@@ -50,11 +44,7 @@ pub fn workspace_files_directory(
         }
         directory
     } else {
-        let projects = match projects_directory.filter(|path| !path.is_empty()) {
-            Some(path) => PathBuf::from(path),
-            None => default_projects_directory(&app)?,
-        };
-        default_files_directory(&projects)
+        default_files_directory(&default_projects_directory(&app)?)
     };
     Ok(directory.to_string_lossy().into())
 }
@@ -95,7 +85,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn files_default_is_a_sibling_of_the_effective_projects_location() {
+    fn file_location_is_independent_of_custom_project_storage() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../work/file-locations");
         let default = root.join("Pi Hearth/Projects");
         let mut settings = AppSettings::default();
@@ -106,12 +96,22 @@ mod tests {
         settings.projects_directory = root.join("Custom/Projects").to_string_lossy().into();
         assert_eq!(
             resolve_directory(&default, &settings),
-            root.join("Custom/Files")
+            root.join("Pi Hearth/Files")
         );
         settings.files_directory = root.join("Other/Assets").to_string_lossy().into();
         assert_eq!(
             resolve_directory(&default, &settings),
             root.join("Other/Assets")
+        );
+        settings.projects_directory.clear();
+        assert_eq!(
+            resolve_directory(&default, &settings),
+            root.join("Other/Assets")
+        );
+        settings.files_directory.clear();
+        assert_eq!(
+            resolve_directory(&default, &settings),
+            root.join("Pi Hearth/Files")
         );
         assert_ne!(
             default_files_directory(&root.join("Files")),

@@ -136,6 +136,27 @@ test('file locations remember their custom choice across defaults and startup in
   })
 })
 
+test('changing either storage location persists only its own directory and custom choice', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  const workspace = useWorkspaceStore.getState()
+  workspace.setProjectsDirectory('D:/New Projects')
+  workspace.setFilesDirectory('E:/New Files')
+  workspace.setProjectsDirectory('')
+  workspace.setFilesDirectory('')
+  expect(vi.mocked(updateAppSettings).mock.calls.map(([patch]) => patch)).toEqual([
+    { projectsDirectory: 'D:/New Projects', customProjectsDirectory: 'D:/New Projects' },
+    { filesDirectory: 'E:/New Files', customFilesDirectory: 'E:/New Files' },
+    { projectsDirectory: '' },
+    { filesDirectory: '' },
+  ])
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    projectsDirectory: '',
+    filesDirectory: '',
+    customProjectsDirectory: 'D:/New Projects',
+    customFilesDirectory: 'E:/New Files',
+  })
+})
+
 test('a failed database load keeps startup closed and a retry restores saved settings', async () => {
   vi.mocked(loadAppSettings).mockRejectedValueOnce('database unavailable')
   await useWorkspaceStore.getState().hydrateSettings()
