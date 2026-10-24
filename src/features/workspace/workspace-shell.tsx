@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
@@ -18,6 +18,7 @@ import { WorkspaceNavigationContent, WorkspaceNavigationDialogs } from './worksp
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
+import { usePanelPresentation } from './use-panel-presentation'
 import { useWorkspaceNavigation } from './use-workspace-navigation'
 import { WorkspaceFloatingPanel } from './workspace-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
@@ -71,9 +72,35 @@ export function WorkspaceShell() {
   const floatingSidebarOpen = floatingSidebar.narrow === narrow && floatingSidebar.open
   const dockedSidebarOpen = sidebarOpen && !narrow
   const sidebarVisible = narrow ? floatingSidebarOpen : sidebarOpen
-  const navigationPanel = useAnimatedPanel(sidebarOpen, navigationWidth, !narrow)
+  const navigationElementRef = useRef<HTMLDivElement | null>(null)
+  const inspectorElementRef = useRef<HTMLDivElement | null>(null)
+  const navigationDocked = usePanelPresentation({
+    docked: !narrow,
+    open: sidebarOpen,
+    floatingOpen: floatingSidebarOpen,
+    side: 'left',
+    elementRef: navigationElementRef,
+  })
+  const inspectorDocked = usePanelPresentation({
+    docked: !compact,
+    open: inspectorOpen,
+    floatingOpen: inspectorOpen && compact,
+    side: 'right',
+    elementRef: inspectorElementRef,
+  })
+  const navigationPanel = useAnimatedPanel(
+    sidebarOpen,
+    navigationWidth,
+    !narrow,
+    navigationElementRef,
+  )
   const dockedInspectorOpen = inspectorOpen && !compact
-  const inspectorPanel = useAnimatedPanel(inspectorOpen, inspectorWidth, !compact)
+  const inspectorPanel = useAnimatedPanel(
+    inspectorOpen,
+    inspectorWidth,
+    !compact,
+    inspectorElementRef,
+  )
   const contentDialogOpen =
     settingsOpen ||
     searchOpen ||
@@ -148,7 +175,7 @@ export function WorkspaceShell() {
         desktop={desktop}
         navigation={navigationState}
         onNavigate={() => setFloatingSidebarOpen(false)}
-        onClose={narrow ? () => setFloatingSidebarOpen(false) : undefined}
+        onClose={navigationDocked ? undefined : () => setFloatingSidebarOpen(false)}
         onCreate={createProject}
         onSettings={() => {
           setFloatingSidebarOpen(false)
@@ -296,7 +323,7 @@ export function WorkspaceShell() {
               aria-hidden={!dockedSidebarOpen}
               inert={!dockedSidebarOpen}
             >
-              {!narrow && navigation()}
+              {navigationDocked && navigation()}
             </div>
           </ResizablePanel>
           <ResizableHandle
@@ -380,7 +407,7 @@ export function WorkspaceShell() {
                     aria-hidden={!dockedInspectorOpen}
                     inert={!dockedInspectorOpen}
                   >
-                    {!compact && inspector}
+                    {inspectorDocked && inspector}
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -388,9 +415,9 @@ export function WorkspaceShell() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-      {narrow && (
+      {!navigationDocked && (
         <WorkspaceFloatingPanel
-          open={floatingSidebarOpen}
+          open={narrow && floatingSidebarOpen}
           onOpenChange={setFloatingSidebarOpen}
           side="left"
           width={navigationWidth}
@@ -401,9 +428,9 @@ export function WorkspaceShell() {
           {navigation()}
         </WorkspaceFloatingPanel>
       )}
-      {compact && (
+      {!inspectorDocked && (
         <WorkspaceFloatingPanel
-          open={inspectorOpen}
+          open={compact && inspectorOpen}
           onOpenChange={setInspectorOpen}
           side="right"
           width={inspectorWidth}

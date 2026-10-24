@@ -1,9 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { PanelImperativeHandle, PanelSize } from 'react-resizable-panels'
 
-export function useAnimatedPanel(open: boolean, expandedSize: number, docked = true) {
+export function useAnimatedPanel(
+  open: boolean,
+  expandedSize: number,
+  docked = true,
+  frameElementRef?: RefObject<HTMLDivElement | null>,
+) {
   const panelRef = useRef<PanelImperativeHandle | null>(null)
-  const elementRef = useRef<HTMLDivElement | null>(null)
+  const ownElementRef = useRef<HTMLDivElement | null>(null)
+  const elementRef = frameElementRef ?? ownElementRef
   const visible = open && docked
   const [defaultSize] = useState(() => (visible ? `${expandedSize}px` : '0px'))
   const previous = useRef({ visible, docked, expandedSize })
@@ -12,12 +18,13 @@ export function useAnimatedPanel(open: boolean, expandedSize: number, docked = t
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const frameRef = useRef<number | null>(null)
 
-  function scheduleRestore(afterCommit = false) {
+  const scheduleRestore = useEffectEvent((afterCommit = false) => {
     if (!current.current.visible || frameRef.current !== null) return
     const restore = () => {
       frameRef.current = null
       const panel = panelRef.current
-      const group = elementRef.current?.parentElement
+      const element = elementRef.current
+      const group = element?.parentElement
       if (
         !current.current.visible ||
         !panel ||
@@ -32,7 +39,7 @@ export function useAnimatedPanel(open: boolean, expandedSize: number, docked = t
       if (afterCommit) frameRef.current = window.requestAnimationFrame(restore)
       else restore()
     })
-  }
+  })
 
   useLayoutEffect(() => {
     const element = elementRef.current
@@ -53,7 +60,7 @@ export function useAnimatedPanel(open: boolean, expandedSize: number, docked = t
       return
     }
     const panel = panelRef.current
-    const group = elementRef.current?.parentElement
+    const group = element?.parentElement
     if (!panel || !group) return
 
     if (timerRef.current !== null) clearTimeout(timerRef.current)
@@ -81,15 +88,16 @@ export function useAnimatedPanel(open: boolean, expandedSize: number, docked = t
       if (current.current.visible && element && element.offsetWidth > 0)
         element.style.setProperty('--workspace-panel-width', `${element.offsetWidth}px`)
     }, 220)
-  }, [visible, docked, expandedSize])
+  }, [visible, docked, expandedSize, elementRef])
 
   useEffect(() => {
-    const group = elementRef.current?.parentElement
+    const element = elementRef.current
+    const group = element?.parentElement
     if (!group) return
     const observer = new ResizeObserver(() => scheduleRestore())
     observer.observe(group)
     return () => observer.disconnect()
-  }, [])
+  }, [elementRef])
 
   useLayoutEffect(
     () => () => {

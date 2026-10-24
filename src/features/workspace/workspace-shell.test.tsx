@@ -290,7 +290,7 @@ test('the inspector mounts only one content view and shares its tab across docke
   compact = false
   view.rerender(<WorkspaceShell />)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(contentCount()).toBe(1)
+  await waitFor(() => expect(contentCount()).toBe(1))
   expect(screen.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true')
 })
 

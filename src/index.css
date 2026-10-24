@@ -56,6 +56,7 @@
   --workspace-inset: 4px;
   --workspace-radius: 8px;
   --panel-duration: 200ms;
+  --panel-responsive-duration: 140ms;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --panel-control-hover: color-mix(in oklch, var(--background), var(--foreground) 5%);
   --panel-control-selected: color-mix(in oklch, var(--background), var(--foreground) 8%);
@@ -665,6 +666,22 @@ select {
   transform: translateX(8px);
 }
 
+.workspace-panel-content[data-responsive-exit] {
+  position: fixed;
+  z-index: 40;
+  top: var(--responsive-panel-top);
+  bottom: var(--responsive-panel-bottom);
+  left: var(--responsive-panel-inset);
+  width: var(--responsive-panel-width);
+  height: auto;
+  pointer-events: none;
+}
+
+.workspace-panel-content[data-responsive-exit='right'] {
+  right: var(--responsive-panel-inset);
+  left: auto;
+}
+
 :root[data-window-resizing]
   :is(
     .workspace-panel-group > [data-panel],
@@ -855,7 +872,7 @@ select {
 }
 
 [data-dialog-layout='drawer'] {
-  --dialog-duration: var(--panel-duration);
+  --dialog-duration: var(--panel-responsive-duration);
   --dialog-ease: var(--panel-ease);
 }
 
