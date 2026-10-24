@@ -2,7 +2,7 @@ import { useImperativeHandle, useRef, type HTMLAttributes, type ReactNode, type 
 import type { PanelImperativeHandle } from 'react-resizable-panels'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useConversationStore } from '@/features/conversation/store'
@@ -32,11 +32,13 @@ vi.mock('@/components/ui/resizable', () => ({
     id,
     defaultSize,
     panelRef,
+    elementRef,
     children,
   }: {
     id?: string
     defaultSize?: number | string
     panelRef?: Ref<PanelImperativeHandle | null>
+    elementRef?: Ref<HTMLDivElement | null>
     children: ReactNode
   }) => {
     const pixels = useRef(Number.parseFloat(String(defaultSize ?? 0)))
@@ -52,7 +54,7 @@ vi.mock('@/components/ui/resizable', () => ({
       getSize: () => ({ inPixels: pixels.current, asPercentage: 0 }),
       isCollapsed: () => pixels.current === 0,
     }))
-    return <div>{children}</div>
+    return <div ref={elementRef}>{children}</div>
   },
   ResizableHandle: ({
     disableDoubleClick: _disableDoubleClick,
@@ -67,6 +69,14 @@ vi.mock('@/features/conversation/conversation-panel', () => ({
 }))
 
 beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   useWorkspaceStore.setState({ initialized: true })
   useConversationStore.setState(useConversationStore.getInitialState(), true)
@@ -75,6 +85,8 @@ beforeEach(() => {
   vi.mocked(controlWindow).mockClear()
   resizePanel.mockClear()
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 test.each([false, true])(
   'local session events update navigation immediately and refresh only at completion (batched: %s)',
@@ -232,6 +244,7 @@ test('double-clicking the inspector separator restores its default width and kee
   await user.click(screen.getByRole('button', { name: '打开查看面板' }))
   const inspector = screen.getByRole('complementary', { name: '项目查看面板' })
   await user.click(within(inspector).getByRole('tab', { name: '文件' }))
+  resizePanel.mockClear()
   await user.dblClick(screen.getByRole('separator', { name: '调整查看面板宽度' }))
   expect(resizePanel).toHaveBeenCalledExactlyOnceWith('inspector', '400px')
   expect(useWorkspaceStore.getState()).toMatchObject({ inspectorOpen: true, inspectorWidth: 400 })

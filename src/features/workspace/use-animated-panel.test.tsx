@@ -1,4 +1,4 @@
-import { useImperativeHandle, useLayoutEffect } from 'react'
+import { useImperativeHandle, useLayoutEffect, type ReactNode } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useAnimatedPanel } from './use-animated-panel'
@@ -19,16 +19,24 @@ beforeEach(() => {
   )
 })
 afterEach(() => {
+  document.documentElement.style.removeProperty('--panel-duration')
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
-function renderPanel(initialOpen: boolean, initialWidth = 260) {
+function renderPanel(
+  initialOpen: boolean,
+  initialWidth = 260,
+  initialDocked = true,
+  side: 'left' | 'right' = 'left',
+) {
   let onPanelResize: ReturnType<typeof useAnimatedPanel>['onResize']
-  let pixels = initialOpen ? initialWidth : 0
+  let pixels = initialOpen && initialDocked ? initialWidth : 0
   let open = initialOpen
   let width = initialWidth
-  let docked = true
+  let docked = initialDocked
+  let floatingOpen = initialOpen && !initialDocked
   const controller = {
     collapse: vi.fn(),
     expand: vi.fn(),
@@ -40,19 +48,44 @@ function renderPanel(initialOpen: boolean, initialWidth = 260) {
   function PanelElement({
     panelRef,
     elementRef,
-  }: Pick<ReturnType<typeof useAnimatedPanel>, 'panelRef' | 'elementRef'>) {
+    children,
+  }: Pick<ReturnType<typeof useAnimatedPanel>, 'panelRef' | 'elementRef'> & {
+    children: ReactNode
+  }) {
     useImperativeHandle(panelRef, () => controller)
-    return <div ref={elementRef} data-testid="panel" />
+    return (
+      <div ref={elementRef} data-testid="panel">
+        {children}
+      </div>
+    )
   }
 
   function Preview({ open, width, docked }: { open: boolean; width: number; docked: boolean }) {
-    const { panelRef, elementRef, onResize } = useAnimatedPanel(open, width, docked)
+    const { panelRef, elementRef, onResize, hostDocked } = useAnimatedPanel(
+      open,
+      width,
+      docked,
+      floatingOpen,
+    )
     useLayoutEffect(() => {
       onPanelResize = onResize
     })
+    const controls = <nav data-testid="shared-controls">同一套面板内容</nav>
     return (
       <div>
-        <PanelElement panelRef={panelRef} elementRef={elementRef} />
+        <PanelElement panelRef={panelRef} elementRef={elementRef}>
+          {hostDocked && (
+            <div
+              className="workspace-panel-content"
+              data-side={side}
+              data-panel-open={open && docked}
+              inert={!open || !docked}
+            >
+              {controls}
+            </div>
+          )}
+        </PanelElement>
+        <div data-testid="floating">{!hostDocked && controls}</div>
       </div>
     )
   }
@@ -69,12 +102,15 @@ function renderPanel(initialOpen: boolean, initialWidth = 260) {
   return {
     controller,
     element,
+    unmount: view.unmount,
     toggle: (next: boolean) => {
       open = next
+      floatingOpen = open && !docked
       update()
     },
     present: (next: boolean) => {
       docked = next
+      floatingOpen = open && !docked
       update()
     },
     measure,
@@ -98,12 +134,12 @@ test('keeps content at its expanded width through collapse and a rapid reopening
   act(() => vi.advanceTimersByTime(80))
   panel.toggle(true)
   panel.measure(55)
-  act(() => vi.advanceTimersByTime(140))
+  act(() => vi.advanceTimersByTime(100))
   panel.measure(200)
   expect(panel.contentWidth()).toBe('310px')
 
   panel.measure(310)
-  act(() => vi.advanceTimersByTime(80))
+  act(() => vi.advanceTimersByTime(40))
   panel.resize(340)
   expect(panel.contentWidth()).toBe('340px')
 })
@@ -147,6 +183,8 @@ test('temporary constrained measurements never replace the preferred width acros
   expect(panel.controller.resize).toHaveBeenLastCalledWith('352px')
   expect(panel.contentWidth()).toBe('352px')
   expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+  expect(vi.getTimerCount()).toBe(1)
+  act(() => vi.advanceTimersByTime(108))
   expect(vi.getTimerCount()).toBe(0)
 })
 
@@ -185,3 +223,117 @@ test('automatic restoration does not interfere with an active separator drag', (
   act(() => vi.advanceTimersByTime(16))
   expect(panel.controller.resize).not.toHaveBeenCalled()
 })
+
+function retainExitingFrame(panel: ReturnType<typeof renderPanel>) {
+  const frame = panel.element.querySelector<HTMLElement>('.workspace-panel-content')!
+  vi.spyOn(panel.element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 40, 238, 700))
+  vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 40, 352, 700))
+  return frame
+}
+
+test.each(['left', 'right'] as const)(
+  'button and responsive closing use the same content state and 140ms lifetime on the %s',
+  (side) => {
+    const panel = renderPanel(true, 352, true, side)
+    const frame = retainExitingFrame(panel)
+    panel.toggle(false)
+    expect(frame).toHaveAttribute('data-panel-open', 'false')
+    expect(panel.element.parentElement).toHaveAttribute('data-panel-animating')
+    act(() => vi.advanceTimersByTime(139))
+    expect(panel.element.parentElement).toHaveAttribute('data-panel-animating')
+    act(() => vi.advanceTimersByTime(1))
+    expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+
+    panel.toggle(true)
+    act(() => vi.advanceTimersByTime(140))
+    panel.present(false)
+    expect(panel.controller.collapse).toHaveBeenCalledTimes(2)
+    expect(frame).toHaveAttribute('data-panel-open', 'false')
+    expect(frame).toHaveAttribute('inert')
+    expect(frame).toHaveAttribute('data-panel-detached', side)
+    expect(frame.style.getPropertyValue('--panel-detached-width')).toBe('352px')
+    expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+    act(() => vi.advanceTimersByTime(139))
+    expect(frame).toContainElement(screen.getByTestId('shared-controls'))
+    expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
+    expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
+  },
+)
+
+test('fixed layout restores before floating close completes, without animating its width', () => {
+  const panel = renderPanel(true, 352, false)
+  panel.present(true)
+  act(() => vi.advanceTimersByTime(32))
+  expect(panel.controller.resize).toHaveBeenLastCalledWith('352px')
+  expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+  expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
+  act(() => vi.advanceTimersByTime(108))
+  expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
+  expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
+})
+
+test('rapid breakpoint reversals cancel the handoff and preserve one content view', () => {
+  const panel = renderPanel(true, 352)
+  const frame = retainExitingFrame(panel)
+  panel.present(false)
+  panel.measure(0)
+  act(() => vi.advanceTimersByTime(50))
+  panel.present(true)
+  expect(frame).not.toHaveAttribute('data-panel-detached')
+  act(() => vi.advanceTimersByTime(200))
+  expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
+  expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
+  expect(panel.controller.resize).toHaveBeenLastCalledWith('352px')
+})
+
+test('closing during a placement handoff cancels restoration without adding a second timer', () => {
+  const panel = renderPanel(true, 352, false)
+  panel.present(true)
+  act(() => vi.advanceTimersByTime(50))
+  panel.toggle(false)
+  expect(vi.getTimerCount()).toBe(1)
+  expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+  act(() => vi.advanceTimersByTime(90))
+  expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
+  expect(panel.element.querySelector('.workspace-panel-content')).toHaveAttribute(
+    'data-panel-open',
+    'false',
+  )
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test('reduced motion skips the handoff delay and layout animation', () => {
+  vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+  const panel = renderPanel(true, 352)
+  retainExitingFrame(panel)
+  panel.present(false)
+  expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
+  expect(vi.getTimerCount()).toBe(0)
+  panel.present(true)
+  expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
+})
+
+test('unmount cancels a pending handoff and removes the detached frame styles', () => {
+  const panel = renderPanel(true, 352)
+  const frame = retainExitingFrame(panel)
+  panel.present(false)
+  panel.unmount()
+  expect(frame).not.toHaveAttribute('data-panel-detached')
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test.each(['140ms', '.14s'])(
+  'honors the CSS duration %s before releasing the outgoing view',
+  (duration) => {
+    document.documentElement.style.setProperty('--panel-duration', duration)
+    const panel = renderPanel(true, 352)
+    const frame = retainExitingFrame(panel)
+    panel.present(false)
+    act(() => vi.advanceTimersByTime(139))
+    expect(frame).toContainElement(screen.getByTestId('shared-controls'))
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
+  },
+)

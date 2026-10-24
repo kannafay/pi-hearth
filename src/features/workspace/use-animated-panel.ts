@@ -1,22 +1,39 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import type { PanelImperativeHandle, PanelSize } from 'react-resizable-panels'
 
 export function useAnimatedPanel(
   open: boolean,
   expandedSize: number,
   docked = true,
-  frameElementRef?: RefObject<HTMLDivElement | null>,
+  floatingOpen = false,
 ) {
   const panelRef = useRef<PanelImperativeHandle | null>(null)
-  const ownElementRef = useRef<HTMLDivElement | null>(null)
-  const elementRef = frameElementRef ?? ownElementRef
+  const elementRef = useRef<HTMLDivElement | null>(null)
+  const [hostDocked, setHostDocked] = useState(docked)
   const visible = open && docked
   const [defaultSize] = useState(() => (visible ? `${expandedSize}px` : '0px'))
-  const previous = useRef({ visible, docked, expandedSize })
+  const previous = useRef({ visible, docked, expandedSize, floatingOpen })
   const current = useRef({ visible, expandedSize })
   const groupRef = useRef<HTMLElement | null>(null)
+  const detachedRef = useRef<HTMLElement | null>(null)
+  const pendingHost = useRef<boolean | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const frameRef = useRef<number | null>(null)
+
+  function finishMotion() {
+    if (timerRef.current !== null) clearTimeout(timerRef.current)
+    timerRef.current = null
+    pendingHost.current = null
+    groupRef.current?.removeAttribute('data-panel-animating')
+    groupRef.current?.style.removeProperty('--panel-detached-width')
+    const node = detachedRef.current
+    if (node) {
+      node.removeAttribute('data-panel-detached')
+      for (const property of ['top', 'bottom', 'inset', 'width'])
+        node.style.removeProperty(`--panel-detached-${property}`)
+    }
+    detachedRef.current = null
+  }
 
   const scheduleRestore = useEffectEvent((afterCommit = false) => {
     if (!current.current.visible || frameRef.current !== null) return
@@ -48,47 +65,87 @@ export function useAnimatedPanel(
 
     const before = previous.current
     current.current = { visible, expandedSize }
-    previous.current = { visible, docked, expandedSize }
-    if (before.visible === visible) {
-      if (
-        visible &&
-        frameRef.current === null &&
-        before.expandedSize !== expandedSize &&
-        Math.abs((panelRef.current?.getSize().inPixels ?? expandedSize) - expandedSize) > 1
-      )
-        panelRef.current?.resize(`${expandedSize}px`)
-      return
-    }
+    previous.current = { visible, docked, expandedSize, floatingOpen }
     const panel = panelRef.current
     const group = element?.parentElement
     if (!panel || !group) return
 
-    if (timerRef.current !== null) clearTimeout(timerRef.current)
-    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
-    timerRef.current = null
-    frameRef.current = null
+    const placementChanged = before.docked !== docked
+    const visibilityChanged = before.visible !== visible
+    if (!visibilityChanged && !placementChanged && docked === hostDocked) {
+      if (
+        visible &&
+        frameRef.current === null &&
+        before.expandedSize !== expandedSize &&
+        Math.abs(panel.getSize().inPixels - expandedSize) > 1
+      )
+        panel.resize(`${expandedSize}px`)
+      return
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue('--panel-duration')
+      .trim()
+    const configuredDuration = Number.parseFloat(value) * (value.endsWith('ms') ? 1 : 1000)
+    const duration = reduced ? 0 : Number.isFinite(configuredDuration) ? configuredDuration : 140
+    if (placementChanged || (visibilityChanged && pendingHost.current === null)) finishMotion()
     groupRef.current = group
-    const animate =
-      before.docked === docked && !document.documentElement.hasAttribute('data-window-resizing')
-    group.toggleAttribute('data-panel-animating', animate)
+
+    if (docked !== hostDocked && pendingHost.current === null) {
+      const node = element?.querySelector<HTMLElement>('.workspace-panel-content')
+      const rect = element?.getBoundingClientRect()
+      const exiting = hostDocked ? before.visible && node && rect?.width : before.floatingOpen
+      if (exiting && duration) {
+        if (hostDocked && node && rect) {
+          // Only detach the exiting frame. Its open/close styles are the same as a button toggle.
+          const width = node.getBoundingClientRect().width || rect.width
+          const side = node.dataset.side === 'right' ? 'right' : 'left'
+          node.style.setProperty('--panel-detached-top', `${rect.top}px`)
+          node.style.setProperty('--panel-detached-bottom', `${window.innerHeight - rect.bottom}px`)
+          node.style.setProperty(
+            '--panel-detached-inset',
+            `${side === 'left' ? rect.left : window.innerWidth - rect.right}px`,
+          )
+          node.style.setProperty('--panel-detached-width', `${width}px`)
+          group.style.setProperty('--panel-detached-width', `${width}px`)
+          node.setAttribute('data-panel-detached', side)
+          detachedRef.current = node
+        }
+        pendingHost.current = docked
+        timerRef.current = setTimeout(() => {
+          finishMotion()
+          setHostDocked(docked)
+        }, duration)
+      } else setHostDocked(docked)
+    }
+
+    if (!visibilityChanged) return
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
+    frameRef.current = null
+    const animateLayout =
+      !placementChanged &&
+      pendingHost.current === null &&
+      duration > 0 &&
+      !document.documentElement.hasAttribute('data-window-resizing')
+    group.toggleAttribute('data-panel-animating', animateLayout)
     if (visible) {
       element?.style.setProperty('--workspace-panel-width', `${expandedSize}px`)
-      if (animate) panel.resize(`${expandedSize}px`)
+      if (animateLayout) panel.resize(`${expandedSize}px`)
       else {
         // Let the responsive tree commit its parent geometry before restoring pixels.
         scheduleRestore(true)
       }
     } else panel.collapse()
 
-    if (!animate) return
+    if (!animateLayout) return
     // Keep transitions limited to toggles so separator dragging stays immediate.
     timerRef.current = setTimeout(() => {
-      group.removeAttribute('data-panel-animating')
-      timerRef.current = null
+      finishMotion()
       if (current.current.visible && element && element.offsetWidth > 0)
         element.style.setProperty('--workspace-panel-width', `${element.offsetWidth}px`)
-    }, 220)
-  }, [visible, docked, expandedSize, elementRef])
+    }, duration)
+  }, [visible, docked, expandedSize, floatingOpen, hostDocked])
 
   useEffect(() => {
     const element = elementRef.current
@@ -97,13 +154,12 @@ export function useAnimatedPanel(
     const observer = new ResizeObserver(() => scheduleRestore())
     observer.observe(group)
     return () => observer.disconnect()
-  }, [elementRef])
+  }, [])
 
   useLayoutEffect(
     () => () => {
-      if (timerRef.current !== null) clearTimeout(timerRef.current)
+      finishMotion()
       if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
-      groupRef.current?.removeAttribute('data-panel-animating')
     },
     [],
   )
@@ -116,5 +172,5 @@ export function useAnimatedPanel(
     }
   }
 
-  return { panelRef, elementRef, defaultSize, onResize }
+  return { panelRef, elementRef, defaultSize, onResize, hostDocked }
 }

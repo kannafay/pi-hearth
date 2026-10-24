@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
@@ -18,7 +18,6 @@ import { WorkspaceNavigationContent, WorkspaceNavigationDialogs } from './worksp
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
-import { usePanelPresentation } from './use-panel-presentation'
 import { useWorkspaceNavigation } from './use-workspace-navigation'
 import { WorkspaceFloatingPanel } from './workspace-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
@@ -72,34 +71,18 @@ export function WorkspaceShell() {
   const floatingSidebarOpen = floatingSidebar.narrow === narrow && floatingSidebar.open
   const dockedSidebarOpen = sidebarOpen && !narrow
   const sidebarVisible = narrow ? floatingSidebarOpen : sidebarOpen
-  const navigationElementRef = useRef<HTMLDivElement | null>(null)
-  const inspectorElementRef = useRef<HTMLDivElement | null>(null)
-  const navigationDocked = usePanelPresentation({
-    docked: !narrow,
-    open: sidebarOpen,
-    floatingOpen: floatingSidebarOpen,
-    side: 'left',
-    elementRef: navigationElementRef,
-  })
-  const inspectorDocked = usePanelPresentation({
-    docked: !compact,
-    open: inspectorOpen,
-    floatingOpen: inspectorOpen && compact,
-    side: 'right',
-    elementRef: inspectorElementRef,
-  })
-  const navigationPanel = useAnimatedPanel(
+  const { hostDocked: navigationDocked, ...navigationPanel } = useAnimatedPanel(
     sidebarOpen,
     navigationWidth,
     !narrow,
-    navigationElementRef,
+    floatingSidebarOpen,
   )
   const dockedInspectorOpen = inspectorOpen && !compact
-  const inspectorPanel = useAnimatedPanel(
+  const { hostDocked: inspectorDocked, ...inspectorPanel } = useAnimatedPanel(
     inspectorOpen,
     inspectorWidth,
     !compact,
-    inspectorElementRef,
+    inspectorOpen && compact,
   )
   const contentDialogOpen =
     settingsOpen ||
@@ -315,16 +298,19 @@ export function WorkspaceShell() {
             collapsible
             minSize="220px"
             maxSize="400px"
-            style={{ overflow: 'hidden' }}
+            style={{ overflow: 'hidden', position: 'relative' }}
           >
-            <div
-              className="workspace-panel-content"
-              data-panel-open={dockedSidebarOpen}
-              aria-hidden={!dockedSidebarOpen}
-              inert={!dockedSidebarOpen}
-            >
-              {navigationDocked && navigation()}
-            </div>
+            {navigationDocked && (
+              <div
+                className="workspace-panel-content"
+                data-side="left"
+                data-panel-open={dockedSidebarOpen}
+                aria-hidden={!dockedSidebarOpen}
+                inert={!dockedSidebarOpen}
+              >
+                {navigation()}
+              </div>
+            )}
           </ResizablePanel>
           <ResizableHandle
             aria-label="调整侧栏宽度"
@@ -397,18 +383,20 @@ export function WorkspaceShell() {
                   collapsible
                   minSize="300px"
                   maxSize="560px"
-                  style={{ overflow: 'hidden' }}
+                  style={{ overflow: 'hidden', position: 'relative' }}
                 >
-                  <div
-                    data-slot="workspace-inspector-frame"
-                    className="workspace-surface workspace-panel-content bg-card"
-                    data-side="right"
-                    data-panel-open={dockedInspectorOpen}
-                    aria-hidden={!dockedInspectorOpen}
-                    inert={!dockedInspectorOpen}
-                  >
-                    {inspectorDocked && inspector}
-                  </div>
+                  {inspectorDocked && (
+                    <div
+                      data-slot="workspace-inspector-frame"
+                      className="workspace-surface workspace-panel-content bg-card"
+                      data-side="right"
+                      data-panel-open={dockedInspectorOpen}
+                      aria-hidden={!dockedInspectorOpen}
+                      inert={!dockedInspectorOpen}
+                    >
+                      {inspector}
+                    </div>
+                  )}
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
