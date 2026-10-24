@@ -352,6 +352,52 @@ test('pinned chats sort first, archived chats stay hidden and row actions never 
   expect(openSession).not.toHaveBeenCalled()
 })
 
+test.each([project.path, 'general'])(
+  'new session in %s is selected by its ID when Windows maps its file path',
+  (cwd) => {
+    const session = {
+      path: 'C:/Users/admin/AppData/Local/Packages/App/LocalCache/Local/hearth/sessions/new.jsonl',
+      id: 'new-session-id',
+      cwd,
+      title: '新建的讨论',
+      modified: 1,
+      messageCount: 2,
+    }
+    useWorkspaceStore.setState({
+      projects: [project],
+      projectPath: cwd === 'general' ? null : project.path,
+      generalCwd: 'general',
+      sessions: [session],
+    })
+    useConversationStore.setState({
+      instanceId: 'runtime',
+      sessionId: session.id,
+      sessionFile: 'C:/Users/admin/AppData/Local/hearth/sessions/new.jsonl',
+      status: 'ready',
+    })
+    render(
+      <WorkspaceNavigation
+        desktop
+        onCreate={vi.fn()}
+        onSettings={vi.fn()}
+        onInstructions={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: session.title })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      screen.getByRole('button', { name: session.title }).closest('[data-selected]'),
+    ).toHaveAttribute('data-selected', 'true')
+    act(() => useConversationStore.setState({ status: 'running' }))
+    expect(screen.getByRole('status', { name: '正在回复' })).toBeVisible()
+    act(() => useConversationStore.setState({ sessionId: 'another-session' }))
+    expect(screen.getByRole('button', { name: session.title })).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
+  },
+)
+
 test('only the replying session shows progress and terminal events always clear it', () => {
   const session = {
     path: 'D:/sessions/reply.jsonl',

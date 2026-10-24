@@ -347,10 +347,39 @@ test('local metadata preserves catalog titles, preferences and path identity wit
   })
   finishLocalReply()
   useWorkspaceStore.getState().syncActiveSession()
-  expect(useWorkspaceStore.getState().sessions).toEqual([
-    { ...session, path: session.path.toUpperCase(), modified: 3000 },
-  ])
+  expect(useWorkspaceStore.getState().sessions).toEqual([{ ...session, modified: 3000 }])
   expect(useWorkspaceStore.getState().sessionPreferences[session.path]?.pinned).toBe(true)
+})
+
+test('a new session stays selected through local events and catalog refresh with a Windows path alias', async () => {
+  const native = {
+    ...session,
+    path: 'C:/Users/admin/AppData/Local/Packages/App/LocalCache/Local/hearth/sessions/new.jsonl',
+  }
+  const runtimePath = 'C:/Users/admin/AppData/Local/hearth/sessions/new.jsonl'
+  useWorkspaceStore.setState({
+    ...catalog,
+    initialized: true,
+    sessions: [native],
+    projectPath: session.cwd,
+  })
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    sessionId: native.id,
+    sessionFile: runtimePath,
+  })
+  finishLocalReply()
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(useWorkspaceStore.getState().sessions).toEqual([{ ...native, modified: 3000 }])
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe(native.path)
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    sessions: [{ ...native, modified: 3000 }],
+  })
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe(native.path)
+  await useWorkspaceStore.getState().openSession(native)
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
 })
 
 test('a general conversation uses its connection target instead of a stale selected project', () => {

@@ -31,7 +31,12 @@ import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { openProjectFolder } from '@/lib/desktop'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
-import { sessionKey, sessionPreference, visibleSessions } from '@/lib/session-preferences'
+import {
+  isCurrentSession,
+  sessionKey,
+  sessionPreference,
+  visibleSessions,
+} from '@/lib/session-preferences'
 import { useNavigationTabs } from './use-navigation-tabs'
 import { hasPath, orderedProjects, sessionGroup } from '@/lib/navigation-order'
 import { useNavigationSort } from './use-navigation-sort'
@@ -68,9 +73,14 @@ export function WorkspaceNavigation({
   onInstructions: (project: ProjectInfo) => void
 }) {
   const workspace = useWorkspaceStore()
-  const { status, sessionFile } = useConversationStore(
-    useShallow((state) => ({ status: state.status, sessionFile: state.sessionFile })),
+  const conversation = useConversationStore(
+    useShallow((state) => ({
+      status: state.status,
+      sessionId: state.sessionId,
+      sessionFile: state.sessionFile,
+    })),
   )
+  const { status } = conversation
   const { filter, contentFilter, leaving, viewportRef, rememberScroll, selectFilter } =
     useNavigationTabs()
   const tooltipId = useId()
@@ -106,7 +116,7 @@ export function WorkspaceNavigation({
   ).filter((session) => !hasPath(workspace.archivedProjects, session.cwd))
   const rows = (sessions: SessionInfo[]) =>
     sessions.map((session) => {
-      const selected = samePath(session.path, sessionFile)
+      const selected = isCurrentSession(session, conversation)
       const pinned = sessionPreference(workspace.sessionPreferences, session.path).pinned
       return (
         <div

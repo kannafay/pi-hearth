@@ -25,6 +25,7 @@ import {
 import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
 import {
   sessionKey,
+  isCurrentSession,
   sessionPreference,
   visibleSessions,
   type SessionPreferences,
@@ -174,7 +175,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!name || name.length > 160 || /[\r\n]/.test(name))
       throw new Error('请输入 1–160 个字符的会话标题。')
     if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
-    if (busy() && samePath(session.path, useConversationStore.getState().sessionFile))
+    if (busy() && isCurrentSession(session, useConversationStore.getState()))
       throw new Error('请等待当前回复结束后再重命名。')
     sessionRevision++
     set({ sessionActionPending: session.path, error: null })
@@ -291,10 +292,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await changeSessionPreference(session, { pinned: !preference.pinned })
   },
   setSessionArchived: async (session, archived) => {
-    if (archived && busy() && samePath(session.path, useConversationStore.getState().sessionFile))
+    if (archived && busy() && isCurrentSession(session, useConversationStore.getState()))
       return false
     if (!(await changeSessionPreference(session, { archived }))) return false
-    if (archived && samePath(session.path, useConversationStore.getState().sessionFile)) {
+    if (archived && isCurrentSession(session, useConversationStore.getState())) {
       await get().newConversation(get().projectPath)
     }
     return true
@@ -499,14 +500,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ? (connectionTarget.projectPath ?? get().generalCwd)
       : (get().projectPath ?? get().generalCwd)
     if (!cwd) return
-    const previous = get().sessions.find((session) => samePath(session.path, sessionFile))
+    const previous = get().sessions.find((session) => isCurrentSession(session, conversation))
     const modified = messages.reduce(
       (latest, message) =>
         Math.max(latest, message.timestamp ?? 0, message.startedAt ?? 0, message.finishedAt ?? 0),
       Math.max(previous?.modified ?? 0, conversation.lastLocalActivityAt ?? 0),
     )
     const session: SessionInfo = {
-      path: sessionFile,
+      path: previous?.path ?? sessionFile,
       id: sessionId,
       cwd,
       title: previous?.title ?? (firstUserMessage.text.trim() || '未命名会话').slice(0, 160),
@@ -519,16 +520,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       samePath(previous.cwd, cwd) &&
       previous.modified === session.modified &&
       previous.messageCount === session.messageCount &&
-      samePath(get().selectedSessionPath, sessionFile)
+      samePath(get().selectedSessionPath, session.path)
     )
       return
     // A catalog requested before this local change must not erase its new row.
     sessionRevision++
     set((state) => ({
       sessions: previous
-        ? state.sessions.map((item) => (samePath(item.path, sessionFile) ? session : item))
+        ? state.sessions.map((item) => (samePath(item.path, session.path) ? session : item))
         : [session, ...state.sessions],
-      selectedSessionPath: sessionFile,
+      selectedSessionPath: session.path,
     }))
   },
   refresh: async () => {
@@ -552,14 +553,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const conversation = useConversationStore.getState()
       if (conversation.settingsPending) return
       const path = conversation.sessionFile
-      const previous = get().sessions.find((session) => samePath(session.path, path))
-      const next = catalog.sessions.find((session) => samePath(session.path, path))
+      const previous = get().sessions.find((session) => isCurrentSession(session, conversation))
+      const next = catalog.sessions.find((session) => isCurrentSession(session, conversation))
       const connecting = conversation.status === 'connecting'
       set({
         ...catalogState(catalog),
         // New native sessions may not be written to disk until the first reply ends.
         ...(busy() && previous && !next ? { sessions: [previous, ...catalog.sessions] } : {}),
-        ...(connecting ? {} : { selectedSessionPath: path }),
+        ...(connecting ? {} : { selectedSessionPath: next?.path ?? previous?.path ?? path }),
         error: null,
       })
       // Catalog activity uses message timestamps. Local run completion already covers
@@ -590,7 +591,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (busy()) return
     const conversation = useConversationStore.getState()
     if (
-      samePath(conversation.sessionFile, session.path) &&
+      isCurrentSession(session, conversation) &&
       ['ready', 'connecting'].includes(conversation.status)
     )
       return

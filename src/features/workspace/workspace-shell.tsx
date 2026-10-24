@@ -22,7 +22,7 @@ import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
-import { sessionKey } from '@/lib/session-preferences'
+import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
 
 export function WorkspaceShell() {
   useWindowResizeMotion()
@@ -45,6 +45,7 @@ export function WorkspaceShell() {
   const conversation = useConversationStore(
     useShallow((state) => ({
       sessionFile: state.sessionFile,
+      sessionId: state.sessionId,
       firstUserText: state.messages.find((message) => message.role === 'user')?.text,
     })),
   )
@@ -68,7 +69,7 @@ export function WorkspaceShell() {
   const projectName =
     workspace.projects.find((item) => sessionKey(item.path) === sessionKey(projectPath))?.name ??
     projectPath?.split(/[\\/]/).filter(Boolean).at(-1)
-  const session = workspace.sessions.find((session) => session.path === conversation.sessionFile)
+  const session = workspace.sessions.find((session) => isCurrentSession(session, conversation))
   const themeIndex = themeOptions.findIndex((item) => item.value === theme)
   const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]
   const nextTheme = themeOptions[(themeIndex + 1) % themeOptions.length]
@@ -82,6 +83,7 @@ export function WorkspaceShell() {
           (previous.activeRunId !== null && state.activeRunId === null))
       if (
         state.instanceId !== previous.instanceId ||
+        state.sessionId !== previous.sessionId ||
         state.sessionFile !== previous.sessionFile ||
         state.messages.length !== previous.messages.length ||
         finished

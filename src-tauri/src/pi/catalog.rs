@@ -164,13 +164,14 @@ fn project(path: &Path) -> ProjectInfo {
 }
 
 pub async fn load_catalog(data: &Path) -> Result<WorkspaceCatalog, String> {
-    let prefs = preferences(data).await?;
+    let mut prefs = preferences(data).await?;
     let general = data.join("workspace");
     tokio::fs::create_dir_all(&general)
         .await
         .map_err(|_| "无法创建普通对话工作目录。")?;
     let general = dunce::canonicalize(general).map_err(|_| "无法访问普通对话目录。")?;
     let sessions = list(data, &prefs).await?;
+    resolve_selection(&mut prefs.selection, &sessions);
     let removed = storage::settings(data).await?.removed_projects;
     let mut projects = prefs.projects;
     projects.retain(|project| !removed.iter().any(|path| same_path(path, &project.path)));
@@ -193,6 +194,27 @@ pub async fn load_catalog(data: &Path) -> Result<WorkspaceCatalog, String> {
         selection: prefs.selection,
         session_preferences: prefs.session_preferences,
     })
+}
+
+fn resolve_selection(selection: &mut Selection, sessions: &[SessionInfo]) {
+    let Some(path) = selection.session_path.as_deref() else {
+        return;
+    };
+    if sessions
+        .iter()
+        .any(|session| same_path(&session.path, path))
+    {
+        return;
+    }
+    // Persisted selections can use the logical AppData path while the catalog
+    // exposes Windows' redirected path to the same native history file.
+    if let Ok(real) = dunce::canonicalize(path)
+        && let Some(session) = sessions
+            .iter()
+            .find(|session| same_path(&session.path, &real.to_string_lossy()))
+    {
+        selection.session_path = Some(session.path.clone());
+    }
 }
 
 pub fn same_path(a: &str, b: &str) -> bool {
@@ -807,6 +829,58 @@ pub async fn pi_open(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_selection_resolves_a_directory_alias_to_the_catalog_history() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/selection-alias-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let real_store = root.join("actual");
+        let alias_store = root.join("logical");
+        std::fs::create_dir_all(&real_store).unwrap();
+        let history = real_store.join("history.jsonl");
+        std::fs::write(&history, "native history").unwrap();
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            assert!(std::process::Command::new("node")
+                .arg("-e")
+                .arg("require('node:fs').symlinkSync(process.argv[1], process.argv[2], 'junction')")
+                .arg(&real_store)
+                .arg(&alias_store)
+                .creation_flags(0x08000000)
+                .status()
+                .unwrap()
+                .success());
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_store, &alias_store).unwrap();
+        let canonical = dunce::canonicalize(&history)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let sessions = vec![SessionInfo {
+            path: canonical.clone(),
+            id: "native-session".into(),
+            cwd: "project".into(),
+            title: "existing conversation".into(),
+            modified: 1,
+            message_count: 2,
+        }];
+        let mut selection = Selection {
+            project_path: Some("project".into()),
+            session_path: Some(alias_store.join("history.jsonl").to_string_lossy().into()),
+        };
+        resolve_selection(&mut selection, &sessions);
+        assert_eq!(selection.session_path.as_deref(), Some(canonical.as_str()));
+        assert_eq!(selection.project_path.as_deref(), Some("project"));
+        assert_eq!(std::fs::read_to_string(history).unwrap(), "native history");
+        #[cfg(windows)]
+        std::fs::remove_dir(alias_store).unwrap();
+        #[cfg(unix)]
+        std::fs::remove_file(alias_store).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     async fn archived_fixture() -> (PathBuf, Preferences, Vec<SessionInfo>) {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
