@@ -206,6 +206,112 @@ test('search returns to an empty query after its closing transition and reopenin
   expect(screen.getByText('最近会话')).toBeVisible()
 })
 
+test.each(['button', 'shortcut'])(
+  'search opens above settings using %s and returns to the same page',
+  async (entry) => {
+    const user = userEvent.setup()
+    render(<WorkspaceShell />)
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    await user.click(within(settings).getByRole('tab', { name: '存储' }))
+    const search = screen.getByRole('button', { name: '搜索会话' })
+    expect(search).toBeEnabled()
+    if (entry === 'button') await user.click(search)
+    else await user.keyboard('{Control>}k{/Control}')
+    const popup = await screen.findByRole('dialog', { name: '搜索会话' })
+    expect(within(popup).getByRole('combobox')).toHaveFocus()
+    await user.click(search)
+    expect(within(popup).getByRole('combobox')).toHaveFocus()
+    expect(settings).toHaveAttribute('inert')
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+    )
+    expect(settings).not.toHaveAttribute('inert')
+    expect(within(settings).getByRole('tab', { name: '存储' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('main').closest('.workspace-body')).toHaveAttribute('inert')
+  },
+)
+
+test('search preserves an unfinished project form and restores keyboard focus', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '创建项目' }))
+  const project = await screen.findByRole('dialog', { name: '新建项目' })
+  const name = within(project).getByRole('textbox', { name: '项目名称' })
+  await user.type(name, '尚未保存的项目')
+  await user.keyboard('{Control>}k{/Control}')
+  const search = await screen.findByRole('combobox', { name: '搜索项目、标题或对话内容' })
+  expect(search).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  expect(search).toHaveFocus()
+  await user.keyboard('{Control>}k{/Control}')
+  expect(search).toHaveFocus()
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+  )
+  expect(project).not.toHaveAttribute('inert')
+  expect(name).toHaveValue('尚未保存的项目')
+  await waitFor(() => expect(name).toHaveFocus())
+})
+
+test.each(['left', 'right'])('search remains usable over the %s floating panel', async (side) => {
+  vi.mocked(useMediaQuery).mockReturnValue(true)
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(
+    screen.getByRole('button', { name: side === 'left' ? '展开侧栏' : '打开查看面板' }),
+  )
+  const panel = await screen.findByRole('dialog', {
+    name: side === 'left' ? '项目与会话' : '项目文件与变更',
+  })
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  expect(await screen.findByRole('dialog', { name: '搜索会话' })).toBeVisible()
+  expect(panel).toHaveAttribute('inert')
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+  )
+  expect(panel).not.toHaveAttribute('inert')
+  expect(panel).toBeVisible()
+})
+
+test('ordinary modal forms leave header search available and retain their draft', async () => {
+  useWorkspaceStore.setState({
+    sessions: [
+      {
+        id: 'one',
+        path: 'one.jsonl',
+        cwd: 'C:/chat',
+        title: '原会话',
+        modified: 0,
+        messageCount: 2,
+      },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '原会话 会话菜单' }))
+  await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
+  const rename = await screen.findByRole('dialog', { name: '重命名会话' })
+  const title = within(rename).getByRole('textbox', { name: '会话标题' })
+  await user.clear(title)
+  await user.type(title, '尚未保存的标题')
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  const search = await screen.findByRole('dialog', { name: '搜索会话' })
+  await user.click(within(search).getByRole('combobox'))
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+  )
+  expect(rename).not.toHaveAttribute('inert')
+  expect(title).toHaveValue('尚未保存的标题')
+})
+
 test('repeated sidebar toggles preserve its filter and the mounted conversation draft', async () => {
   const user = userEvent.setup()
   render(<WorkspaceShell />)

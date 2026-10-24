@@ -1,11 +1,12 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useWindowResizeMotion } from '@/app/use-window-resize-motion'
 import { IconButton } from '@/components/icon-button'
+import { DialogLayerProvider, useDialogLayers } from '@/components/dialog-layers'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDialogPresence } from '@/components/use-dialog-presence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
@@ -25,7 +26,16 @@ import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
 
 export function WorkspaceShell() {
+  return (
+    <DialogLayerProvider>
+      <WorkspaceLayout />
+    </DialogLayerProvider>
+  )
+}
+
+function WorkspaceLayout() {
   useWindowResizeMotion()
+  const dialogLayers = useDialogLayers()
   const workspace = useWorkspaceStore()
   const {
     projectPath,
@@ -51,6 +61,14 @@ export function WorkspaceShell() {
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const searchReturnFocus = useRef<HTMLElement>(null)
+  const openSearch = useCallback(() => {
+    if (!searchOpen && document.activeElement instanceof HTMLElement)
+      searchReturnFocus.current = document.activeElement
+    setSearchOpen(true)
+    searchInput.current?.focus()
+  }, [searchOpen])
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('changes')
   const [floatingSidebar, setFloatingSidebar] = useState({ narrow: false, open: false })
   const navigationState = useWorkspaceNavigation()
@@ -92,7 +110,10 @@ export function WorkspaceShell() {
     navigationState.deleteProject !== null ||
     navigationState.renameSession !== null
   const dialogOpen =
-    contentDialogOpen || (floatingSidebarOpen && narrow) || (inspectorOpen && compact)
+    contentDialogOpen ||
+    (floatingSidebarOpen && narrow) ||
+    (inspectorOpen && compact) ||
+    Boolean(dialogLayers?.layers.length)
   const desktop = isDesktop()
   const projectName =
     workspace.projects.find((item) => sessionKey(item.path) === sessionKey(projectPath))?.name ??
@@ -141,16 +162,15 @@ export function WorkspaceShell() {
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === 'k' &&
-        (!dialogOpen || searchOpen || (floatingSidebarOpen && narrow))
+        !event.isComposing
       ) {
         event.preventDefault()
-        setFloatingSidebarOpen(false)
-        setSearchOpen(true)
+        openSearch()
       }
     }
-    window.addEventListener('keydown', search)
-    return () => window.removeEventListener('keydown', search)
-  }, [dialogOpen, searchOpen, floatingSidebarOpen, narrow, setFloatingSidebarOpen])
+    window.addEventListener('keydown', search, true)
+    return () => window.removeEventListener('keydown', search, true)
+  }, [openSearch])
 
   function navigation() {
     return (
@@ -213,11 +233,7 @@ export function WorkspaceShell() {
           variant="titlebar"
           label="搜索会话"
           title="搜索会话 (Ctrl+K)"
-          onClick={() => {
-            setFloatingSidebarOpen(false)
-            setSearchOpen(true)
-          }}
-          disabled={dialogOpen && !searchOpen && !floatingSidebarOpen}
+          onClick={openSearch}
         >
           <Search />
         </IconButton>
@@ -428,7 +444,12 @@ export function WorkspaceShell() {
       )}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <WorkspaceNavigationDialogs navigation={navigationState} />
-      <SessionSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SessionSearchDialog
+        open={searchOpen}
+        inputRef={searchInput}
+        returnFocus={searchReturnFocus}
+        onClose={() => setSearchOpen(false)}
+      />
       <AttachmentPreviewDialog
         file={attachmentPreview}
         onClose={() => setAttachmentPreview(null)}

@@ -5,10 +5,62 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/scroll-area'
+import { useDialogLayers } from '@/components/dialog-layers'
 import { XIcon } from 'lucide-react'
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+const DialogLayerContext = React.createContext<{ suspended: boolean; zIndex?: number }>({
+  suspended: false,
+})
+
+function Dialog({
+  open,
+  defaultOpen = false,
+  modal = true,
+  priority = 0,
+  onOpenChange,
+  ...props
+}: DialogPrimitive.Root.Props & { priority?: number }) {
+  const id = React.useId()
+  const stack = useDialogLayers()
+  const register = stack?.register
+  const [localOpen, setLocalOpen] = React.useState(defaultOpen)
+  const visible = open ?? localOpen
+  React.useLayoutEffect(() => {
+    if (visible) return register?.({ id, priority })
+  }, [visible, register, id, priority])
+  const index = stack?.layers.findIndex((layer) => layer.id === id) ?? -1
+  const suspended = Boolean(stack && index >= 0 && index < stack.layers.length - 1)
+  const layer = {
+    suspended,
+    zIndex: stack ? 50 + priority : undefined,
+  }
+  return (
+    <DialogLayerContext value={layer}>
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        {...props}
+        open={open}
+        defaultOpen={defaultOpen}
+        modal={stack ? false : modal}
+        onOpenChange={(next, details) => {
+          const target = details.event.target
+          if (
+            !next &&
+            (suspended ||
+              details.reason === 'focus-out' ||
+              (details.reason === 'outside-press' &&
+                target instanceof Element &&
+                target.closest('[data-window-header]')))
+          ) {
+            details.cancel()
+            return
+          }
+          onOpenChange?.(next, details)
+          if (!details.isCanceled) setLocalOpen(next)
+        }}
+      />
+    </DialogLayerContext>
+  )
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -23,12 +75,15 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) {
+function DialogOverlay({ className, style, ...props }: DialogPrimitive.Backdrop.Props) {
+  const { suspended, zIndex } = React.useContext(DialogLayerContext)
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn('fixed inset-0 isolate z-50', className)}
       {...props}
+      inert={suspended || undefined}
+      style={{ ...style, zIndex }}
     />
   )
 }
@@ -73,11 +128,13 @@ function DialogContent({
   layout = 'default',
   side = 'right',
   keepMounted = false,
+  style,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   keepMounted?: boolean
 } & VariantProps<typeof dialogContentVariants>) {
+  const { suspended, zIndex } = React.useContext(DialogLayerContext)
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay data-dialog-layout={layout} />
@@ -88,6 +145,9 @@ function DialogContent({
         data-size={size}
         className={cn(dialogContentVariants({ size, layout, side }), className)}
         {...props}
+        inert={suspended || props.inert}
+        aria-hidden={suspended || props['aria-hidden']}
+        style={{ ...style, zIndex }}
       >
         {children}
         {showCloseButton && (

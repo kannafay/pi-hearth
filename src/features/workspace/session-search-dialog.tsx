@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { ArrowUpRight, LoaderCircle, MessageSquare, Search } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
@@ -33,10 +33,14 @@ export function SessionSearchDialog({
   open = true,
   onClose,
   onOpenChangeComplete,
+  inputRef,
+  returnFocus,
 }: {
   open?: boolean
   onClose: () => void
   onOpenChangeComplete?: (open: boolean) => void
+  inputRef?: RefObject<HTMLInputElement | null>
+  returnFocus?: RefObject<HTMLElement | null>
 }) {
   const workspace = useWorkspaceStore()
   const status = useConversationStore((state) => state.status)
@@ -50,7 +54,8 @@ export function SessionSearchDialog({
   const [active, setActive] = useState(0)
   const [retry, setRetry] = useState(0)
   const list = useRef<HTMLDivElement>(null)
-  const input = useRef<HTMLInputElement>(null)
+  const internalInput = useRef<HTMLInputElement>(null)
+  const input = inputRef ?? internalInput
   const id = useId()
   const desktop = isDesktop()
   const term = query.trim()
@@ -114,6 +119,7 @@ export function SessionSearchDialog({
 
   return (
     <WorkspaceDialog
+      priority={1}
       open={open}
       onOpenChangeComplete={(open) => {
         if (!open) {
@@ -121,6 +127,9 @@ export function SessionSearchDialog({
           setResponse({ query: '', attempt: 0, results: [], error: null })
           setActive(0)
           setRetry(0)
+          const target = returnFocus?.current
+          if (target?.isConnected && !target.closest('[inert]'))
+            target.focus({ preventScroll: true })
         }
         onOpenChangeComplete?.(open)
       }}
@@ -130,6 +139,7 @@ export function SessionSearchDialog({
     >
       <DialogContent
         initialFocus={input}
+        finalFocus={returnFocus ? false : undefined}
         layout="panel"
         size="search"
         className="h-[min(560px,calc(100dvh-112px))]"
