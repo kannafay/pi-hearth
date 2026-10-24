@@ -58,8 +58,8 @@
   --panel-duration: 240ms;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --sidebar-row-selected: var(--background);
-  --floating-panel-background: #ececec;
-  --floating-panel-overlay: oklch(0.18 0.006 300 / 4%);
+  --floating-panel-background: #f7f7f7;
+  --floating-panel-overlay: oklch(0 0 0 / 8%);
   --floating-panel-shadow:
     0 8px 24px -8px oklch(0.12 0.01 300 / 16%), 0 2px 8px -4px oklch(0.12 0.01 300 / 10%);
   --dialog-duration: 240ms;
