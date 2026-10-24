@@ -52,7 +52,7 @@ function SettingsPanel({
     <TabsContent
       value={value}
       aria-label={title}
-      className="settings-panel m-0 flex min-h-0 flex-col"
+      className="settings-panel m-0 flex min-h-0 flex-col max-sm:wrap-anywhere"
     >
       <div className="shrink-0 px-(--settings-page-inset) pt-5 max-sm:pt-4">
         <SettingsPageHeader title={title} description={description} />
