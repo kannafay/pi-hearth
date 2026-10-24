@@ -358,7 +358,7 @@ export function WorkspaceNavigationContent({
               style={{
                 translate: `${navigationFilters.findIndex(([value]) => value === filter) * 100}%`,
               }}
-              className="sidebar-tab-indicator absolute inset-y-0.5 left-0.5 w-[calc((100%-4px)/3)] rounded-md bg-sidebar-accent shadow-xs"
+              className="sidebar-tab-indicator absolute inset-y-0.5 left-0.5 w-[calc((100%-4px)/3)] rounded-md bg-background shadow-xs"
             />
           </Tabs.List>
         </div>
