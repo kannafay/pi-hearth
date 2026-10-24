@@ -300,6 +300,148 @@ test('compact inspector can be opened and closed from the header while the works
   expect(workspace).not.toHaveAttribute('inert')
 })
 
+test('narrow windows automatically hide the sidebar without changing its saved width or open preference', async () => {
+  let narrow = false
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(width < 960px)' ? narrow : true,
+  )
+  useWorkspaceStore.setState({ navigationWidth: 352 })
+  const user = userEvent.setup()
+  const view = render(<WorkspaceShell />)
+  const draft = screen.getByRole('textbox', { name: '消息' })
+  await user.type(draft, '缩放时保留草稿')
+  await user.click(screen.getByRole('tab', { name: '聊天' }))
+
+  narrow = true
+  view.rerender(<WorkspaceShell />)
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toHaveAttribute('aria-expanded', 'false')
+  expect(draft.closest('.workspace-body')).toHaveAttribute('data-sidebar-open', 'false')
+  expect(useWorkspaceStore.getState()).toMatchObject({ sidebarOpen: true, navigationWidth: 352 })
+
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  const drawer = await screen.findByRole('dialog', { name: '项目与会话' })
+  expect(drawer).toHaveAttribute('data-side', 'left')
+  expect(drawer).toHaveStyle({ width: '352px' })
+  expect(within(drawer).getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getAllByRole('navigation')).toHaveLength(1)
+  expect(draft.closest('.workspace-body')).toHaveAttribute('inert')
+  await user.click(screen.getByRole('button', { name: '收起侧栏' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(draft.closest('.workspace-body')).not.toHaveAttribute('inert')
+
+  narrow = false
+  view.rerender(<WorkspaceShell />)
+  expect(screen.getByRole('navigation')).toBeVisible()
+  expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('textbox', { name: '消息' })).toBe(draft)
+  expect(draft).toHaveValue('缩放时保留草稿')
+  expect(useWorkspaceStore.getState()).toMatchObject({ sidebarOpen: true, navigationWidth: 352 })
+})
+
+test('floating navigation keeps its tab, dismisses on escape or backdrop, and hands off to other panels', async () => {
+  vi.mocked(useMediaQuery).mockReturnValue(true)
+  useWorkspaceStore.setState({ sidebarOpen: false })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  const main = screen.getByRole('main')
+
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  await user.click(screen.getByRole('tab', { name: '聊天' }))
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+  await user.click(document.querySelector('[data-slot="dialog-overlay"]:not([hidden])')!)
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  await user.click(screen.getByRole('button', { name: '打开查看面板' }))
+  expect(await screen.findByRole('dialog', { name: '项目文件与变更' })).toBeVisible()
+  expect(screen.queryByRole('dialog', { name: '项目与会话' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  expect(await screen.findByRole('dialog', { name: '项目与会话' })).toBeVisible()
+  expect(screen.queryByRole('dialog', { name: '项目文件与变更' })).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: '设置' }))
+  expect(await screen.findByRole('dialog', { name: '设置' })).toBeVisible()
+  expect(screen.queryByRole('dialog', { name: '项目与会话' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toBeDisabled()
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(main.closest('.workspace-body')).not.toHaveAttribute('inert')
+  expect(useWorkspaceStore.getState().sidebarOpen).toBe(false)
+})
+
+test('choosing a conversation closes floating navigation and expanding the window preserves a manually hidden sidebar', async () => {
+  let narrow = true
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(width < 960px)' ? narrow : true,
+  )
+  const openSession = vi.fn().mockResolvedValue(undefined)
+  useWorkspaceStore.setState({
+    sidebarOpen: false,
+    sessions: [
+      {
+        id: 'native',
+        path: 'chat.jsonl',
+        cwd: 'C:/chat',
+        title: '测试会话',
+        modified: 0,
+        messageCount: 2,
+      },
+    ],
+    openSession,
+  })
+  const user = userEvent.setup()
+  const view = render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  await user.click(screen.getByRole('button', { name: '测试会话' }))
+  expect(openSession).toHaveBeenCalledExactlyOnceWith(useWorkspaceStore.getState().sessions[0])
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  narrow = false
+  view.rerender(<WorkspaceShell />)
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  expect(useWorkspaceStore.getState().sidebarOpen).toBe(false)
+})
+
+test('resizing across the sidebar breakpoint preserves an in-progress session rename', async () => {
+  let narrow = false
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(width < 960px)' ? narrow : true,
+  )
+  useWorkspaceStore.setState({
+    sessions: [
+      {
+        id: 'native',
+        path: 'chat.jsonl',
+        cwd: 'C:/chat',
+        title: '原标题',
+        modified: 0,
+        messageCount: 2,
+      },
+    ],
+  })
+  const user = userEvent.setup()
+  const view = render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '原标题 会话菜单' }))
+  await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
+  const title = await screen.findByRole('textbox', { name: '会话标题' })
+  await user.clear(title)
+  await user.type(title, '未保存的标题')
+
+  for (const next of [true, false, true]) {
+    narrow = next
+    view.rerender(<WorkspaceShell />)
+    expect(screen.getByRole('dialog', { name: '重命名会话' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: '会话标题' })).toBe(title)
+    expect(title).toHaveValue('未保存的标题')
+  }
+  await user.click(screen.getByRole('button', { name: '取消' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('main').closest('.workspace-body')).not.toHaveAttribute('inert')
+})
+
 test('attachment previews lock only the workspace and closing restores the draft', async () => {
   useWorkspaceStore.setState({
     attachmentPreview: {

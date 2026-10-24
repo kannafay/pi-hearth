@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { createPortal } from 'react-dom'
 import { Tabs } from '@base-ui/react/tabs'
 import {
@@ -37,12 +37,11 @@ import {
   sessionPreference,
   visibleSessions,
 } from '@/lib/session-preferences'
-import { useNavigationTabs } from './use-navigation-tabs'
+import { useWorkspaceNavigation } from './use-workspace-navigation'
 import { hasPath, orderedProjects, sessionGroup } from '@/lib/navigation-order'
 import { useNavigationSort } from './use-navigation-sort'
 import { ProjectDeleteDialog } from './project-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
-import { useDialogPresence } from '@/components/use-dialog-presence'
 
 const navigationFilters = [
   ['all', '全部', LayoutGrid],
@@ -61,17 +60,32 @@ function sessionTime(modified: number) {
   return `${Math.floor(minutes / 1440)}天前`
 }
 
-export function WorkspaceNavigation({
-  desktop,
-  onCreate,
-  onSettings,
-  onInstructions,
-}: {
+type NavigationProps = {
   desktop: boolean
   onCreate: () => void
   onSettings: () => void
   onInstructions: (project: ProjectInfo) => void
-}) {
+  onNavigate?: () => void
+}
+
+export function WorkspaceNavigation(props: NavigationProps) {
+  const navigation = useWorkspaceNavigation()
+  return (
+    <>
+      <WorkspaceNavigationContent {...props} navigation={navigation} />
+      <WorkspaceNavigationDialogs navigation={navigation} />
+    </>
+  )
+}
+
+export function WorkspaceNavigationContent({
+  desktop,
+  onCreate,
+  onSettings,
+  onInstructions,
+  onNavigate,
+  navigation,
+}: NavigationProps & { navigation: ReturnType<typeof useWorkspaceNavigation> }) {
   const workspace = useWorkspaceStore()
   const conversation = useConversationStore(
     useShallow((state) => ({
@@ -82,11 +96,9 @@ export function WorkspaceNavigation({
   )
   const { status } = conversation
   const { filter, contentFilter, leaving, viewportRef, rememberScroll, selectFilter } =
-    useNavigationTabs()
+    navigation.tabs
   const tooltipId = useId()
-  const [deleteProject, setDeleteProject] = useState<ProjectInfo | null>(null)
-  const [renameSession, setRenameSession] = useState<SessionInfo | null>(null)
-  const renamePresence = useDialogPresence(renameSession)
+  const { setDeleteProject, setRenameSession } = navigation
   const {
     rootRef: sortRootRef,
     descriptionId: sortDescriptionId,
@@ -140,7 +152,10 @@ export function WorkspaceNavigation({
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)} ${sortDescriptionId}`}
                   disabled={!desktop || busy}
-                  onClick={() => void workspace.openSession(session)}
+                  onClick={() => {
+                    void workspace.openSession(session)
+                    onNavigate?.()
+                  }}
                 />
               }
             >
@@ -295,7 +310,10 @@ export function WorkspaceNavigation({
           variant="ghost"
           className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
           disabled={!desktop || busy}
-          onClick={() => void workspace.newConversation(null)}
+          onClick={() => {
+            void workspace.newConversation(null)
+            onNavigate?.()
+          }}
         >
           <SquarePen className="size-4 stroke-[1.6]" />
           新对话
@@ -422,7 +440,10 @@ export function WorkspaceNavigation({
                             className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
                             aria-label={`在 ${project.name} 中新建对话`}
                             disabled={!desktop || busy}
-                            onClick={() => void workspace.newConversation(project.path)}
+                            onClick={() => {
+                              void workspace.newConversation(project.path)
+                              onNavigate?.()
+                            }}
                           >
                             <Plus className="size-3.5" />
                           </Button>
@@ -537,7 +558,10 @@ export function WorkspaceNavigation({
                     size="icon-xs"
                     variant="ghost"
                     disabled={!desktop || busy}
-                    onClick={() => void workspace.newConversation(null)}
+                    onClick={() => {
+                      void workspace.newConversation(null)
+                      onNavigate?.()
+                    }}
                   >
                     <Plus className="size-3.5" />
                   </Button>
@@ -559,6 +583,19 @@ export function WorkspaceNavigation({
         <Settings className="size-4 stroke-[1.6]" />
         设置
       </Button>
+    </nav>
+  )
+}
+
+export function WorkspaceNavigationDialogs({
+  navigation,
+}: {
+  navigation: ReturnType<typeof useWorkspaceNavigation>
+}) {
+  const { deleteProject, setDeleteProject, renameSession, setRenameSession, renamePresence } =
+    navigation
+  return (
+    <>
       <ProjectDeleteDialog project={deleteProject} onClose={() => setDeleteProject(null)} />
       {renamePresence.value && (
         <SessionRenameDialog
@@ -569,6 +606,6 @@ export function WorkspaceNavigation({
           onOpenChangeComplete={renamePresence.onOpenChangeComplete}
         />
       )}
-    </nav>
+    </>
   )
 }

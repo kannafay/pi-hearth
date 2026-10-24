@@ -863,6 +863,13 @@ select {
   transform: translateX(12px);
 }
 
+[data-slot='dialog-content'][data-dialog-layout='drawer'][data-side='left']:is(
+    [data-starting-style],
+    [data-ending-style]
+  ) {
+  transform: translateX(-12px);
+}
+
 /* Also animate dialogs that are mounted already open. */
 @starting-style {
   [data-slot='dialog-overlay'] {
@@ -876,6 +883,10 @@ select {
 
   [data-slot='dialog-content'][data-dialog-layout='drawer'] {
     transform: translateX(12px);
+  }
+
+  [data-slot='dialog-content'][data-dialog-layout='drawer'][data-side='left'] {
+    transform: translateX(-12px);
   }
 }
 

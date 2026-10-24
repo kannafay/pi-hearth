@@ -16,10 +16,11 @@ import { AttachmentPreviewDialog } from '@/features/conversation/attachment-prev
 import { useConversationStore } from '@/features/conversation/store'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
 import { Inspector } from './inspector'
-import { WorkspaceNavigation } from './workspace-navigation'
+import { WorkspaceNavigationContent, WorkspaceNavigationDialogs } from './workspace-navigation'
 import { ProjectDialog } from './project-dialog'
 import { SessionSearchDialog } from './session-search-dialog'
 import { useAnimatedPanel } from './use-animated-panel'
+import { useWorkspaceNavigation } from './use-workspace-navigation'
 import { controlWindow, isDesktop } from '@/lib/desktop'
 import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
@@ -51,20 +52,37 @@ export function WorkspaceShell() {
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [floatingSidebar, setFloatingSidebar] = useState({ narrow: false, open: false })
+  const navigationState = useWorkspaceNavigation()
+  const setFloatingSidebarOpen = useCallback(
+    (open: boolean) => setFloatingSidebar((state) => ({ ...state, open })),
+    [],
+  )
   const [projectDialog, setProjectDialog] = useState<ProjectInfo | 'create' | null>(null)
-  const createProject = useCallback(() => setProjectDialog('create'), [])
+  const createProject = useCallback(() => {
+    setFloatingSidebarOpen(false)
+    setProjectDialog('create')
+  }, [setFloatingSidebarOpen])
   const [error, setError] = useState<string | null>(null)
   const projectPresence = useDialogPresence(projectDialog)
   const compact = useMediaQuery('(max-width: 1199px)')
-  const navigationPanel = useAnimatedPanel(sidebarOpen, navigationWidth)
+  const narrow = useMediaQuery('(width < 960px)')
+  if (floatingSidebar.narrow !== narrow) setFloatingSidebar({ narrow, open: false })
+  const floatingSidebarOpen = floatingSidebar.narrow === narrow && floatingSidebar.open
+  const dockedSidebarOpen = sidebarOpen && !narrow
+  const sidebarVisible = narrow ? floatingSidebarOpen : sidebarOpen
+  const navigationPanel = useAnimatedPanel(dockedSidebarOpen, navigationWidth)
   const dockedInspectorOpen = inspectorOpen && !compact
   const inspectorPanel = useAnimatedPanel(dockedInspectorOpen, inspectorWidth)
-  const dialogOpen =
+  const contentDialogOpen =
     settingsOpen ||
     searchOpen ||
     projectDialog !== null ||
     attachmentPreview !== null ||
-    (inspectorOpen && compact)
+    navigationState.deleteProject !== null ||
+    navigationState.renameSession !== null
+  const dialogOpen =
+    contentDialogOpen || (floatingSidebarOpen && narrow) || (inspectorOpen && compact)
   const desktop = isDesktop()
   const projectName =
     workspace.projects.find((item) => sessionKey(item.path) === sessionKey(projectPath))?.name ??
@@ -112,15 +130,35 @@ export function WorkspaceShell() {
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === 'k' &&
-        (!dialogOpen || searchOpen)
+        (!dialogOpen || searchOpen || (floatingSidebarOpen && narrow))
       ) {
         event.preventDefault()
+        setFloatingSidebarOpen(false)
         setSearchOpen(true)
       }
     }
     window.addEventListener('keydown', search)
     return () => window.removeEventListener('keydown', search)
-  }, [dialogOpen, searchOpen])
+  }, [dialogOpen, searchOpen, floatingSidebarOpen, narrow, setFloatingSidebarOpen])
+
+  function navigation() {
+    return (
+      <WorkspaceNavigationContent
+        desktop={desktop}
+        navigation={navigationState}
+        onNavigate={() => setFloatingSidebarOpen(false)}
+        onCreate={createProject}
+        onSettings={() => {
+          setFloatingSidebarOpen(false)
+          setSettingsOpen(true)
+        }}
+        onInstructions={(project) => {
+          setFloatingSidebarOpen(false)
+          setProjectDialog(project)
+        }}
+      />
+    )
+  }
 
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
     void controlWindow(action).catch((reason: unknown) => setError(String(reason)))
@@ -145,14 +183,27 @@ export function WorkspaceShell() {
           />
           Pi Hearth
         </span>
-        <IconButton label={sidebarOpen ? '收起侧栏' : '展开侧栏'} onClick={toggleSidebar}>
+        <IconButton
+          label={sidebarVisible ? '收起侧栏' : '展开侧栏'}
+          aria-expanded={sidebarVisible}
+          disabled={narrow && contentDialogOpen}
+          onClick={() => {
+            if (narrow) {
+              if (!floatingSidebarOpen) setInspectorOpen(false)
+              setFloatingSidebarOpen(!floatingSidebarOpen)
+            } else toggleSidebar()
+          }}
+        >
           <PanelLeft />
         </IconButton>
         <IconButton
           label="搜索会话"
           title="搜索会话 (Ctrl+K)"
-          onClick={() => setSearchOpen(true)}
-          disabled={dialogOpen && !searchOpen}
+          onClick={() => {
+            setFloatingSidebarOpen(false)
+            setSearchOpen(true)
+          }}
+          disabled={dialogOpen && !searchOpen && !floatingSidebarOpen}
         >
           <Search />
         </IconButton>
@@ -167,7 +218,10 @@ export function WorkspaceShell() {
         <IconButton
           label={inspectorOpen ? '收起查看面板' : '打开查看面板'}
           aria-expanded={inspectorOpen}
-          onClick={() => setInspectorOpen(!inspectorOpen)}
+          onClick={() => {
+            setFloatingSidebarOpen(false)
+            setInspectorOpen(!inspectorOpen)
+          }}
         >
           <PanelRight />
         </IconButton>
@@ -207,14 +261,14 @@ export function WorkspaceShell() {
       )}
       <div
         className="workspace-body min-h-0 flex-1"
-        data-sidebar-open={sidebarOpen}
+        data-sidebar-open={dockedSidebarOpen}
         inert={dialogOpen}
       >
         <ResizablePanelGroup
           orientation="horizontal"
           className="workspace-panel-group"
           onLayoutChanged={(layout, { isUserInteraction }) => {
-            if (!isUserInteraction) return
+            if (!isUserInteraction || narrow) return
             const open = layout.navigation > 0
             if (open !== sidebarOpen) toggleSidebar()
             const width = navigationPanel.panelRef.current?.getSize().inPixels
@@ -232,26 +286,21 @@ export function WorkspaceShell() {
           >
             <div
               className="workspace-panel-content"
-              data-panel-open={sidebarOpen}
-              aria-hidden={!sidebarOpen}
-              inert={!sidebarOpen}
+              data-panel-open={dockedSidebarOpen}
+              aria-hidden={!dockedSidebarOpen}
+              inert={!dockedSidebarOpen}
             >
-              <WorkspaceNavigation
-                desktop={desktop}
-                onCreate={createProject}
-                onSettings={() => setSettingsOpen(true)}
-                onInstructions={setProjectDialog}
-              />
+              {!narrow && navigation()}
             </div>
           </ResizablePanel>
           <ResizableHandle
             aria-label="调整侧栏宽度"
             className="workspace-panel-separator z-10 w-0 bg-transparent after:w-2.5"
-            data-panel-open={sidebarOpen}
-            disabled={!sidebarOpen}
+            data-panel-open={dockedSidebarOpen}
+            disabled={!dockedSidebarOpen}
             disableDoubleClick
             onDoubleClick={() => {
-              if (!sidebarOpen) return
+              if (!dockedSidebarOpen) return
               const width = useWorkspaceStore.getInitialState().navigationWidth
               navigationPanel.panelRef.current?.resize(`${width}px`)
               setNavigationWidth(width)
@@ -320,6 +369,23 @@ export function WorkspaceShell() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+      {narrow && (
+        <WorkspaceDialog open={floatingSidebarOpen} onOpenChange={setFloatingSidebarOpen}>
+          <DialogContent
+            showCloseButton={false}
+            layout="drawer"
+            side="left"
+            keepMounted
+            style={{ width: navigationWidth }}
+          >
+            <DialogTitle className="sr-only">项目与会话</DialogTitle>
+            <DialogDescription className="sr-only">
+              选择项目、切换会话或打开设置。
+            </DialogDescription>
+            {navigation()}
+          </DialogContent>
+        </WorkspaceDialog>
+      )}
       <WorkspaceDialog open={inspectorOpen && compact} onOpenChange={setInspectorOpen}>
         <DialogContent showCloseButton={false} layout="drawer">
           <DialogTitle className="sr-only">项目文件与变更</DialogTitle>
@@ -328,6 +394,7 @@ export function WorkspaceShell() {
         </DialogContent>
       </WorkspaceDialog>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <WorkspaceNavigationDialogs navigation={navigationState} />
       <SessionSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
       <AttachmentPreviewDialog
         file={attachmentPreview}

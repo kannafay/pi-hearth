@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TabsTabActivationDirection } from '@base-ui/react/tabs'
 
 const reducedMotionQuery = '(prefers-reduced-motion: reduce)'
@@ -39,6 +39,12 @@ export function useNavigationTabs() {
       () => {},
     )
   }
+
+  const attachViewport = useCallback((element: HTMLDivElement | null) => {
+    if (viewportRef.current) positions.current[displayed.current] = viewportRef.current.scrollTop
+    viewportRef.current = element
+    if (element) element.scrollTop = positions.current[displayed.current] ?? 0
+  }, [])
 
   useLayoutEffect(() => {
     if (displayed.current !== contentFilter) {
@@ -111,7 +117,7 @@ export function useNavigationTabs() {
     filter,
     contentFilter,
     leaving: filter !== contentFilter,
-    viewportRef,
+    viewportRef: attachViewport,
     rememberScroll,
     selectFilter,
   }
