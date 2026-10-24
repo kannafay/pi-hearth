@@ -88,7 +88,7 @@ export function useAnimatedPanel(
       .getPropertyValue('--panel-duration')
       .trim()
     const configuredDuration = Number.parseFloat(value) * (value.endsWith('ms') ? 1 : 1000)
-    const duration = reduced ? 0 : Number.isFinite(configuredDuration) ? configuredDuration : 200
+    const duration = reduced ? 0 : Number.isFinite(configuredDuration) ? configuredDuration : 240
     if (placementChanged || (visibilityChanged && pendingHost.current === null)) finishMotion()
     groupRef.current = group
 

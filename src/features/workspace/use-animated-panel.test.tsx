@@ -139,7 +139,7 @@ test('keeps content at its expanded width through collapse and a rapid reopening
   expect(panel.contentWidth()).toBe('310px')
 
   panel.measure(310)
-  act(() => vi.advanceTimersByTime(100))
+  act(() => vi.advanceTimersByTime(140))
   panel.resize(340)
   expect(panel.contentWidth()).toBe('340px')
 })
@@ -149,7 +149,7 @@ test('reopens at its last pixel width after the group resizes while collapsed', 
   panel.resize(314)
   panel.toggle(false)
   panel.measure(0)
-  act(() => vi.advanceTimersByTime(220))
+  act(() => vi.advanceTimersByTime(260))
 
   panel.toggle(true)
   expect(panel.controller.resize).toHaveBeenLastCalledWith('314px')
@@ -165,7 +165,7 @@ test('uses an expanded content width on first opening and resyncs when settled',
   panel.measure(80)
   expect(panel.contentWidth()).toBe('260px')
   panel.measure(280)
-  act(() => vi.advanceTimersByTime(220))
+  act(() => vi.advanceTimersByTime(260))
   expect(panel.contentWidth()).toBe('280px')
 })
 
@@ -184,7 +184,7 @@ test('temporary constrained measurements never replace the preferred width acros
   expect(panel.contentWidth()).toBe('352px')
   expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
   expect(vi.getTimerCount()).toBe(1)
-  act(() => vi.advanceTimersByTime(168))
+  act(() => vi.advanceTimersByTime(208))
   expect(vi.getTimerCount()).toBe(0)
 })
 
@@ -232,20 +232,20 @@ function retainExitingFrame(panel: ReturnType<typeof renderPanel>) {
 }
 
 test.each(['left', 'right'] as const)(
-  'button and responsive closing use the same content state and 200ms lifetime on the %s',
+  'button and responsive closing use the same content state and 240ms lifetime on the %s',
   (side) => {
     const panel = renderPanel(true, 352, true, side)
     const frame = retainExitingFrame(panel)
     panel.toggle(false)
     expect(frame).toHaveAttribute('data-panel-open', 'false')
     expect(panel.element.parentElement).toHaveAttribute('data-panel-animating')
-    act(() => vi.advanceTimersByTime(199))
+    act(() => vi.advanceTimersByTime(239))
     expect(panel.element.parentElement).toHaveAttribute('data-panel-animating')
     act(() => vi.advanceTimersByTime(1))
     expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
 
     panel.toggle(true)
-    act(() => vi.advanceTimersByTime(200))
+    act(() => vi.advanceTimersByTime(240))
     panel.present(false)
     expect(panel.controller.collapse).toHaveBeenCalledTimes(2)
     expect(frame).toHaveAttribute('data-panel-open', 'false')
@@ -253,7 +253,7 @@ test.each(['left', 'right'] as const)(
     expect(frame).toHaveAttribute('data-panel-detached', side)
     expect(frame.style.getPropertyValue('--panel-detached-width')).toBe('352px')
     expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
-    act(() => vi.advanceTimersByTime(199))
+    act(() => vi.advanceTimersByTime(239))
     expect(frame).toContainElement(screen.getByTestId('shared-controls'))
     expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
     act(() => vi.advanceTimersByTime(1))
@@ -269,7 +269,7 @@ test('fixed layout restores before floating close completes, without animating i
   expect(panel.controller.resize).toHaveBeenLastCalledWith('352px')
   expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
   expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
-  act(() => vi.advanceTimersByTime(168))
+  act(() => vi.advanceTimersByTime(208))
   expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
   expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
 })
@@ -282,7 +282,7 @@ test('rapid breakpoint reversals cancel the handoff and preserve one content vie
   act(() => vi.advanceTimersByTime(50))
   panel.present(true)
   expect(frame).not.toHaveAttribute('data-panel-detached')
-  act(() => vi.advanceTimersByTime(200))
+  act(() => vi.advanceTimersByTime(240))
   expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
   expect(screen.getAllByTestId('shared-controls')).toHaveLength(1)
   expect(panel.controller.resize).toHaveBeenLastCalledWith('352px')
@@ -295,7 +295,7 @@ test('closing during a placement handoff cancels restoration without adding a se
   panel.toggle(false)
   expect(vi.getTimerCount()).toBe(1)
   expect(panel.element.parentElement).not.toHaveAttribute('data-panel-animating')
-  act(() => vi.advanceTimersByTime(150))
+  act(() => vi.advanceTimersByTime(190))
   expect(panel.element).toContainElement(screen.getByTestId('shared-controls'))
   expect(panel.element.querySelector('.workspace-panel-content')).toHaveAttribute(
     'data-panel-open',
@@ -324,14 +324,14 @@ test('unmount cancels a pending handoff and removes the detached frame styles', 
   expect(vi.getTimerCount()).toBe(0)
 })
 
-test.each(['200ms', '.2s'])(
+test.each(['240ms', '.24s'])(
   'honors the CSS duration %s before releasing the outgoing view',
   (duration) => {
     document.documentElement.style.setProperty('--panel-duration', duration)
     const panel = renderPanel(true, 352)
     const frame = retainExitingFrame(panel)
     panel.present(false)
-    act(() => vi.advanceTimersByTime(199))
+    act(() => vi.advanceTimersByTime(239))
     expect(frame).toContainElement(screen.getByTestId('shared-controls'))
     act(() => vi.advanceTimersByTime(1))
     expect(screen.getByTestId('floating')).toContainElement(screen.getByTestId('shared-controls'))
