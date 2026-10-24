@@ -26,5 +26,8 @@ test('native window theme can switch appearance and return to following the syst
   vi.mocked(isTauri).mockReturnValue(true)
   await setWindowTheme('dark')
   await setWindowTheme(null)
-  expect(nativeWindow.setTheme.mock.calls).toEqual([['dark'], [null]])
+  expect(vi.mocked(invoke).mock.calls).toEqual([
+    ['set_window_theme', { theme: 'dark' }],
+    ['set_window_theme', { theme: null }],
+  ])
 })

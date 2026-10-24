@@ -19,10 +19,15 @@ const unlisten = vi.fn()
 const frames = new Map<number, FrameRequestCallback>()
 let nextFrame = 0
 
-function finishThemeFrame() {
+function nextThemeFrame() {
   const callbacks = [...frames.values()]
   frames.clear()
   act(() => callbacks.forEach((callback) => callback(0)))
+}
+
+function finishThemeFrame() {
+  nextThemeFrame()
+  nextThemeFrame()
 }
 
 beforeEach(() => {
@@ -36,6 +41,7 @@ beforeEach(() => {
     frames.delete(frame)
   })
   vi.mocked(isDesktop).mockReturnValue(false)
+  vi.mocked(setWindowTheme).mockResolvedValue(undefined)
   vi.mocked(usesNativeSystemTheme).mockReturnValue(true)
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   vi.mocked(observeSystemTheme).mockImplementation(async (onChange) => {
@@ -82,10 +88,43 @@ test('theme changes snap together and restore transitions after the latest switc
   expect(root).toHaveAttribute('data-theme-changing')
   expect(frames.size).toBe(1)
 
+  nextThemeFrame()
+  expect(root).toHaveAttribute('data-theme-changing')
   finishThemeFrame()
   expect(root).not.toHaveAttribute('data-theme-changing')
   act(() => useWorkspaceStore.getState().setTheme('dark'))
   view.unmount()
+  expect(root).not.toHaveAttribute('data-theme-changing')
+  expect(frames.size).toBe(0)
+})
+
+test('desktop colors wait for the matching native theme and ignore stale completions', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  const pending: (() => void)[] = []
+  vi.mocked(setWindowTheme).mockImplementation(
+    () => new Promise<void>((resolve) => pending.push(resolve)),
+  )
+  const root = document.documentElement
+  const view = renderHook(useTheme)
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(root).not.toHaveClass('dark')
+  await act(async () => pending[1]())
+  expect(root).toHaveClass('dark')
+  expect(root).toHaveAttribute('data-theme-changing')
+  await act(async () => pending[0]())
+  expect(root).toHaveClass('dark')
+
+  act(() => useWorkspaceStore.getState().setTheme('light'))
+  expect(root).toHaveClass('dark')
+  await act(async () => pending[2]())
+  expect(root).not.toHaveClass('dark')
+  finishThemeFrame()
+  expect(root).not.toHaveAttribute('data-theme-changing')
+
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  view.unmount()
+  await act(async () => pending[3]())
+  expect(root).not.toHaveClass('dark')
   expect(root).not.toHaveAttribute('data-theme-changing')
   expect(frames.size).toBe(0)
 })

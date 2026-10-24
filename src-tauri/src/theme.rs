@@ -9,6 +9,10 @@ use windows_sys::Win32::{
     Foundation::{
         ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, HWND, LPARAM, LRESULT, WPARAM,
     },
+    Graphics::Dwm::{
+        DWMSBT_NONE, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_TRANSITIONS_FORCEDISABLED,
+        DwmGetWindowAttribute, DwmSetWindowAttribute,
+    },
     System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW},
     UI::{
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
@@ -17,6 +21,42 @@ use windows_sys::Win32::{
 };
 
 const SYSTEM_THEME_LISTENER: usize = 0x50494810;
+
+pub fn set_window_theme(
+    window: tauri::WebviewWindow,
+    theme: Option<tauri::Theme>,
+) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as HWND;
+    let set_attribute = |attribute: i32, value: i32| unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            attribute as u32,
+            &value as *const i32 as *const c_void,
+            size_of::<i32>() as u32,
+        )
+    };
+    let disabled = set_attribute(DWMWA_TRANSITIONS_FORCEDISABLED, 1) >= 0;
+    let mut backdrop = DWMSBT_NONE;
+    let has_backdrop = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE as u32,
+            &mut backdrop as *mut i32 as *mut c_void,
+            size_of::<i32>() as u32,
+        )
+    } >= 0
+        && backdrop > DWMSBT_NONE;
+    // Recreate the existing material in its final color instead of crossfading it.
+    let detached = has_backdrop && set_attribute(DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_NONE) >= 0;
+    let result = window.set_theme(theme).map_err(|error| error.to_string());
+    if detached {
+        set_attribute(DWMWA_SYSTEMBACKDROP_TYPE, backdrop);
+    }
+    if disabled {
+        set_attribute(DWMWA_TRANSITIONS_FORCEDISABLED, 0);
+    }
+    result
+}
 
 // Read the OS preference rather than the WebView2 profile's forced color scheme.
 #[tauri::command]

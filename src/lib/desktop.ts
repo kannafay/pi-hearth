@@ -21,7 +21,7 @@ export async function openDeveloperConsole() {
 }
 
 export async function setWindowTheme(theme: 'light' | 'dark' | null) {
-  if (isDesktop()) await getCurrentWindow().setTheme(theme)
+  if (isDesktop()) await invoke<void>('set_window_theme', { theme })
 }
 
 export async function selectProjectDirectory(title = '添加项目') {

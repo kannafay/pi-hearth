@@ -17,6 +17,17 @@ fn get_app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+#[tauri::command]
+fn set_window_theme(
+    window: tauri::WebviewWindow,
+    theme: Option<tauri::Theme>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    return theme::set_window_theme(window, theme);
+    #[cfg(not(windows))]
+    window.set_theme(theme).map_err(|error| error.to_string())
+}
+
 pub fn run() {
     let context = tauri::generate_context!();
     #[cfg(windows)]
@@ -70,6 +81,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            set_window_theme,
             developer::developer_console_open,
             #[cfg(windows)]
             theme::get_system_theme,
