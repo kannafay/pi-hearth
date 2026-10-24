@@ -58,7 +58,7 @@
   --panel-duration: 240ms;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --sidebar-row-selected: var(--background);
-  --floating-navigation-background: var(--shell-tint);
+  --floating-panel-background: #f5f5f5;
   --floating-panel-overlay: oklch(0.18 0.006 300 / 4%);
   --floating-panel-shadow:
     0 8px 24px -8px oklch(0.12 0.01 300 / 16%), 0 2px 8px -4px oklch(0.12 0.01 300 / 10%);
@@ -107,7 +107,7 @@
 
 .dark {
   --sidebar-row-selected: oklch(0.35 0.006 300);
-  --floating-navigation-background: var(--popover);
+  --floating-panel-background: var(--popover);
   --floating-panel-overlay: oklch(0 0 0 / 20%);
   --floating-panel-shadow: 0 12px 32px -8px oklch(0 0 0 / 50%), 0 2px 8px -4px oklch(0 0 0 / 30%);
   --shell-tint: oklch(0.23 0.008 300);
@@ -928,8 +928,8 @@ select {
   --dialog-shadow: var(--floating-panel-shadow);
 }
 
-.workspace-floating-panel[data-side='left'] {
-  background: var(--floating-navigation-background);
+.workspace-floating-panel {
+  background: var(--floating-panel-background);
 }
 
 [data-slot='dialog-content'][data-dialog-layout='drawer']:is(
