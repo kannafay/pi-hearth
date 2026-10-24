@@ -204,19 +204,6 @@ test('repeated sidebar toggles preserve its filter and the mounted conversation 
   expect(draft).toHaveValue('保留正在编辑的内容')
 })
 
-test('the fixed sidebar uses the same close control and preserves its filter when reopened', async () => {
-  const user = userEvent.setup()
-  render(<WorkspaceShell />)
-  const navigation = screen.getByRole('navigation', { name: '项目与会话' })
-  await user.click(within(navigation).getByRole('tab', { name: '聊天' }))
-  await user.click(within(navigation).getByRole('button', { name: '关闭侧栏' }))
-  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
-  expect(useWorkspaceStore.getState().sidebarOpen).toBe(false)
-  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
-  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBe(navigation)
-  expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
-})
-
 test('double-clicking the sidebar separator resets its saved width and reopening preserves it', async () => {
   useWorkspaceStore.setState({ navigationWidth: 352 })
   const user = userEvent.setup()
@@ -359,6 +346,7 @@ test('narrow windows automatically hide the sidebar without changing its saved w
   const user = userEvent.setup()
   const view = render(<WorkspaceShell />)
   const draft = screen.getByRole('textbox', { name: '消息' })
+  expect(screen.queryByRole('button', { name: '关闭侧栏' })).not.toBeInTheDocument()
   await user.type(draft, '缩放时保留草稿')
   await user.click(screen.getByRole('tab', { name: '聊天' }))
 
@@ -383,6 +371,7 @@ test('narrow windows automatically hide the sidebar without changing its saved w
   narrow = false
   view.rerender(<WorkspaceShell />)
   expect(screen.getByRole('navigation')).toBeVisible()
+  expect(screen.queryByRole('button', { name: '关闭侧栏' })).not.toBeInTheDocument()
   expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('textbox', { name: '消息' })).toBe(draft)
   expect(draft).toHaveValue('缩放时保留草稿')

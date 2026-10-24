@@ -148,7 +148,7 @@ export function WorkspaceShell() {
         desktop={desktop}
         navigation={navigationState}
         onNavigate={() => setFloatingSidebarOpen(false)}
-        onClose={narrow ? () => setFloatingSidebarOpen(false) : toggleSidebar}
+        onClose={narrow ? () => setFloatingSidebarOpen(false) : undefined}
         onCreate={createProject}
         onSettings={() => {
           setFloatingSidebarOpen(false)
@@ -291,7 +291,7 @@ export function WorkspaceShell() {
             style={{ overflow: 'hidden' }}
           >
             <div
-              className="workspace-panel-content border border-transparent"
+              className="workspace-panel-content"
               data-panel-open={dockedSidebarOpen}
               aria-hidden={!dockedSidebarOpen}
               inert={!dockedSidebarOpen}

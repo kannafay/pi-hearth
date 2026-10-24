@@ -322,9 +322,15 @@ export function WorkspaceNavigationContent({
           </div>,
           document.body,
         )}
-      <WorkspacePanelHeader closeLabel="关闭侧栏" onClose={onClose ?? workspace.toggleSidebar}>
-        {newConversation}
-      </WorkspacePanelHeader>
+      {onClose ? (
+        <WorkspacePanelHeader closeLabel="关闭侧栏" onClose={onClose}>
+          {newConversation}
+        </WorkspacePanelHeader>
+      ) : (
+        <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
+          {newConversation}
+        </div>
+      )}
       <Tabs.Root
         value={filter}
         onValueChange={(value, { activationDirection }) =>
