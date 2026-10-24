@@ -218,7 +218,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className={`sidebar-session-action size-6 ${pinned ? 'text-sidebar-foreground' : 'text-muted-foreground/60 hover:text-foreground'}`}
+                    className={`sidebar-session-action size-6 ${pinned ? 'text-sidebar-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                     aria-label={`${pinned ? '取消置顶' : '置顶'} ${session.title}`}
                     aria-pressed={pinned}
                     disabled={!desktop || Boolean(workspace.sessionActionPending)}
@@ -236,7 +236,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="sidebar-session-action size-6 text-muted-foreground/60 hover:text-foreground"
+                    className="sidebar-session-action size-6 text-muted-foreground hover:text-foreground"
                     aria-label={`归档 ${session.title}`}
                     disabled={
                       !desktop || Boolean(workspace.sessionActionPending) || (busy && selected)
@@ -255,7 +255,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="sidebar-session-action size-6 text-muted-foreground/60 hover:text-foreground"
+                    className="sidebar-session-action size-6 text-muted-foreground hover:text-foreground"
                     aria-label={`${session.title} 会话菜单`}
                     disabled={!desktop || Boolean(workspace.sessionActionPending)}
                   />
@@ -450,7 +450,7 @@ export function WorkspaceNavigationContent({
                           <Button
                             size="icon-xs"
                             variant="ghost"
-                            className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
+                            className="sidebar-project-action size-6 text-muted-foreground hover:text-foreground"
                             aria-label={`在 ${project.name} 中新建对话`}
                             disabled={!desktop || busy}
                             onClick={() => {
@@ -466,7 +466,7 @@ export function WorkspaceNavigationContent({
                                 <Button
                                   size="icon-xs"
                                   variant="ghost"
-                                  className="sidebar-project-action size-6 text-muted-foreground/60 hover:text-foreground"
+                                  className="sidebar-project-action size-6 text-muted-foreground hover:text-foreground"
                                   aria-label={`${project.name} 项目菜单`}
                                 />
                               }
