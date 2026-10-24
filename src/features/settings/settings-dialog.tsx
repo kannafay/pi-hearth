@@ -20,6 +20,7 @@ import { ModelSettings } from './model-settings'
 import { SettingsPageHeader } from './settings-page-header'
 import { ArchivedSessions } from './archived-sessions'
 import { ProjectLocationSettings } from './project-location-settings'
+import { StorageLocationSettings } from './storage-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
@@ -172,6 +173,7 @@ export function SettingsDialog({
               description="管理本机文件和项目的保存位置。"
             >
               <ProjectLocationSettings />
+              <StorageLocationSettings kind="files" />
             </SettingsPanel>
             <SettingsPanel
               value="archived"

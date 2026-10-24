@@ -89,10 +89,13 @@ interface WorkspaceState {
   theme: Theme
   projectsDirectory: string
   customProjectsDirectory: string
+  filesDirectory: string
+  customFilesDirectory: string
   developerMode: boolean
   developerModePending: boolean
   setDeveloperMode: (enabled: boolean) => Promise<void>
   setProjectsDirectory: (directory: string) => void
+  setFilesDirectory: (directory: string) => void
   setProject: (path: string) => void
   setDraft: (draft: string) => void
   toggleSidebar: () => void
@@ -369,10 +372,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const settings = await loadAppSettings()
       const thinkingLevel = settings.thinkingLevel ?? loadThinkingPreference()
       const customProjectsDirectory = settings.customProjectsDirectory || settings.projectsDirectory
+      const filesDirectory = settings.filesDirectory ?? ''
+      const customFilesDirectory = settings.customFilesDirectory || filesDirectory
       const imported: AppSettingsPatch = {}
       if (settings.thinkingLevel === null) imported.thinkingLevel = thinkingLevel
       if (!settings.customProjectsDirectory && customProjectsDirectory)
         imported.customProjectsDirectory = customProjectsDirectory
+      if (!settings.customFilesDirectory && customFilesDirectory)
+        imported.customFilesDirectory = customFilesDirectory
       if (Object.keys(imported).length) await updateAppSettings(imported)
       useConversationStore.setState({ requestedThinkingLevel: thinkingLevel })
       set({
@@ -388,6 +395,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         archivedProjects: settings.archivedProjects ?? [],
         projectsDirectory: settings.projectsDirectory,
         customProjectsDirectory,
+        filesDirectory,
+        customFilesDirectory,
         developerMode: settings.developerMode ?? false,
         settingsReady: true,
       })
@@ -417,6 +426,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       projectsDirectory,
       customProjectsDirectory:
         projectsDirectory || state.customProjectsDirectory || state.projectsDirectory,
+    })),
+  filesDirectory: '',
+  customFilesDirectory: '',
+  setFilesDirectory: (filesDirectory) =>
+    set((state) => ({
+      filesDirectory,
+      customFilesDirectory: filesDirectory || state.customFilesDirectory || state.filesDirectory,
     })),
   setProject: (projectPath) =>
     set((state) => ({
@@ -666,6 +682,8 @@ const persistedKeys = [
   'archivedProjects',
   'projectsDirectory',
   'customProjectsDirectory',
+  'filesDirectory',
+  'customFilesDirectory',
 ] as const
 
 useWorkspaceStore.subscribe((state, previous) => {

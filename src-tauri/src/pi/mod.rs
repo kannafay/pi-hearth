@@ -2,6 +2,7 @@ pub mod attachments;
 pub mod catalog;
 mod client;
 mod config;
+pub mod files;
 pub(crate) mod process_tree;
 mod protocol;
 mod rewrite;
@@ -59,6 +60,7 @@ pub async fn pi_connect(
 
 #[tauri::command]
 pub async fn pi_send(
+    app: tauri::AppHandle,
     manager: State<'_, PiManager>,
     attachments: State<'_, attachments::AttachmentManager>,
     instance_id: String,
@@ -79,6 +81,7 @@ pub async fn pi_send(
     let body = attachments.prompt(&message, &attachment_ids)?;
     let client = manager.client(&instance_id).await?;
     let _action = client.actions.lock().await;
+    files::prepare_runtime(&app).await?;
     client.request(body, Some(run_id)).await?;
     attachments.release(&attachment_ids);
     Ok(())
@@ -86,6 +89,7 @@ pub async fn pi_send(
 
 #[tauri::command]
 pub async fn pi_rewrite(
+    app: tauri::AppHandle,
     manager: State<'_, PiManager>,
     instance_id: String,
     run_id: String,
@@ -97,6 +101,7 @@ pub async fn pi_rewrite(
     }
     let client = manager.client(&instance_id).await?;
     let _action = client.actions.lock().await;
+    files::prepare_runtime(&app).await?;
     client
         .rewrite(&message_id, message.as_deref(), run_id)
         .await

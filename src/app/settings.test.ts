@@ -22,6 +22,8 @@ const saved: AppSettings = {
   thinkingLevel: 'xhigh',
   projectsDirectory: 'D:/saved-projects',
   customProjectsDirectory: 'D:/saved-projects',
+  filesDirectory: 'E:/saved-files',
+  customFilesDirectory: 'E:/saved-files',
   developerMode: true,
 }
 
@@ -112,6 +114,26 @@ test('an existing custom directory is imported before switching back to the defa
     customProjectsDirectory: 'D:/saved-projects',
   })
   expect(updateAppSettings).toHaveBeenLastCalledWith({ projectsDirectory: '' })
+})
+
+test('file locations remember their custom choice across defaults and startup independently of projects', async () => {
+  vi.mocked(loadAppSettings).mockResolvedValue({ ...saved, filesDirectory: '' })
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    filesDirectory: '',
+    customFilesDirectory: 'E:/saved-files',
+  })
+  useWorkspaceStore.getState().setFilesDirectory('F:/My Files')
+  useWorkspaceStore.getState().setFilesDirectory('')
+  expect(vi.mocked(updateAppSettings).mock.calls.map(([patch]) => patch)).toEqual([
+    { filesDirectory: 'F:/My Files', customFilesDirectory: 'F:/My Files' },
+    { filesDirectory: '' },
+  ])
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    filesDirectory: '',
+    customFilesDirectory: 'F:/My Files',
+    projectsDirectory: saved.projectsDirectory,
+  })
 })
 
 test('a failed database load keeps startup closed and a retry restores saved settings', async () => {

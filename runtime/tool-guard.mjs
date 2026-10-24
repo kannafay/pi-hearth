@@ -2,6 +2,7 @@ import { realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { prepareFileStorage } from './file-storage.mjs'
 
 export const guardCommand = 'hearth-guard-ready'
 export const approvalKind = 'pi-hearth-tool-approval-v1'
@@ -88,6 +89,9 @@ export async function guardTool(event, ctx) {
 
 export default function registerGuard(pi) {
   pi.on('tool_call', guardTool)
+  pi.on('before_agent_start', (event, ctx) =>
+    prepareFileStorage(event, ctx, pi, process.env.HEARTH_FILE_STORAGE_CONFIG),
+  )
   // Rust checks this marker before exposing a connected runtime to the UI.
   pi.registerCommand(guardCommand, {
     description: 'pi-hearth tool approval guard',

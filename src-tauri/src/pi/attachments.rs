@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{Manager, State};
+use tauri::State;
 use uuid::Uuid;
 
 const MAX_FILE: usize = 20 * 1024 * 1024;
@@ -245,22 +245,28 @@ fn read_file(path: &str) -> Result<(PathBuf, Vec<u8>), String> {
     Ok((path, bytes))
 }
 
-fn prepare_path(path: &str) -> Result<PreparedAttachment, String> {
+fn prepare_path(path: &str, root: &Path) -> Result<PreparedAttachment, String> {
     let (path, bytes) = read_file(path)?;
     let mut file = prepare(&path.to_string_lossy(), &bytes)?;
-    file.view.source_path = Some(path.to_string_lossy().into());
+    cache_file(&mut file, &bytes, root)?;
     Ok(file)
 }
 
 fn cache_file(file: &mut PreparedAttachment, bytes: &[u8], root: &Path) -> Result<(), String> {
-    let directory = root.join(Uuid::new_v4().to_string());
-    std::fs::create_dir_all(&directory).map_err(|_| "无法保存粘贴的附件。")?;
+    std::fs::create_dir_all(root).map_err(|_| "无法保存附件，请检查文件保存位置。")?;
+    let root = dunce::canonicalize(root).map_err(|_| "无法访问文件保存位置。")?;
+    let directory = root.join(&file.view.id);
+    std::fs::create_dir(&directory).map_err(|_| "无法创建附件目录。")?;
     let target = directory.join(
         Path::new(&file.view.name)
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new("attachment")),
     );
-    std::fs::write(&target, bytes).map_err(|_| "无法保存粘贴的附件。")?;
+    if std::fs::write(&target, bytes).is_err() {
+        let _ = std::fs::remove_file(&target);
+        let _ = std::fs::remove_dir(&directory);
+        return Err("无法保存附件，请检查文件保存位置。".into());
+    }
     file.name = target.to_string_lossy().into();
     file.view.source_path = Some(file.name.clone());
     Ok(())
@@ -370,16 +376,18 @@ impl AttachmentManager {
 
 #[tauri::command]
 pub async fn attachment_paths(
+    app: tauri::AppHandle,
     manager: State<'_, AttachmentManager>,
     paths: Vec<String>,
 ) -> Result<Vec<Attachment>, String> {
     if paths.len() > MAX_ATTACHMENTS {
         return Err("每次最多添加 10 个附件。".into());
     }
+    let root = super::files::uploads(&app).await?;
     let files = tauri::async_runtime::spawn_blocking(move || {
         paths
             .iter()
-            .map(|path| prepare_path(path))
+            .map(|path| prepare_path(path, &root))
             .collect::<Result<Vec<_>, _>>()
     })
     .await
@@ -397,11 +405,7 @@ pub async fn attachment_bytes(
     if data.len() > MAX_FILE * 4 / 3 + 4 {
         return Err("单个附件不能超过 20 MiB。".into());
     }
-    let root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位附件目录。")?
-        .join("attachments");
+    let root = super::files::uploads(&app).await?;
     let file = tauri::async_runtime::spawn_blocking(move || {
         let bytes = STANDARD.decode(data).map_err(|_| "附件数据无效。")?;
         let mut file = prepare(&name, &bytes)?;
@@ -451,11 +455,7 @@ pub async fn attachment_clipboard(
     app: tauri::AppHandle,
     manager: State<'_, AttachmentManager>,
 ) -> Result<Vec<Attachment>, String> {
-    let root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位附件目录。")?
-        .join("attachments");
+    let root = super::files::uploads(&app).await?;
     let files = tauri::async_runtime::spawn_blocking(move || {
         #[cfg(windows)]
         if clipboard_win::is_format_avail(clipboard_win::formats::CF_HDROP) {
@@ -464,7 +464,7 @@ pub async fn attachment_clipboard(
             if paths.len() > MAX_ATTACHMENTS {
                 return Err("每次最多添加 10 个附件。".into());
             }
-            return paths.iter().map(|path| prepare_path(path)).collect();
+            return paths.iter().map(|path| prepare_path(path, &root)).collect();
         }
         #[cfg(windows)]
         if let Some(format) = clipboard_win::register_format("PNG")
@@ -536,8 +536,15 @@ pub fn restored_user(raw: &Value) -> (String, Option<Vec<Attachment>>) {
             && content.len() <= MAX_TEXT)
             .then(|| content.to_owned());
         let media = media_type(&name);
+        let id = Path::new(&name)
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .and_then(|id| Uuid::parse_str(id).ok())
+            .unwrap_or_else(Uuid::new_v4)
+            .to_string();
         attachments.push(Attachment {
-            id: Uuid::new_v4().to_string(),
+            id,
             name: name.rsplit(['/', '\\']).next().unwrap_or(&name).into(),
             kind: media
                 .map_or(
@@ -600,6 +607,43 @@ pub fn restored_user(raw: &Value) -> (String, Option<Vec<Attachment>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uploads_keep_durable_copies_unique_names_and_stable_ids_after_history_reload() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/upload-storage-test")
+            .join(Uuid::new_v4().to_string());
+        let project = root.join("project");
+        let uploads = root.join("Files/Uploads");
+        std::fs::create_dir_all(&project).unwrap();
+        let source = project.join("参考资料.txt");
+        std::fs::write(&source, "原始内容").unwrap();
+        let first = prepare_path(source.to_str().unwrap(), &uploads).unwrap();
+        let second = prepare_path(source.to_str().unwrap(), &uploads).unwrap();
+        assert_ne!(first.view.id, second.view.id);
+        assert_eq!(first.view.name, "参考资料.txt");
+        let copied = first.view.source_path.clone().unwrap();
+        assert!(Path::new(&copied).starts_with(dunce::canonicalize(&uploads).unwrap()));
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "原始内容");
+        let manager = AttachmentManager::default();
+        let files = manager.insert(vec![first, second]).unwrap();
+        std::fs::write(&source, "后来修改").unwrap();
+        std::fs::remove_file(&source).unwrap();
+        let ids = files.iter().map(|file| file.id.clone()).collect::<Vec<_>>();
+        let body = manager.prompt("分析附件", &ids).unwrap();
+        manager.release(&ids);
+        let (_, restored) = restored_user(&json!({"content": body["message"]}));
+        let restored = restored.unwrap();
+        assert_eq!(restored[0].id, ids[0]);
+        assert_eq!(restored[1].id, ids[1]);
+        assert_eq!(restored[0].source_path.as_deref(), Some(copied.as_str()));
+        assert_eq!(std::fs::read_to_string(&copied).unwrap(), "原始内容");
+        assert_eq!(
+            preview_path(&copied).unwrap().text.as_deref(),
+            Some("原始内容")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     #[ignore = "manual clipboard import benchmark"]
@@ -792,7 +836,9 @@ mod tests {
         std::fs::write(&video_path, video).unwrap();
         let manager = AttachmentManager::default();
         let files = manager
-            .insert(vec![prepare_path(video_path.to_str().unwrap()).unwrap()])
+            .insert(vec![
+                prepare_path(video_path.to_str().unwrap(), &root.join("Uploads")).unwrap(),
+            ])
             .unwrap();
         assert_eq!(files[0].kind, "video");
         let ids = vec![files[0].id.clone()];
@@ -811,7 +857,7 @@ mod tests {
         );
         std::fs::remove_file(image_path).unwrap();
         std::fs::remove_file(video_path).unwrap();
-        std::fs::remove_dir(root).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

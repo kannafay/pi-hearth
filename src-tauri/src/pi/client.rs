@@ -152,6 +152,11 @@ impl PiClient {
             .map_err(|_| "无法创建工具审批模块目录。")?;
         std::fs::write(&guard, include_str!("../../../runtime/tool-guard.mjs"))
             .map_err(|_| "无法安装工具审批模块。")?;
+        std::fs::write(
+            data_dir.join("runtime/file-storage.mjs"),
+            include_str!("../../../runtime/file-storage.mjs"),
+        )
+        .map_err(|_| "无法安装文件存储模块。")?;
         let agent_dir = data_dir.join("pi");
         let config = prepare_config(source_agent_dir, &agent_dir)?;
         let global_instructions = ["AGENTS.md", "CLAUDE.md"]
@@ -195,6 +200,10 @@ impl PiClient {
             .env("PI_CODING_AGENT_DIR", &agent_dir)
             .env("PI_TELEMETRY", "0")
             .env("HEARTH_MESSAGE_ACTION_TOKEN", &action_token)
+            .env(
+                "HEARTH_FILE_STORAGE_CONFIG",
+                data_dir.join("runtime/file-storage.json"),
+            )
             .envs(config.environment)
             .current_dir(&project_path)
             .stdin(Stdio::piped())
@@ -1031,6 +1040,7 @@ impl PiManager {
         }
     }
 
+    #[cfg(test)]
     pub async fn session_directory(&self, project_path: &str) -> Option<PathBuf> {
         self.runtime
             .lock()

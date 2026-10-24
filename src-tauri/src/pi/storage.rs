@@ -257,11 +257,13 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
     if [
         &settings.projects_directory,
         &settings.custom_projects_directory,
+        &settings.files_directory,
+        &settings.custom_files_directory,
     ]
     .iter()
     .any(|directory| !directory.is_empty() && !Path::new(directory).is_absolute())
     {
-        return Err("项目保存目录必须是绝对路径。".into());
+        return Err("保存目录必须是绝对路径。".into());
     }
     if !settings.navigation_width.is_finite()
         || !(220.0..=400.0).contains(&settings.navigation_width)
@@ -704,6 +706,51 @@ mod tests {
         assert!(first.unwrap().sidebar_open);
         assert!(second.unwrap().projects.is_empty());
         assert_eq!(third.unwrap().navigation_width, 300.0);
+    }
+
+    #[tokio::test]
+    async fn file_locations_persist_independently_and_reject_relative_paths() {
+        let root = fixture();
+        let files = root.join("Files").to_string_lossy().into_owned();
+        let projects = root.join("Projects").to_string_lossy().into_owned();
+        let saved = update_settings(
+            &root,
+            AppSettingsPatch {
+                projects_directory: Some(projects.clone()),
+                files_directory: Some(files.clone()),
+                custom_files_directory: Some(files.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved.files_directory, files);
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                files_directory: Some(String::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let restored = settings(&root).await.unwrap();
+        assert!(restored.files_directory.is_empty());
+        assert_eq!(restored.custom_files_directory, files);
+        assert_eq!(restored.projects_directory, projects);
+        for patch in [
+            AppSettingsPatch {
+                files_directory: Some("../relative".into()),
+                ..Default::default()
+            },
+            AppSettingsPatch {
+                custom_files_directory: Some("relative".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(update_settings(&root, patch).await.is_err());
+        }
+        assert_eq!(settings(&root).await.unwrap().custom_files_directory, files);
     }
 
     #[tokio::test]
