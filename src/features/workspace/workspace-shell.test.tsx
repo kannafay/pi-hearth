@@ -204,6 +204,19 @@ test('repeated sidebar toggles preserve its filter and the mounted conversation 
   expect(draft).toHaveValue('保留正在编辑的内容')
 })
 
+test('the fixed sidebar uses the same close control and preserves its filter when reopened', async () => {
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  const navigation = screen.getByRole('navigation', { name: '项目与会话' })
+  await user.click(within(navigation).getByRole('tab', { name: '聊天' }))
+  await user.click(within(navigation).getByRole('button', { name: '关闭侧栏' }))
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  expect(useWorkspaceStore.getState().sidebarOpen).toBe(false)
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  expect(screen.getByRole('navigation', { name: '项目与会话' })).toBe(navigation)
+  expect(screen.getByRole('tab', { name: '聊天' })).toHaveAttribute('aria-selected', 'true')
+})
+
 test('double-clicking the sidebar separator resets its saved width and reopening preserves it', async () => {
   useWorkspaceStore.setState({ navigationWidth: 352 })
   const user = userEvent.setup()

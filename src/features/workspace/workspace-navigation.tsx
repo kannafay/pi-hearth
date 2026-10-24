@@ -282,7 +282,7 @@ export function WorkspaceNavigationContent({
   )
   const newConversation = (
     <Button
-      variant="ghost"
+      variant="panel"
       className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
       disabled={!desktop || busy}
       onClick={() => {
@@ -302,8 +302,7 @@ export function WorkspaceNavigationContent({
       onKeyDownCapture={(event) => keySort(event)}
       onClickCapture={(event) => suppressSortClick(event)}
       aria-label="项目与会话"
-      data-presentation={onClose ? 'floating' : 'docked'}
-      className="workspace-navigation flex h-full min-h-0 flex-col pb-2"
+      className="workspace-navigation flex h-full min-h-0 flex-col pb-2 text-sm text-sidebar-foreground"
     >
       <p id={sortDescriptionId} className="sr-only">
         可拖拽排序，或按 Alt 加上、下方向键调整，只能在同一置顶分区内移动。
@@ -323,15 +322,9 @@ export function WorkspaceNavigationContent({
           </div>,
           document.body,
         )}
-      {onClose ? (
-        <WorkspacePanelHeader closeLabel="关闭侧栏" onClose={onClose}>
-          {newConversation}
-        </WorkspacePanelHeader>
-      ) : (
-        <div className="box-content flex h-11 shrink-0 items-end border-t border-transparent px-3">
-          {newConversation}
-        </div>
-      )}
+      <WorkspacePanelHeader closeLabel="关闭侧栏" onClose={onClose ?? workspace.toggleSidebar}>
+        {newConversation}
+      </WorkspacePanelHeader>
       <Tabs.Root
         value={filter}
         onValueChange={(value, { activationDirection }) =>
@@ -377,7 +370,7 @@ export function WorkspaceNavigationContent({
                   <h2 className="text-xs font-normal text-muted-foreground">项目</h2>
                   <Button
                     aria-label="创建项目"
-                    variant="ghost"
+                    variant="panel"
                     size="icon-xs"
                     disabled={!desktop || busy}
                     onClick={onCreate}
@@ -551,7 +544,7 @@ export function WorkspaceNavigationContent({
                 </div>
                 {!projects.length && (
                   <Button
-                    variant="ghost"
+                    variant="panel"
                     className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
                     disabled={!desktop || busy}
                     onClick={onCreate}
@@ -569,7 +562,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     aria-label="新建普通对话"
                     size="icon-xs"
-                    variant="ghost"
+                    variant="panel"
                     disabled={!desktop || busy}
                     onClick={() => {
                       void workspace.newConversation(null)
@@ -589,7 +582,7 @@ export function WorkspaceNavigationContent({
         </Tabs.Panel>
       </Tabs.Root>
       <Button
-        variant="ghost"
+        variant="panel"
         className="mx-3 mt-3 h-8 justify-start gap-2.5 px-2 text-[13px] text-muted-foreground"
         onClick={onSettings}
       >

@@ -57,6 +57,8 @@
   --workspace-radius: 8px;
   --panel-duration: 200ms;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --panel-control-hover: color-mix(in oklch, var(--background), var(--foreground) 5%);
+  --panel-control-selected: color-mix(in oklch, var(--background), var(--foreground) 8%);
   --floating-panel-overlay: oklch(0.18 0.006 300 / 4%);
   --floating-panel-shadow:
     0 8px 24px -8px oklch(0.12 0.01 300 / 16%), 0 2px 8px -4px oklch(0.12 0.01 300 / 10%);
@@ -104,6 +106,8 @@
 }
 
 .dark {
+  --panel-control-hover: color-mix(in oklch, var(--background), var(--foreground) 10%);
+  --panel-control-selected: color-mix(in oklch, var(--background), var(--foreground) 14%);
   --floating-panel-overlay: oklch(0 0 0 / 20%);
   --floating-panel-shadow: 0 12px 32px -8px oklch(0 0 0 / 50%), 0 2px 8px -4px oklch(0 0 0 / 30%);
   --shell-tint: oklch(0.23 0.008 300);
@@ -252,24 +256,9 @@ select {
 }
 
 .workspace-navigation {
-  --sidebar-row-accent: var(--sidebar-accent);
+  --sidebar-row-accent: var(--panel-control-selected);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
-}
-
-.workspace-navigation[data-presentation='docked'] {
-  --muted: var(--background);
-  --sidebar-accent: var(--background);
-}
-
-.dark .workspace-navigation[data-presentation='docked'] {
-  --muted: oklch(0.3 0.006 300);
-  --sidebar-accent: var(--muted);
-  --sidebar-row-accent: oklch(0.35 0.006 300);
-}
-
-.workspace-navigation[data-presentation='docked'] [data-slot='button']:hover {
-  background: var(--sidebar-accent);
 }
 
 @property --sidebar-title-tail-opacity {
