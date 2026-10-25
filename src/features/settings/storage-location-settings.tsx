@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Folder, FolderCog } from 'lucide-react'
+import { Folder, FolderCog, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -41,6 +40,7 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
   const [error, setError] = useState('')
   const desktop = isDesktop()
   const { label: locationLabel, icon: LocationIcon } = locations[directory ? 1 : 0]
+  const displayedDirectory = directory || defaultDirectory
 
   useEffect(() => {
     if (!desktop) return
@@ -131,26 +131,23 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
         </Select>
       }
     >
-      {directory ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="link"
-                className="h-auto max-w-full justify-start rounded-sm border-0 p-0 text-left text-xs leading-5 font-normal whitespace-normal text-muted-foreground hover:text-foreground"
-              />
-            }
-            aria-label={files ? '更改文件自定义目录' : '更改自定义目录'}
+      <div className="flex h-7 items-center gap-3">
+        <FieldDescription className="min-w-0 flex-1 truncate" title={displayedDirectory}>
+          {displayedDirectory}
+        </FieldDescription>
+        {directory && (
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={files ? '更改文件目录' : '更改项目目录'}
             disabled={!desktop || selecting}
             onClick={() => void chooseDirectory()}
           >
-            <span className="min-w-0 break-all">{directory}</span>
-          </TooltipTrigger>
-          <TooltipContent showArrow={false}>点击更改自定义目录</TooltipContent>
-        </Tooltip>
-      ) : (
-        <FieldDescription className="break-all">{defaultDirectory}</FieldDescription>
-      )}
+            <FolderOpen aria-hidden data-icon="inline-start" />
+            更改目录
+          </Button>
+        )}
+      </div>
       {files && <FieldDescription>更改位置仅影响新文件，已有文件保留在原位置。</FieldDescription>}
       {selecting && (
         <p role="status" className="text-xs text-muted-foreground">

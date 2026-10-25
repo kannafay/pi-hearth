@@ -23,7 +23,7 @@ test('switching to the default preserves the custom directory for later reuse', 
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('D:/Projects')
   render(<ProjectLocationSettings />)
   expect(await screen.findByText('C:/Documents/Pi Hearth/Projects')).toBeVisible()
-  expect(screen.queryByRole('button', { name: '选择目录' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '更改项目目录' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('combobox', { name: '新项目保存位置' }))
   await user.click(await screen.findByRole('option', { name: '自定义目录' }))
   expect(selectProjectDirectory).toHaveBeenCalledExactlyOnceWith('新项目保存位置')
@@ -32,6 +32,8 @@ test('switching to the default preserves the custom directory for later reuse', 
     customProjectsDirectory: 'D:/Projects',
   })
   expect(screen.getByText('D:/Projects')).toBeVisible()
+  expect(screen.getByText('D:/Projects').closest('button, a')).toBeNull()
+  expect(screen.getByRole('button', { name: '更改项目目录' })).toHaveTextContent('更改目录')
   await user.click(screen.getByRole('combobox', { name: '新项目保存位置' }))
   await user.click(await screen.findByRole('option', { name: '默认目录' }))
   expect(useWorkspaceStore.getState()).toMatchObject({
@@ -39,6 +41,7 @@ test('switching to the default preserves the custom directory for later reuse', 
     customProjectsDirectory: 'D:/Projects',
   })
   expect(screen.getByText('C:/Documents/Pi Hearth/Projects')).toBeVisible()
+  expect(screen.queryByRole('button', { name: '更改项目目录' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('combobox', { name: '新项目保存位置' }))
   await user.click(await screen.findByRole('option', { name: '自定义目录' }))
   expect(useWorkspaceStore.getState().projectsDirectory).toBe('D:/Projects')
@@ -50,7 +53,7 @@ test('canceling a custom directory choice keeps the previous preference', async 
   const user = userEvent.setup()
   useWorkspaceStore.getState().setProjectsDirectory('D:/Current')
   render(<ProjectLocationSettings />)
-  await user.click(screen.getByRole('button', { name: '更改自定义目录' }))
+  await user.click(screen.getByRole('button', { name: '更改项目目录' }))
   expect(useWorkspaceStore.getState()).toMatchObject({
     projectsDirectory: 'D:/Current',
     customProjectsDirectory: 'D:/Current',
@@ -58,12 +61,12 @@ test('canceling a custom directory choice keeps the previous preference', async 
   expect(screen.getByText('D:/Current')).toBeVisible()
 })
 
-test('clicking the custom path replaces the remembered directory', async () => {
+test('the change directory button replaces the remembered directory', async () => {
   const user = userEvent.setup()
   useWorkspaceStore.getState().setProjectsDirectory('D:/Current')
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('E:/Next')
   render(<ProjectLocationSettings />)
-  await user.click(screen.getByRole('button', { name: '更改自定义目录' }))
+  await user.click(screen.getByRole('button', { name: '更改项目目录' }))
   expect(useWorkspaceStore.getState()).toMatchObject({
     projectsDirectory: 'E:/Next',
     customProjectsDirectory: 'E:/Next',
@@ -97,11 +100,11 @@ test('invalid directories display an error without replacing the saved location'
   render(<ProjectLocationSettings />)
   await screen.findByText('D:/Current')
   vi.mocked(resolveProjectDirectory).mockRejectedValueOnce(new Error('项目目录不存在或无法访问。'))
-  await user.click(screen.getByRole('button', { name: '更改自定义目录' }))
+  await user.click(screen.getByRole('button', { name: '更改项目目录' }))
   expect(screen.getByRole('alert')).toHaveTextContent('项目目录不存在')
   expect(useWorkspaceStore.getState()).toMatchObject({
     projectsDirectory: 'D:/Current',
     customProjectsDirectory: 'D:/Current',
   })
-  expect(screen.getByRole('button', { name: '更改自定义目录' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '更改项目目录' })).toBeEnabled()
 })

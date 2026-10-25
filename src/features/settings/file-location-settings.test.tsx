@@ -43,9 +43,9 @@ test('the file default stays fixed and its custom directory is remembered indepe
   expect(useWorkspaceStore.getState().customFilesDirectory).toBe('E:/个人文件')
   await user.click(screen.getByRole('combobox', { name: '文件保存位置' }))
   await user.click(await screen.findByRole('option', { name: '自定义目录' }))
-  expect(screen.getByRole('button', { name: '更改文件自定义目录' })).toHaveTextContent(
-    'E:/个人文件',
-  )
+  expect(screen.getByText('E:/个人文件')).toBeVisible()
+  expect(screen.getByText('E:/个人文件').closest('button, a')).toBeNull()
+  expect(screen.getByRole('button', { name: '更改文件目录' })).toHaveTextContent('更改目录')
   expect(selectProjectDirectory).toHaveBeenCalledOnce()
 })
 
@@ -105,11 +105,11 @@ test('cancelled and invalid folder selections preserve the saved file location',
   useWorkspaceStore.getState().setFilesDirectory('E:/Existing')
   render(<StorageLocationSettings kind="files" />)
   await screen.findByText('E:/Existing')
-  await user.click(screen.getByRole('button', { name: '更改文件自定义目录' }))
+  await user.click(screen.getByRole('button', { name: '更改文件目录' }))
   expect(useWorkspaceStore.getState().filesDirectory).toBe('E:/Existing')
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('E:/Missing')
   vi.mocked(resolveFilesDirectory).mockRejectedValueOnce(new Error('文件目录不存在或无法访问。'))
-  await user.click(screen.getByRole('button', { name: '更改文件自定义目录' }))
+  await user.click(screen.getByRole('button', { name: '更改文件目录' }))
   expect(screen.getByRole('alert')).toHaveTextContent('文件目录不存在')
   expect(useWorkspaceStore.getState()).toMatchObject({
     filesDirectory: 'E:/Existing',
