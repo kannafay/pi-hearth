@@ -53,7 +53,8 @@
 
 :root,
 .workspace-navigation {
-  --sidebar-row-hover: color-mix(in oklch, var(--sidebar-row-selected) 70%, transparent);
+  --sidebar-row-hover: color-mix(in oklch, var(--sidebar-row-selected) 80%, transparent);
+  --control-hover-blur: 10px;
 }
 
 :root {
@@ -296,7 +297,7 @@ select {
   z-index: -1;
   border-radius: inherit;
   background-color: var(--sidebar-row-surface);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--control-hover-blur));
   opacity: 0;
   pointer-events: none;
   transition:
