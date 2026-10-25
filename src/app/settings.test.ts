@@ -20,6 +20,7 @@ const saved: AppSettings = {
   archivedProjects: ['d:/archived'],
   removedProjects: [],
   thinkingLevel: 'xhigh',
+  defaultModel: { provider: 'saved', id: 'default-model', name: 'Saved Default' },
   projectsDirectory: 'D:/saved-projects',
   customProjectsDirectory: 'D:/saved-projects',
   filesDirectory: 'E:/saved-files',
@@ -176,4 +177,36 @@ test('preference write failures are visible without undoing the current UI choic
   useWorkspaceStore.getState().setTheme('light')
   await vi.waitFor(() => expect(useWorkspaceStore.getState().error).toContain('disk full'))
   expect(useWorkspaceStore.getState().theme).toBe('light')
+})
+
+test('the default model persists independently and restores without changing the current conversation', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  const selected = { provider: 'next', id: 'shared', name: 'New Default' }
+  const current = { provider: 'current', id: 'chat', name: 'Current Chat' }
+  useConversationStore.setState({ model: current, status: 'running' })
+  const conversation = useConversationStore.getState()
+  const stored = { ...saved, defaultModel: selected }
+  vi.mocked(updateAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().setDefaultModel(selected)
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({ defaultModel: selected })
+  expect(useWorkspaceStore.getState().defaultModel).toEqual(selected)
+  expect(useConversationStore.getState()).toBe(conversation)
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
+  vi.mocked(loadAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState().defaultModel).toEqual(selected)
+  expect(useConversationStore.getState().model).toEqual(current)
+})
+
+test('a failed default model write keeps the previous saved choice and current model', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  const current = useConversationStore.getState().model
+  vi.mocked(updateAppSettings).mockRejectedValueOnce('disk full')
+  await useWorkspaceStore.getState().setDefaultModel({ provider: 'next', id: 'chat', name: 'Next' })
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    defaultModel: saved.defaultModel,
+    defaultModelPending: false,
+    error: '无法保存默认模型：disk full',
+  })
+  expect(useConversationStore.getState().model).toBe(current)
 })

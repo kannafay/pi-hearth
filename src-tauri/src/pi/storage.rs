@@ -254,6 +254,13 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
         values.insert(key, serde_json::from_str(&value).map_err(database_error)?);
     }
     let settings: AppSettings = serde_json::from_value(values.into()).map_err(database_error)?;
+    if settings
+        .default_model
+        .as_ref()
+        .is_some_and(|model| model.provider.trim().is_empty() || model.id.trim().is_empty())
+    {
+        return Err("请选择有效的默认模型。".into());
+    }
     if [
         &settings.projects_directory,
         &settings.custom_projects_directory,
@@ -425,7 +432,7 @@ pub(super) async fn save_search_documents(
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::AppTheme;
+    use super::super::types::{AppTheme, ModelInfo};
     use super::*;
     use serde_json::json;
     use std::path::PathBuf;
@@ -436,6 +443,66 @@ mod tests {
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[tokio::test]
+    async fn default_model_persists_after_reopening_and_invalid_writes_are_rolled_back() {
+        let root = fixture();
+        assert!(settings(&root).await.unwrap().default_model.is_none());
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                default_model: Some(ModelInfo {
+                    provider: "provider-a".into(),
+                    id: "shared-id".into(),
+                    name: "Saved Default".into(),
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let reopened = settings(&root).await.unwrap().default_model.unwrap();
+        assert_eq!(reopened.provider, "provider-a");
+        assert_eq!(reopened.id, "shared-id");
+        assert_eq!(reopened.name, "Saved Default");
+        let connection = Connection::open(root.join("app.db")).unwrap();
+        let stored: String = connection
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='defaultModel'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&stored).unwrap()["id"],
+            "shared-id"
+        );
+        drop(connection);
+        assert!(
+            update_settings(
+                &root,
+                AppSettingsPatch {
+                    default_model: Some(ModelInfo {
+                        provider: String::new(),
+                        id: "other".into(),
+                        name: "Invalid".into()
+                    }),
+                    ..Default::default()
+                }
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            settings(&root)
+                .await
+                .unwrap()
+                .default_model
+                .unwrap()
+                .provider,
+            "provider-a"
+        );
     }
 
     #[tokio::test]

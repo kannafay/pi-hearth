@@ -164,6 +164,7 @@ pub struct AppSettings {
     pub archived_projects: Vec<String>,
     pub removed_projects: Vec<String>,
     pub thinking_level: Option<String>,
+    pub default_model: Option<ModelInfo>,
     pub projects_directory: String,
     pub custom_projects_directory: String,
     pub files_directory: String,
@@ -186,6 +187,7 @@ impl Default for AppSettings {
             archived_projects: Vec::new(),
             removed_projects: Vec::new(),
             thinking_level: None,
+            default_model: None,
             projects_directory: String::new(),
             custom_projects_directory: String::new(),
             files_directory: String::new(),
@@ -231,6 +233,9 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub thinking_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub default_model: Option<ModelInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub projects_directory: Option<String>,

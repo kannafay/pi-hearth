@@ -141,7 +141,9 @@ test('startup permits a general conversation and initializes only once', async (
     useWorkspaceStore.getState().initialize(),
   ])
   expect(loadCatalog).toHaveBeenCalledTimes(1)
-  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(null, undefined)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(null, undefined, {
+    defaultModel: null,
+  })
   expect(useWorkspaceStore.getState().projectPath).toBeNull()
 })
 
@@ -184,7 +186,9 @@ test('projects can contain multiple sessions and each open selects the exact fil
   })
   expect(useWorkspaceStore.getState().selectedSessionPath).toBe(second.path)
   await useWorkspaceStore.getState().newConversation(null)
-  expect(useConversationStore.getState().connect).toHaveBeenLastCalledWith(null)
+  expect(useConversationStore.getState().connect).toHaveBeenLastCalledWith(null, undefined, {
+    defaultModel: null,
+  })
 })
 
 test('external CLI changes refresh idle history and never reopen a running task', async () => {
@@ -249,7 +253,11 @@ test('choosing another project preserves the unsent draft and attachments', asyn
   expect(useWorkspaceStore.getState().projectPath).toBe(session.cwd)
   expect(useWorkspaceStore.getState().draft).toBe('分析这个项目')
   expect(useWorkspaceStore.getState().draftAttachments).toBe(attachments)
-  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    undefined,
+    { defaultModel: null },
+  )
 })
 
 test('an empty saved conversation still creates a separate new chat', async () => {
@@ -260,7 +268,11 @@ test('an empty saved conversation still creates a separate new chat', async () =
     status: 'ready',
   })
   await useWorkspaceStore.getState().newConversation(session.cwd)
-  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    undefined,
+    { defaultModel: null },
+  )
 })
 
 function finishLocalReply() {
@@ -666,7 +678,9 @@ test('creating a project uses the returned canonical folder and starts its own s
     instructions: 'Project rules',
     expectedInstructions: '',
   })
-  expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\新项目')
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\新项目', undefined, {
+    defaultModel: null,
+  })
 })
 
 test('adding an existing folder updates its independent project name without duplicating it', async () => {
@@ -674,7 +688,9 @@ test('adding an existing folder updates its independent project name without dup
   vi.mocked(addProject).mockResolvedValue({ path: 'D:\\source', name: '设计讨论' })
   await useWorkspaceStore.getState().addProject({ sourcePath: 'D:/source', name: '设计讨论' })
   expect(useWorkspaceStore.getState().projects).toEqual([{ path: 'D:\\source', name: '设计讨论' }])
-  expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\source')
+  expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\source', undefined, {
+    defaultModel: null,
+  })
 })
 
 test('project creation uses the latest directory preference while its database write is pending', async () => {
@@ -793,7 +809,11 @@ test('archiving the current conversation opens a fresh chat and cannot interrupt
     }),
   })
   expect(await useWorkspaceStore.getState().setSessionArchived(session, true)).toBe(true)
-  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(session.cwd)
+  expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
+    session.cwd,
+    undefined,
+    { defaultModel: null },
+  )
   expect(useWorkspaceStore.getState().selectedSessionPath).toBe('new.jsonl')
 })
 
@@ -837,6 +857,7 @@ test('startup restores session preferences without reopening the selected archiv
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     undefined,
+    { defaultModel: null },
   )
 })
 

@@ -3,6 +3,7 @@ use super::{
     process_tree::ProcessTree,
     protocol::{Conversation, JsonLines},
     session_pool::{FileRevision, MAX_OPEN_SESSIONS, RetainedSession},
+    storage,
     tool_output::{ToolOutput, mask, result_text},
     types::*,
 };
@@ -537,20 +538,23 @@ impl PiClient {
             .map_err(|_| "Pi 连接已关闭，请重新连接。".into())
     }
 
-    async fn new_session(
-        &self,
-        channel: Channel<PiEvent>,
-    ) -> Result<(Arc<Self>, RuntimeSnapshot), String> {
-        let previous = self.snapshot().await?;
-        let mut renewal = SessionRenewal(Some(self.runtime.clone()));
-        let result = self.request(json!({"type":"new_session"}), None).await?;
-        if result["cancelled"] == true {
-            return Err("新建会话已取消。".into());
-        }
-        self.check_guard().await?;
-        self.request(json!({"type":"get_state"}), None).await?;
+    async fn apply_default_model(&self, default_model: Option<&ModelInfo>) -> Result<(), String> {
         let snapshot = self.snapshot().await?;
-        if let Some(model) = previous.model.as_ref()
+        let selected = default_model
+            .and_then(|selected| {
+                snapshot
+                    .models
+                    .iter()
+                    .find(|model| model.provider == selected.provider && model.id == selected.id)
+            })
+            .or_else(|| {
+                snapshot
+                    .models
+                    .iter()
+                    .find(|model| model.provider.starts_with("cc-switch"))
+            })
+            .or_else(|| snapshot.models.first());
+        if let Some(model) = selected
             && !snapshot
                 .model
                 .as_ref()
@@ -561,7 +565,25 @@ impl PiClient {
                 None,
             )
             .await?;
+            self.request(json!({"type":"get_state"}), None).await?;
         }
+        Ok(())
+    }
+
+    async fn new_session(
+        &self,
+        channel: Channel<PiEvent>,
+        default_model: Option<&ModelInfo>,
+    ) -> Result<(Arc<Self>, RuntimeSnapshot), String> {
+        let previous = self.snapshot().await?;
+        let mut renewal = SessionRenewal(Some(self.runtime.clone()));
+        let result = self.request(json!({"type":"new_session"}), None).await?;
+        if result["cancelled"] == true {
+            return Err("新建会话已取消。".into());
+        }
+        self.check_guard().await?;
+        self.request(json!({"type":"get_state"}), None).await?;
+        self.apply_default_model(default_model).await?;
         self.request(json!({"type":"get_available_thinking_levels"}), None)
             .await?;
         let levels = self.snapshot().await?.available_thinking_levels;
@@ -1145,6 +1167,14 @@ impl PiManager {
             return Err("请选择有效的项目文件夹。".into());
         }
         let project_path = path.to_str().ok_or("项目路径不是有效 UTF-8。")?.to_owned();
+        let new_conversation = options
+            .as_ref()
+            .is_none_or(|options| options.session_file.is_none());
+        let default_model = if new_conversation {
+            storage::settings(data_dir).await?.default_model
+        } else {
+            None
+        };
         let mut runtime = self.runtime.lock().await;
         let mut source_directory = runtime
             .as_ref()
@@ -1182,7 +1212,9 @@ impl PiManager {
                     })
                     && current.configuration_unchanged()
                 {
-                    let result = current.new_session(channel.clone()).await;
+                    let result = current
+                        .new_session(channel.clone(), default_model.as_ref())
+                        .await;
                     match result {
                         Ok((client, snapshot)) => {
                             *runtime = Some(client);
@@ -1256,7 +1288,9 @@ impl PiManager {
                         .into(),
                 );
             }
-            if !snapshot.models.is_empty()
+            if new_conversation {
+                client.apply_default_model(default_model.as_ref()).await?;
+            } else if !snapshot.models.is_empty()
                 && !snapshot.models.iter().any(|m| {
                     snapshot
                         .model
@@ -1278,20 +1312,6 @@ impl PiManager {
             }
             if let Some(options) = options {
                 client.restore(options.history).await?;
-            }
-            if let Some(model) = inherit
-                .as_ref()
-                .and_then(|snapshot| snapshot.model.as_ref())
-                && snapshot.models.iter().any(|available| {
-                    available.provider == model.provider && available.id == model.id
-                })
-            {
-                client
-                    .request(
-                        json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
-                        None,
-                    )
-                    .await?;
             }
             client.request(json!({"type":"get_state"}), None).await?;
             client
@@ -1872,6 +1892,23 @@ mod tests {
             initial.process_id
         );
         let original = renamed;
+        storage::update_settings(
+            &root.join("data"),
+            AppSettingsPatch {
+                default_model: Some(ModelInfo {
+                    provider: "reuse-test".into(),
+                    id: "first".into(),
+                    name: "Offline First".into(),
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            initial.snapshot().await.unwrap().model.unwrap().id,
+            "second"
+        );
         assert_eq!(
             manager.session_directory(&project_path).await.as_ref(),
             Some(&sessions)
@@ -1914,7 +1951,7 @@ mod tests {
             assert!(next.messages.is_empty() && next.tools.is_empty() && next.timeline.is_empty());
             assert!(next.active_run_id.is_none());
             assert_eq!(next.sequence, 0);
-            assert_eq!(next.model.as_ref().unwrap().id, "second");
+            assert_eq!(next.model.as_ref().unwrap().id, "first");
             assert_eq!(next.thinking_level, "high");
             assert_eq!(next.models.len(), previous.models.len());
             let native = client
@@ -1923,6 +1960,30 @@ mod tests {
                 .unwrap();
             assert!(native["messages"].as_array().unwrap().is_empty());
             assert!(manager.client(&previous.instance_id).await.is_err());
+            client
+                .request(
+                    json!({"type":"set_model","provider":"reuse-test","modelId":"second"}),
+                    None,
+                )
+                .await
+                .unwrap();
+            client
+                .request(json!({"type":"set_thinking_level","level":"high"}), None)
+                .await
+                .unwrap();
+            client
+                .request(json!({"type":"get_state"}), None)
+                .await
+                .unwrap();
+            assert_eq!(
+                storage::settings(&root.join("data"))
+                    .await
+                    .unwrap()
+                    .default_model
+                    .unwrap()
+                    .id,
+                "first"
+            );
             previous = next;
         }
         let client = manager.client(&previous.instance_id).await.unwrap();
@@ -2015,6 +2076,90 @@ mod tests {
         let switched_client = manager.client(&switched.instance_id).await.unwrap();
         assert_ne!(switched_client.process_id, refreshed_client.process_id);
         assert_eq!(switched.project_path, other.to_string_lossy());
+        assert_eq!(switched.model.unwrap().id, "first");
+        let reopened = manager
+            .open(
+                project_path.clone(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: sessions.clone(),
+                    session_file: Some(file.to_string_lossy().into_owned()),
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(reopened.model.as_ref().unwrap().id, "second");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), offline);
+        let reopened_client = manager.client(&reopened.instance_id).await.unwrap();
+        manager
+            .open(
+                other.to_string_lossy().into_owned(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: sessions.clone(),
+                    session_file: None,
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        let warm = manager
+            .open(
+                project_path,
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: sessions,
+                    session_file: Some(file.to_string_lossy().into_owned()),
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(warm.model.unwrap().id, "second");
+        assert_eq!(
+            manager.client(&warm.instance_id).await.unwrap().process_id,
+            reopened_client.process_id
+        );
+        storage::update_settings(
+            &root.join("data"),
+            AppSettingsPatch {
+                default_model: Some(ModelInfo {
+                    provider: "removed-provider".into(),
+                    id: "gone".into(),
+                    name: "Gone".into(),
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let fallback = manager
+            .open(
+                other.to_string_lossy().into_owned(),
+                &root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: root.join("sessions"),
+                    session_file: None,
+                    history: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(fallback.model.unwrap().id, "first");
+        assert_eq!(
+            storage::settings(&root.join("data"))
+                .await
+                .unwrap()
+                .default_model
+                .unwrap()
+                .id,
+            "gone"
+        );
         manager.disconnect().await;
     }
 
@@ -2073,7 +2218,7 @@ mod tests {
                     if preserve {
                         client.reattach(Channel::new(|_| Ok(()))).await
                     } else {
-                        client.new_session(Channel::new(|_| Ok(()))).await
+                        client.new_session(Channel::new(|_| Ok(())), None).await
                     }
                 })
             };

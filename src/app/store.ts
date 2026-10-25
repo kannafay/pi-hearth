@@ -3,6 +3,7 @@ import type {
   AppSettingsPatch,
   AppTheme,
   Attachment,
+  ModelInfo,
   ProjectInfo,
   SessionInfo,
   WorkspaceCatalog,
@@ -88,6 +89,9 @@ interface WorkspaceState {
   settingsLoading: boolean
   hydrateSettings: () => Promise<void>
   theme: Theme
+  defaultModel: ModelInfo | null
+  defaultModelPending: boolean
+  setDefaultModel: (model: ModelInfo) => Promise<void>
   projectsDirectory: string
   customProjectsDirectory: string
   filesDirectory: string
@@ -397,6 +401,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       useConversationStore.setState({ requestedThinkingLevel: thinkingLevel })
       set({
         theme: settings.theme,
+        defaultModel: settings.defaultModel ?? null,
         sidebarOpen: settings.sidebarOpen,
         inspectorOpen: settings.inspectorOpen,
         navigationWidth: settings.navigationWidth,
@@ -420,6 +425,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   theme: 'system',
+  defaultModel: null,
+  defaultModelPending: false,
+  setDefaultModel: async (model) => {
+    if (get().defaultModelPending) return
+    set({ defaultModelPending: true, error: null })
+    try {
+      const settings = await updateAppSettings({ defaultModel: model })
+      set({ defaultModel: settings.defaultModel })
+    } catch (reason) {
+      set({ error: `无法保存默认模型：${String(reason)}` })
+    } finally {
+      set({ defaultModelPending: false })
+    }
+  },
   developerMode: false,
   developerModePending: false,
   setDeveloperMode: async (enabled) => {
@@ -497,7 +516,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         await useConversationStore
           .getState()
           .connect(projectPath, session.path, { sessionId: session.id })
-      else await useConversationStore.getState().connect(projectPath, undefined)
+      else
+        await useConversationStore
+          .getState()
+          .connect(projectPath, undefined, { defaultModel: get().defaultModel })
       if (request === navigation)
         set({ selectedSessionPath: useConversationStore.getState().sessionFile })
     } catch (reason) {
@@ -640,7 +662,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
-    await useConversationStore.getState().connect(projectPath)
+    await useConversationStore
+      .getState()
+      .connect(projectPath, undefined, { defaultModel: get().defaultModel })
     if (request === navigation)
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },

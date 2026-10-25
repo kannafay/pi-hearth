@@ -67,7 +67,7 @@ interface ConversationState extends ConversationData {
   connect: (
     projectPath: string | null,
     sessionPath?: string | null,
-    options?: { force?: boolean; sessionId?: string },
+    options?: { force?: boolean; sessionId?: string; defaultModel?: ModelInfo | null },
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
@@ -415,7 +415,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const settings =
       !key && current.model && ['ready', 'connecting'].includes(current.status) && !current.readOnly
         ? {
-            model: current.model,
+            model:
+              options && 'defaultModel' in options ? (options.defaultModel ?? null) : current.model,
             models: current.models,
             thinkingLevel: current.thinkingLevel,
             availableThinkingLevels: current.availableThinkingLevels,

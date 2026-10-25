@@ -692,8 +692,9 @@ test('opening the current session is a no-op while forced refreshes and new chat
   expect(connectPi).toHaveBeenCalledTimes(5)
 })
 
-test('new chats retain model choices while clearing the old runtime and history before sending', async () => {
+test('new chats preview their configured default while clearing the old runtime and history before sending', async () => {
   const models = [snapshot.model!]
+  const defaultModel = { ...snapshot.model!, id: 'configured-default' }
   useConversationStore.setState({
     instanceId: 'old-runtime',
     sessionId: 'old-session',
@@ -714,7 +715,7 @@ test('new chats retain model choices while clearing the old runtime and history 
       finish = resolve
     })
   })
-  const pending = useConversationStore.getState().connect('project')
+  const pending = useConversationStore.getState().connect('project', undefined, { defaultModel })
   expect(useConversationStore.getState()).toMatchObject({
     status: 'connecting',
     instanceId: null,
@@ -723,7 +724,7 @@ test('new chats retain model choices while clearing the old runtime and history 
     messages: [],
     timeline: [],
     blocks: {},
-    model: snapshot.model,
+    model: defaultModel,
     thinkingLevel: 'high',
     availableThinkingLevels: snapshot.availableThinkingLevels,
   })
