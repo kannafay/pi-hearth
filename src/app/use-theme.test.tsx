@@ -98,7 +98,7 @@ test('theme changes snap together and restore transitions after the latest switc
   expect(frames.size).toBe(0)
 })
 
-test('desktop colors wait for the matching native theme and ignore stale completions', async () => {
+test('desktop colors commit before paint without waiting for native requests or stale completions', async () => {
   vi.mocked(isDesktop).mockReturnValue(true)
   const pending: (() => void)[] = []
   vi.mocked(setWindowTheme).mockImplementation(
@@ -107,15 +107,20 @@ test('desktop colors wait for the matching native theme and ignore stale complet
   const root = document.documentElement
   const view = renderHook(useTheme)
   act(() => useWorkspaceStore.getState().setTheme('dark'))
-  expect(root).not.toHaveClass('dark')
+  expect(root).toHaveClass('dark')
+  expect(root.style.colorScheme).toBe('dark')
+  expect(root).toHaveAttribute('data-theme-changing')
+  finishThemeFrame()
+  expect(root).not.toHaveAttribute('data-theme-changing')
   await act(async () => pending[1]())
   expect(root).toHaveClass('dark')
-  expect(root).toHaveAttribute('data-theme-changing')
+  expect(root).not.toHaveAttribute('data-theme-changing')
   await act(async () => pending[0]())
   expect(root).toHaveClass('dark')
 
   act(() => useWorkspaceStore.getState().setTheme('light'))
-  expect(root).toHaveClass('dark')
+  expect(root).not.toHaveClass('dark')
+  expect(root.style.colorScheme).toBe('light')
   await act(async () => pending[2]())
   expect(root).not.toHaveClass('dark')
   finishThemeFrame()
@@ -123,10 +128,32 @@ test('desktop colors wait for the matching native theme and ignore stale complet
 
   act(() => useWorkspaceStore.getState().setTheme('dark'))
   view.unmount()
+  root.classList.remove('dark')
   await act(async () => pending[3]())
   expect(root).not.toHaveClass('dark')
   expect(root).not.toHaveAttribute('data-theme-changing')
   expect(frames.size).toBe(0)
+})
+
+test('native theme failures leave the committed palette intact and restore interaction transitions', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  renderHook(useTheme)
+  finishThemeFrame()
+  const failure = new Error('native theme unavailable')
+  vi.mocked(setWindowTheme).mockRejectedValueOnce(failure)
+
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(document.documentElement).toHaveClass('dark')
+  expect(document.documentElement).toHaveAttribute('data-theme-changing')
+  await act(async () => {})
+  expect(document.documentElement).toHaveClass('dark')
+  expect(warning).toHaveBeenCalledExactlyOnceWith(
+    'Unable to update the native window theme:',
+    failure,
+  )
+  finishThemeFrame()
+  expect(document.documentElement).not.toHaveAttribute('data-theme-changing')
 })
 
 test('system changes keep manual colors stable and returning to automatic uses the actual OS color', () => {

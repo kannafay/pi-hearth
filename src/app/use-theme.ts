@@ -38,31 +38,21 @@ export function useTheme() {
     root.toggleAttribute('data-native-backdrop', isDesktop() && usesNativeSystemTheme())
     const scheme = dark ? 'dark' : 'light'
     let frame: number | undefined
-    let disposed = false
-    const apply = () => {
-      if (disposed) return
-      if (root.classList.contains('dark') !== dark || root.style.colorScheme !== scheme) {
-        root.setAttribute('data-theme-changing', '')
-        root.classList.toggle('dark', dark)
-        root.style.colorScheme = scheme
-        void root.offsetHeight
-        // Keep transitions disabled through the first paint of the new palette.
-        frame = window.requestAnimationFrame(() => {
-          frame = window.requestAnimationFrame(() => root.removeAttribute('data-theme-changing'))
-        })
-      }
-    }
-    if (isDesktop()) {
-      void setWindowTheme(nativeTheme).then(apply, (reason: unknown) => {
-        console.warn('Unable to update the native window theme:', reason)
-        apply()
+    if (root.classList.contains('dark') !== dark || root.style.colorScheme !== scheme) {
+      root.setAttribute('data-theme-changing', '')
+      root.classList.toggle('dark', dark)
+      root.style.colorScheme = scheme
+      void root.offsetHeight
+      // Keep transitions disabled through the first paint of the new palette.
+      frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(() => root.removeAttribute('data-theme-changing'))
       })
-    } else {
-      apply()
-      void setWindowTheme(nativeTheme)
     }
+    // Commit the palette with the controls, before paint; IPC must not delay it.
+    void setWindowTheme(nativeTheme).catch((reason: unknown) => {
+      console.warn('Unable to update the native window theme:', reason)
+    })
     return () => {
-      disposed = true
       if (frame !== undefined) window.cancelAnimationFrame(frame)
       root.removeAttribute('data-theme-changing')
       root.removeAttribute('data-native-backdrop')
