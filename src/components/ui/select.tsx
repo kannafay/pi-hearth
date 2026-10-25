@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Select as SelectPrimitive } from '@base-ui/react/select'
 import { cn } from 'cn'
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from 'lucide-react'
+import { useDialogLayers } from '@/components/dialog-layers'
 import {
   menuItemStyles,
   menuLabelStyles,
@@ -11,7 +12,13 @@ import {
   menuSeparatorStyles,
 } from './menu-styles'
 
-const Select = SelectPrimitive.Root
+function Select<Value, Multiple extends boolean | undefined = false>({
+  modal,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const workspace = useDialogLayers()
+  return <SelectPrimitive.Root {...props} modal={workspace ? false : modal} />
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

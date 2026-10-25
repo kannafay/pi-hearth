@@ -259,6 +259,44 @@ test('search preserves an unfinished project form and restores keyboard focus', 
   await waitFor(() => expect(name).toHaveFocus())
 })
 
+test.each(['select', 'menu'])(
+  'header search opens with one click while a %s popup is open',
+  async (popup) => {
+    useWorkspaceStore.setState({
+      sessions: [
+        {
+          id: 'one',
+          path: 'one.jsonl',
+          cwd: 'C:/chat',
+          title: '弹出菜单测试',
+          modified: 0,
+          messageCount: 2,
+        },
+      ],
+    })
+    const user = userEvent.setup()
+    render(<WorkspaceShell />)
+    if (popup === 'select') {
+      await user.click(screen.getByRole('button', { name: '设置' }))
+      await user.click(await screen.findByRole('combobox', { name: '界面主题' }))
+      expect(await screen.findByRole('option', { name: '深色' })).toBeVisible()
+    } else {
+      await user.click(screen.getByRole('button', { name: '弹出菜单测试 会话菜单' }))
+      expect(await screen.findByRole('menuitem', { name: '重命名' })).toBeVisible()
+    }
+    await user.click(screen.getByRole('button', { name: '搜索会话' }))
+    const search = await screen.findByRole('dialog', { name: '搜索会话' })
+    expect(within(search).getByRole('combobox')).toHaveFocus()
+    expect(useWorkspaceStore.getState().theme).toBe('system')
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+    )
+    if (popup === 'select') expect(screen.getByRole('dialog', { name: '设置' })).toBeVisible()
+    else expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  },
+)
+
 test.each(['left', 'right'])('search remains usable over the %s floating panel', async (side) => {
   vi.mocked(useMediaQuery).mockReturnValue(true)
   const user = userEvent.setup()

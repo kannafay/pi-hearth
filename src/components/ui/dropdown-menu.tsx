@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Menu as MenuPrimitive } from '@base-ui/react/menu'
 import { cn } from 'cn'
 import { ChevronRightIcon, CheckIcon } from 'lucide-react'
+import { useDialogLayers } from '@/components/dialog-layers'
 import {
   menuItemStyles,
   menuLabelStyles,
@@ -12,7 +13,14 @@ import {
 } from './menu-styles'
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+  const workspace = useDialogLayers()
+  return (
+    <MenuPrimitive.Root
+      data-slot="dropdown-menu"
+      {...props}
+      modal={workspace ? false : props.modal}
+    />
+  )
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
