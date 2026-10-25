@@ -128,23 +128,53 @@ function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) 
   )
 }
 
-function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Props) {
+function SelectItem({
+  className,
+  children,
+  description,
+  ...props
+}: SelectPrimitive.Item.Props & { description?: React.ReactNode }) {
+  const descriptionId = React.useId()
+  const label = (
+    <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+      {children}
+    </SelectPrimitive.ItemText>
+  )
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
+      aria-describedby={description ? descriptionId : undefined}
       className={cn(
         menuItemStyles,
         'w-full pr-8 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2',
+        description && 'items-start py-1.5',
         className,
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
-        {children}
-      </SelectPrimitive.ItemText>
+      {description ? (
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {label}
+          <span
+            id={descriptionId}
+            data-slot="select-item-description"
+            className="text-xs leading-4 whitespace-normal text-muted-foreground"
+          >
+            {description}
+          </span>
+        </div>
+      ) : (
+        label
+      )}
       <SelectPrimitive.ItemIndicator
         render={
-          <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center" />
+          <span
+            data-slot="select-item-indicator"
+            className={cn(
+              'pointer-events-none absolute right-2 flex size-4 items-center justify-center',
+              description && 'top-2',
+            )}
+          />
         }
       >
         <CheckIcon className="pointer-events-none" />

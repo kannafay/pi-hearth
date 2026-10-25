@@ -44,13 +44,8 @@ export function PermissionPicker() {
       <SelectContent width="content" align="start" className="max-w-80">
         <SelectGroup>
           {permissionOptions.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              <span className="flex min-w-0 flex-col items-start gap-1 py-0.5 whitespace-normal">
-                <span>{item.label}</span>
-                <span className="max-w-64 text-xs leading-5 text-muted-foreground">
-                  {item.description}
-                </span>
-              </span>
+            <SelectItem key={item.value} value={item.value} description={item.description}>
+              {item.label}
             </SelectItem>
           ))}
         </SelectGroup>
