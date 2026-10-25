@@ -162,6 +162,11 @@ impl PiClient {
             include_str!("../../../runtime/file-storage.mjs"),
         )
         .map_err(|_| "无法安装文件存储模块。")?;
+        std::fs::write(
+            data_dir.join("runtime/permissions.mjs"),
+            include_str!("../../../runtime/permissions.mjs"),
+        )
+        .map_err(|_| "无法安装权限模块。")?;
         let agent_dir = data_dir.join("pi");
         let config = prepare_config(source_agent_dir, &agent_dir)?;
         let global_instructions = ["AGENTS.md", "CLAUDE.md"]
@@ -570,10 +575,29 @@ impl PiClient {
         Ok(())
     }
 
+    pub async fn set_permission(
+        &self,
+        mode: super::types::PermissionMode,
+    ) -> Result<RuntimeSnapshot, String> {
+        if self.snapshot().await?.active_run_id.is_some() {
+            return Err("请等待当前回复结束后修改权限。".into());
+        }
+        self.request(json!({"type":"prompt","message":format!("/hearth-permission {} {}",self.action_token,mode.as_str())}),None).await?;
+        self.request(json!({"type":"get_entries"}), None).await?;
+        self.request(json!({"type":"get_state"}), None).await?;
+        let snapshot = self.snapshot().await?;
+        if snapshot.permission_mode != mode {
+            return Err("会话权限未能保存。".into());
+        }
+        self.remember_revision(&snapshot);
+        Ok(snapshot)
+    }
+
     async fn new_session(
         &self,
         channel: Channel<PiEvent>,
         default_model: Option<&ModelInfo>,
+        default_permission: super::types::PermissionMode,
     ) -> Result<(Arc<Self>, RuntimeSnapshot), String> {
         let previous = self.snapshot().await?;
         let mut renewal = SessionRenewal(Some(self.runtime.clone()));
@@ -584,6 +608,7 @@ impl PiClient {
         self.check_guard().await?;
         self.request(json!({"type":"get_state"}), None).await?;
         self.apply_default_model(default_model).await?;
+        self.set_permission(default_permission).await?;
         self.request(json!({"type":"get_available_thinking_levels"}), None)
             .await?;
         let levels = self.snapshot().await?.available_thinking_levels;
@@ -1170,10 +1195,11 @@ impl PiManager {
         let new_conversation = options
             .as_ref()
             .is_none_or(|options| options.session_file.is_none());
-        let default_model = if new_conversation {
-            storage::settings(data_dir).await?.default_model
+        let (default_model, default_permission) = if new_conversation {
+            let settings = storage::settings(data_dir).await?;
+            (settings.default_model, settings.default_permission)
         } else {
-            None
+            (None, super::types::PermissionMode::Ask)
         };
         let mut runtime = self.runtime.lock().await;
         let mut source_directory = runtime
@@ -1213,7 +1239,7 @@ impl PiManager {
                     && current.configuration_unchanged()
                 {
                     let result = current
-                        .new_session(channel.clone(), default_model.as_ref())
+                        .new_session(channel.clone(), default_model.as_ref(), default_permission)
                         .await;
                     match result {
                         Ok((client, snapshot)) => {
@@ -1309,6 +1335,11 @@ impl PiManager {
                         None,
                     )
                     .await?;
+            }
+            if new_conversation {
+                client.set_permission(default_permission).await?;
+            } else {
+                client.request(json!({"type":"get_entries"}), None).await?;
             }
             if let Some(options) = options {
                 client.restore(options.history).await?;
@@ -1593,6 +1624,116 @@ mod tests {
                 .await
                 .unwrap()
         }
+    }
+
+    #[tokio::test]
+    async fn permissions_survive_resident_switches_and_cold_reopens_and_new_sessions_use_only_the_default()
+     {
+        let fixture = ResidentFixture::new().await;
+        let data = fixture.root.join("data");
+        let first = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            first
+                .set_permission(PermissionMode::Auto)
+                .await
+                .unwrap()
+                .permission_mode,
+            PermissionMode::Auto
+        );
+        storage::update_settings(
+            &data,
+            AppSettingsPatch {
+                default_permission: Some(PermissionMode::Full),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let second = fixture.open(1).await;
+        assert_eq!(second.permission_mode, PermissionMode::Ask);
+        fixture
+            .manager
+            .client(&second.instance_id)
+            .await
+            .unwrap()
+            .set_permission(PermissionMode::Full)
+            .await
+            .unwrap();
+        let returned = fixture.open(0).await;
+        assert_eq!(returned.permission_mode, PermissionMode::Auto);
+        assert_eq!(
+            fixture
+                .manager
+                .client(&returned.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            fixture.initial_pid
+        );
+        assert_eq!(fixture.open(1).await.permission_mode, PermissionMode::Full);
+        // Release the cached process while another isolated test session remains active.
+        let retained = std::mem::take(&mut *fixture.manager.retained.lock().await);
+        for entry in retained {
+            entry.client.shutdown().await;
+        }
+        let cold = fixture.open(0).await;
+        assert_eq!(cold.permission_mode, PermissionMode::Auto);
+        assert_ne!(
+            fixture
+                .manager
+                .client(&cold.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            fixture.initial_pid
+        );
+        let options = || OpenOptions {
+            session_directory: fixture.files[0].parent().unwrap().to_owned(),
+            session_file: None,
+            history: vec![],
+        };
+        let new = fixture
+            .manager
+            .open(
+                fixture.projects[0].clone(),
+                &data,
+                Channel::new(|_| Ok(())),
+                options(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(new.permission_mode, PermissionMode::Full);
+        let client = fixture.manager.client(&new.instance_id).await.unwrap();
+        client.set_permission(PermissionMode::Ask).await.unwrap();
+        let next = fixture
+            .manager
+            .open(
+                fixture.projects[0].clone(),
+                &data,
+                Channel::new(|_| Ok(())),
+                options(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(next.permission_mode, PermissionMode::Full);
+        assert_eq!(
+            fixture
+                .manager
+                .client(&next.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            client.process_id
+        );
+        assert_eq!(
+            storage::settings(&data).await.unwrap().default_permission,
+            PermissionMode::Full
+        );
+        fixture.manager.disconnect().await;
     }
 
     #[tokio::test]
@@ -2218,7 +2359,9 @@ mod tests {
                     if preserve {
                         client.reattach(Channel::new(|_| Ok(()))).await
                     } else {
-                        client.new_session(Channel::new(|_| Ok(())), None).await
+                        client
+                            .new_session(Channel::new(|_| Ok(())), None, Default::default())
+                            .await
                     }
                 })
             };

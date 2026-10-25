@@ -133,6 +133,7 @@ pub fn run() {
             pi::pi_stop,
             pi::pi_set_model,
             pi::pi_set_thinking_level,
+            pi::pi_set_permission,
             pi::pi_tool_decide,
             pi::pi_tool_output,
             pi::pi_disconnect

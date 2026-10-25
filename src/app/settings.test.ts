@@ -21,6 +21,7 @@ const saved: AppSettings = {
   removedProjects: [],
   thinkingLevel: 'xhigh',
   defaultModel: { provider: 'saved', id: 'default-model', name: 'Saved Default' },
+  defaultPermission: 'ask',
   projectsDirectory: 'D:/saved-projects',
   customProjectsDirectory: 'D:/saved-projects',
   filesDirectory: 'E:/saved-files',
@@ -209,4 +210,31 @@ test('a failed default model write keeps the previous saved choice and current m
     error: '无法保存默认模型：disk full',
   })
   expect(useConversationStore.getState().model).toBe(current)
+})
+
+test('the permission default survives restart and never mutates an existing session', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  useConversationStore.setState({ permissionMode: 'auto', status: 'ready' })
+  const conversation = useConversationStore.getState()
+  const stored: AppSettings = { ...saved, defaultPermission: 'full' }
+  vi.mocked(updateAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().setDefaultPermission('full')
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({ defaultPermission: 'full' })
+  expect(useConversationStore.getState()).toBe(conversation)
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
+  vi.mocked(loadAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState().defaultPermission).toBe('full')
+  expect(useConversationStore.getState().permissionMode).toBe('auto')
+})
+
+test('a failed permission default write retains the saved mode', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  vi.mocked(updateAppSettings).mockRejectedValueOnce('disk full')
+  await useWorkspaceStore.getState().setDefaultPermission('auto')
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    defaultPermission: 'ask',
+    defaultPermissionPending: false,
+    error: '无法保存默认权限：disk full',
+  })
 })

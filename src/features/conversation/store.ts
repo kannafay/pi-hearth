@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   ChatMessage,
   ModelInfo,
+  PermissionMode,
   PiEvent,
   RuntimeSnapshot,
   ToolCall,
@@ -14,6 +15,7 @@ import {
   rewritePiMessage,
   setPiModel,
   setPiThinkingLevel,
+  setPiPermission,
   stopPi,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
@@ -43,12 +45,17 @@ export interface ConversationData {
   tools: ToolCall[]
   timeline: TimelineEntry[]
   model: ModelInfo | null
+  permissionMode: PermissionMode
   models: ModelInfo[]
   thinkingLevel: string
   requestedThinkingLevel: string | null
   availableThinkingLevels: string[]
-  settingsPending: 'model' | 'thinking' | null
-  pendingSettings: { model: ModelInfo | null; thinkingLevel: string } | null
+  settingsPending: 'model' | 'thinking' | 'permission' | null
+  pendingSettings: {
+    model?: ModelInfo | null
+    thinkingLevel?: string
+    permissionMode?: PermissionMode
+  } | null
   activeRunId: string | null
   sequence: number
   error: string | null
@@ -67,7 +74,12 @@ interface ConversationState extends ConversationData {
   connect: (
     projectPath: string | null,
     sessionPath?: string | null,
-    options?: { force?: boolean; sessionId?: string; defaultModel?: ModelInfo | null },
+    options?: {
+      force?: boolean
+      sessionId?: string
+      defaultModel?: ModelInfo | null
+      defaultPermission?: PermissionMode
+    },
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
@@ -75,6 +87,7 @@ interface ConversationState extends ConversationData {
   stop: () => Promise<void>
   changeModel: (model: ModelInfo) => Promise<void>
   changeThinkingLevel: (level: string) => Promise<void>
+  changePermission: (mode: PermissionMode) => Promise<void>
   receive: (events: PiEvent[]) => void
 }
 
@@ -88,6 +101,7 @@ export const emptyConversation: ConversationData = {
   tools: [],
   timeline: [],
   model: null,
+  permissionMode: 'ask',
   models: [],
   thinkingLevel: 'off',
   requestedThinkingLevel: null,
@@ -120,6 +134,7 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
       snapshot.timeline ??
       snapshot.messages.map((message) => ({ kind: 'message', id: message.id })),
     model: snapshot.model,
+    permissionMode: snapshot.permissionMode ?? 'ask',
     models: snapshot.models,
     thinkingLevel: snapshot.thinkingLevel ?? 'off',
     availableThinkingLevels: snapshot.availableThinkingLevels ?? [],
@@ -130,6 +145,7 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
 // Settings acknowledgements must not replace the transcript or its scroll state.
 function settingsFromSnapshot(snapshot: RuntimeSnapshot) {
   return {
+    permissionMode: snapshot.permissionMode ?? useConversationStore.getState().permissionMode,
     model: snapshot.model,
     models: snapshot.models,
     thinkingLevel: snapshot.thinkingLevel,
@@ -306,6 +322,13 @@ function applyPendingSettings(): Promise<void> {
       while (current() && get().pendingSettings) {
         const selection = get().pendingSettings!
         try {
+          if (selection.permissionMode) {
+            set({ settingsPending: 'permission' })
+            const snapshot = await setPiPermission(instanceId, selection.permissionMode)
+            if (!current()) return
+            set(settingsFromSnapshot(snapshot))
+            if (get().pendingSettings !== selection) continue
+          }
           if (
             selection.model &&
             (!appliedModel || modelKey(selection.model) !== modelKey(appliedModel))
@@ -320,6 +343,10 @@ function applyPendingSettings(): Promise<void> {
             appliedModel = selection.model
             set(settingsFromSnapshot(snapshot))
             if (get().pendingSettings !== selection) continue
+          }
+          if (selection.thinkingLevel === undefined) {
+            set({ pendingSettings: null, settingsPending: null })
+            continue
           }
           const level = get().availableThinkingLevels.includes(selection.thinkingLevel)
             ? selection.thinkingLevel
@@ -429,6 +456,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...emptyConversation,
       ...display,
       ...settings,
+      ...(!key ? { permissionMode: options?.defaultPermission ?? 'ask' } : {}),
       // The configured catalog remains usable even before an uncached session opens.
       models: current.models.length ? current.models : (display?.models ?? []),
       sessionCache,
@@ -448,7 +476,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           const pendingSettings =
             snapshot.readOnly || snapshot.activeRunId
               ? null
-              : (get().pendingSettings ?? { model: null, thinkingLevel: requestedThinkingLevel })
+              : {
+                  model: null,
+                  thinkingLevel: requestedThinkingLevel,
+                  ...get().pendingSettings,
+                }
           const data = {
             ...fromSnapshot(snapshot),
             ...(get().sessionId === snapshot.sessionId && !snapshot.activeRunId
@@ -457,9 +489,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             requestedThinkingLevel,
             pendingSettings,
             settingsPending: pendingSettings
-              ? pendingSettings.model
-                ? ('model' as const)
-                : ('thinking' as const)
+              ? pendingSettings.permissionMode
+                ? ('permission' as const)
+                : pendingSettings.model
+                  ? ('model' as const)
+                  : ('thinking' as const)
               : null,
             lastLocalActivityAt: get().lastLocalActivityAt,
           }
@@ -590,6 +624,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       return
     set({
       pendingSettings: {
+        ...(pendingSettings?.permissionMode
+          ? { permissionMode: pendingSettings.permissionMode }
+          : {}),
         model,
         thinkingLevel: pendingSettings?.thinkingLevel ?? requestedThinkingLevel ?? 'default',
       },
@@ -614,8 +651,29 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     )
       return
     set({
-      pendingSettings: { model: pendingSettings?.model ?? null, thinkingLevel: level },
+      pendingSettings: {
+        ...(pendingSettings?.permissionMode
+          ? { permissionMode: pendingSettings.permissionMode }
+          : {}),
+        model: pendingSettings?.model ?? null,
+        thinkingLevel: level,
+      },
       settingsPending: status === 'ready' ? (pendingSettings?.model ? 'model' : 'thinking') : null,
+      error: null,
+    })
+    await applyPendingSettings()
+  },
+  changePermission: async (mode) => {
+    const state = get()
+    if (
+      !['connecting', 'ready'].includes(state.status) ||
+      state.readOnly ||
+      (state.status === 'ready' && !state.instanceId)
+    )
+      return
+    set({
+      pendingSettings: { ...state.pendingSettings, permissionMode: mode },
+      settingsPending: state.status === 'ready' ? 'permission' : null,
       error: null,
     })
     await applyPendingSettings()

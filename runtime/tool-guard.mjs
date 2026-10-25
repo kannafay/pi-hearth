@@ -1,8 +1,14 @@
-import { realpath } from 'node:fs/promises'
+import { lstat, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { prepareFileStorage } from './file-storage.mjs'
+import {
+  changePermission,
+  evaluateToolRisk,
+  permissionCommand,
+  sessionPermission,
+} from './permissions.mjs'
 
 export const guardCommand = 'hearth-guard-ready'
 export const approvalKind = 'pi-hearth-tool-approval-v1'
@@ -52,11 +58,27 @@ export async function isProjectRead(input, cwd) {
   }
 }
 
-export async function guardTool(event, ctx) {
+async function isProjectTarget(input, cwd) {
+  let current = input
+  while (true) {
+    try {
+      return await isProjectRead(await realpath(current), cwd)
+    } catch (error) {
+      if (error.code !== 'ENOENT' || (await lstat(current).catch(() => null))) return false
+      const parent = path.dirname(current)
+      if (parent === current) return false
+      current = parent
+    }
+  }
+}
+
+export async function guardTool(event, ctx, assessRisk) {
   if (!['read', 'write', 'edit', 'bash', 'powershell'].includes(event.toolName)) {
     return { block: true, reason: '此工具尚未在 pi-hearth 中启用。' }
   }
   try {
+    if (ctx.signal?.aborted) return { block: true, reason: '任务已停止。' }
+    const permission = sessionPermission(ctx)
     if (typeof event.input.path === 'string') {
       event.input.path = resolveToolPath(event.input.path, ctx.cwd)
       if (event.toolName === 'read') {
@@ -66,6 +88,22 @@ export async function guardTool(event, ctx) {
           return
         }
       }
+    }
+    if (permission === 'full') return
+    const canAssess =
+      permission === 'auto' &&
+      (['bash', 'powershell'].includes(event.toolName) ||
+        (typeof event.input.path === 'string' &&
+          (await isProjectTarget(event.input.path, ctx.cwd))))
+    if (canAssess && assessRisk) {
+      let allowed = false
+      try {
+        allowed = await assessRisk(event, ctx)
+      } catch {
+        /* Ask when assessment fails. */
+      }
+      if (ctx.signal?.aborted) return { block: true, reason: '任务已停止。' }
+      if (allowed) return
     }
     if (!ctx.hasUI || ctx.signal?.aborted)
       return { block: true, reason: '工具确认不可用或任务已停止。' }
@@ -88,7 +126,7 @@ export async function guardTool(event, ctx) {
 }
 
 export default function registerGuard(pi) {
-  pi.on('tool_call', guardTool)
+  pi.on('tool_call', (event, ctx) => guardTool(event, ctx, evaluateToolRisk))
   pi.on('before_agent_start', (event, ctx) =>
     prepareFileStorage(event, ctx, pi, process.env.HEARTH_FILE_STORAGE_CONFIG),
   )
@@ -100,5 +138,10 @@ export default function registerGuard(pi) {
   pi.registerCommand(rewindCommand, {
     description: 'pi-hearth message actions',
     handler: (args, ctx) => rewindMessage(pi, args, ctx, process.env.HEARTH_MESSAGE_ACTION_TOKEN),
+  })
+  pi.registerCommand(permissionCommand, {
+    description: 'pi-hearth conversation permissions',
+    handler: (args, ctx) =>
+      changePermission(pi, args, ctx, process.env.HEARTH_MESSAGE_ACTION_TOKEN),
   })
 }

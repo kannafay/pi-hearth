@@ -20,7 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:guard": "node --test tests/tool-guard.spec.node.mjs",
+    "test:guard": "node --test tests/tool-guard.spec.node.mjs tests/permission-runtime.spec.node.mjs",
     "test:sessions": "node --test tests/session-catalog.spec.node.mjs",
     "test:files": "node --test tests/file-storage.spec.node.mjs",
     "test:watch": "vitest",

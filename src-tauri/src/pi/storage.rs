@@ -446,6 +446,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn permission_default_persists_independently_and_rejects_unknown_modes() {
+        use super::super::types::PermissionMode;
+        let root = fixture();
+        assert_eq!(
+            settings(&root).await.unwrap().default_permission,
+            PermissionMode::Ask
+        );
+        for mode in [
+            PermissionMode::Auto,
+            PermissionMode::Full,
+            PermissionMode::Ask,
+        ] {
+            update_settings(
+                &root,
+                AppSettingsPatch {
+                    default_permission: Some(mode),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+            let reopened = settings(&root).await.unwrap();
+            assert_eq!(reopened.default_permission, mode);
+            assert!(reopened.default_model.is_none());
+        }
+        assert!(
+            serde_json::from_value::<AppSettingsPatch>(json!({"defaultPermission":"unknown"}))
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
     async fn default_model_persists_after_reopening_and_invalid_writes_are_rolled_back() {
         let root = fixture();
         assert!(settings(&root).await.unwrap().default_model.is_none());

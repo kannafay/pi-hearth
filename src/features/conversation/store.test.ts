@@ -11,6 +11,7 @@ import {
   sendPiMessage,
   rewritePiMessage,
   setPiModel,
+  setPiPermission,
   setPiThinkingLevel,
   stopPi,
 } from '@/lib/pi'
@@ -23,6 +24,7 @@ vi.mock('@/lib/pi', () => ({
   rewritePiMessage: vi.fn(),
   stopPi: vi.fn(),
   setPiModel: vi.fn(),
+  setPiPermission: vi.fn(),
   setPiThinkingLevel: vi.fn(),
 }))
 
@@ -36,6 +38,7 @@ const message: ChatMessage = {
 }
 const snapshot: RuntimeSnapshot = {
   instanceId: 'pi-1',
+  permissionMode: 'ask',
   projectPath: 'project',
   sessionId: 'session-1',
   sessionFile: null,
@@ -66,6 +69,110 @@ beforeEach(() => {
   useConversationStore.setState({ availableThinkingLevels: snapshot.availableThinkingLevels })
   vi.mocked(setPiThinkingLevel).mockResolvedValue(snapshot)
   vi.mocked(setPiModel).mockResolvedValue(snapshot)
+  vi.mocked(setPiPermission).mockImplementation(async (_id, mode) => ({
+    ...snapshot,
+    permissionMode: mode,
+  }))
+})
+
+test('permission-only changes serialize the last choice without touching model or thinking settings', async () => {
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  const first = deferred<RuntimeSnapshot>()
+  vi.mocked(setPiPermission).mockReturnValueOnce(first.promise)
+  const changes = [
+    useConversationStore.getState().changePermission('auto'),
+    useConversationStore.getState().changePermission('ask'),
+    useConversationStore.getState().changePermission('full'),
+  ]
+  expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-1', 'auto')
+  expect(await useConversationStore.getState().send('wait')).toBe(false)
+  first.resolve({ ...snapshot, permissionMode: 'auto' })
+  await Promise.all(changes)
+  expect(vi.mocked(setPiPermission).mock.calls).toEqual([
+    ['pi-1', 'auto'],
+    ['pi-1', 'full'],
+  ])
+  expect(useConversationStore.getState()).toMatchObject({
+    permissionMode: 'full',
+    pendingSettings: null,
+    settingsPending: null,
+  })
+  expect(setPiModel).not.toHaveBeenCalled()
+  expect(setPiThinkingLevel).not.toHaveBeenCalled()
+  expect(loadThinkingPreference()).toBe('default')
+})
+
+test('new-chat permissions display the configured default and connecting choices supersede it on readiness', async () => {
+  const opening = deferred<void>()
+  let hydrate!: (value: RuntimeSnapshot) => void
+  vi.mocked(connectPi).mockImplementationOnce((_project, receive) => {
+    hydrate = receive
+    return opening.promise
+  })
+  const pending = useConversationStore
+    .getState()
+    .connect('project', undefined, { defaultPermission: 'full' })
+  expect(useConversationStore.getState().permissionMode).toBe('full')
+  await useConversationStore.getState().changePermission('ask')
+  await useConversationStore.getState().changePermission('auto')
+  expect(setPiPermission).not.toHaveBeenCalled()
+  vi.mocked(setPiThinkingLevel).mockResolvedValueOnce({ ...snapshot, permissionMode: 'auto' })
+  hydrate({ ...snapshot, permissionMode: 'full' })
+  opening.resolve()
+  await pending
+  expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-1', 'auto')
+  expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'default')
+  expect(useConversationStore.getState().permissionMode).toBe('auto')
+})
+
+test('a late permission acknowledgement cannot overwrite another session or its cached permissions', async () => {
+  useConversationStore.setState({
+    ...sessionSnapshot('A'),
+    permissionMode: 'auto',
+    status: 'ready',
+  })
+  const applying = deferred<RuntimeSnapshot>()
+  vi.mocked(setPiPermission).mockReturnValueOnce(applying.promise)
+  const changing = useConversationStore.getState().changePermission('full')
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) =>
+    hydrate(sessionSnapshot('B')),
+  )
+  vi.mocked(setPiThinkingLevel).mockResolvedValueOnce(sessionSnapshot('B'))
+  await useConversationStore.getState().connect('project', 'B')
+  applying.resolve({ ...sessionSnapshot('A'), permissionMode: 'full' })
+  await changing
+  expect(useConversationStore.getState()).toMatchObject({
+    sessionId: 'B',
+    permissionMode: 'ask',
+    pendingSettings: null,
+  })
+  vi.mocked(connectPi).mockImplementationOnce(async () => {})
+  await useConversationStore.getState().connect('project', 'A')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'connecting',
+    permissionMode: 'auto',
+    instanceId: null,
+  })
+})
+
+test('failed permission writes retain the acknowledged mode and busy or read-only sessions cannot change it', async () => {
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  vi.mocked(setPiPermission).mockRejectedValueOnce(new Error('write failed'))
+  await useConversationStore.getState().changePermission('full')
+  expect(useConversationStore.getState()).toMatchObject({
+    permissionMode: 'ask',
+    pendingSettings: null,
+    error: 'Error: write failed',
+  })
+  for (const state of [
+    { status: 'running' as const },
+    { status: 'stopping' as const },
+    { status: 'ready' as const, readOnly: 'missing directory' },
+  ]) {
+    useConversationStore.setState(state)
+    await useConversationStore.getState().changePermission('auto')
+  }
+  expect(setPiPermission).toHaveBeenCalledTimes(1)
 })
 
 test('rewrites retain the current transcript until the authoritative branch event and prevent duplicate sends', async () => {

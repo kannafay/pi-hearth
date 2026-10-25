@@ -4,6 +4,7 @@ import type {
   AppTheme,
   Attachment,
   ModelInfo,
+  PermissionMode,
   ProjectInfo,
   SessionInfo,
   WorkspaceCatalog,
@@ -92,6 +93,9 @@ interface WorkspaceState {
   defaultModel: ModelInfo | null
   defaultModelPending: boolean
   setDefaultModel: (model: ModelInfo) => Promise<void>
+  defaultPermission: PermissionMode
+  defaultPermissionPending: boolean
+  setDefaultPermission: (mode: PermissionMode) => Promise<void>
   projectsDirectory: string
   customProjectsDirectory: string
   filesDirectory: string
@@ -402,6 +406,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({
         theme: settings.theme,
         defaultModel: settings.defaultModel ?? null,
+        defaultPermission: settings.defaultPermission ?? 'ask',
         sidebarOpen: settings.sidebarOpen,
         inspectorOpen: settings.inspectorOpen,
         navigationWidth: settings.navigationWidth,
@@ -427,6 +432,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   theme: 'system',
   defaultModel: null,
   defaultModelPending: false,
+  defaultPermission: 'ask',
+  defaultPermissionPending: false,
+  setDefaultPermission: async (mode) => {
+    if (get().defaultPermissionPending) return
+    set({ defaultPermissionPending: true, error: null })
+    try {
+      const settings = await updateAppSettings({ defaultPermission: mode })
+      set({ defaultPermission: settings.defaultPermission ?? 'ask' })
+    } catch (reason) {
+      set({ error: `无法保存默认权限：${String(reason)}` })
+    } finally {
+      set({ defaultPermissionPending: false })
+    }
+  },
   setDefaultModel: async (model) => {
     if (get().defaultModelPending) return
     set({ defaultModelPending: true, error: null })
@@ -517,9 +536,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           .getState()
           .connect(projectPath, session.path, { sessionId: session.id })
       else
-        await useConversationStore
-          .getState()
-          .connect(projectPath, undefined, { defaultModel: get().defaultModel })
+        await useConversationStore.getState().connect(projectPath, undefined, {
+          defaultModel: get().defaultModel,
+          defaultPermission: get().defaultPermission,
+        })
       if (request === navigation)
         set({ selectedSessionPath: useConversationStore.getState().sessionFile })
     } catch (reason) {
@@ -662,9 +682,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
-    await useConversationStore
-      .getState()
-      .connect(projectPath, undefined, { defaultModel: get().defaultModel })
+    await useConversationStore.getState().connect(projectPath, undefined, {
+      defaultModel: get().defaultModel,
+      defaultPermission: get().defaultPermission,
+    })
     if (request === navigation)
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },

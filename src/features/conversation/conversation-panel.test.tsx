@@ -718,6 +718,7 @@ test('returning to an aliased cached session restores its scroll and editor with
   )
   const original: RuntimeSnapshot = {
     instanceId: 'runtime-A',
+    permissionMode: 'ask',
     sessionId: 'native-A',
     sessionFile: 'logical.jsonl',
     projectPath: 'D:\\项目',

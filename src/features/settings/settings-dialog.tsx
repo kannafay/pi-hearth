@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import { getAppVersion, isDesktop } from '@/lib/desktop'
 import { ModelSettings } from './model-settings'
+import { PermissionSettings } from './permission-settings'
 import { SettingsPageHeader } from './settings-page-header'
 import { ArchivedSessions } from './archived-sessions'
 import { ProjectLocationSettings } from './project-location-settings'
@@ -215,6 +216,7 @@ export function SettingsDialog({
               title="模型与凭证"
               description="使用本机 Pi 配置，兼容 CC Switch。"
             >
+              <PermissionSettings />
               <ModelSettings />
             </SettingsPanel>
             <SettingsPanel

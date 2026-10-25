@@ -1,5 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
-import type { PiEvent, RuntimeSnapshot, ToolLogPage } from '@/lib/generated/pi'
+import type { PermissionMode, PiEvent, RuntimeSnapshot, ToolLogPage } from '@/lib/generated/pi'
 
 let activeChannel: Channel<PiEvent> | null = null
 let connection = 0
@@ -85,4 +85,9 @@ export async function disconnectPi() {
   connection++
   activeChannel = null
   await invoke<void>('pi_disconnect')
+}
+
+export function setPiPermission(instanceId: string, mode: PermissionMode) {
+  if (!activeChannel) throw new Error('请先连接 Pi。')
+  return invoke<RuntimeSnapshot>('pi_set_permission', { instanceId, mode })
 }

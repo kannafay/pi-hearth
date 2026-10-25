@@ -203,6 +203,17 @@ pub async fn pi_set_thinking_level(
 }
 
 #[tauri::command]
+pub async fn pi_set_permission(
+    manager: State<'_, PiManager>,
+    instance_id: String,
+    mode: types::PermissionMode,
+) -> Result<RuntimeSnapshot, String> {
+    let client = manager.client(&instance_id).await?;
+    let _action = client.actions.lock().await;
+    client.set_permission(mode).await
+}
+
+#[tauri::command]
 pub async fn pi_disconnect(
     manager: State<'_, PiManager>,
     workspace: State<'_, WorkspaceManager>,

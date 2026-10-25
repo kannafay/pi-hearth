@@ -148,6 +148,25 @@ pub enum AppTheme {
     Dark,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    #[default]
+    Ask,
+    Auto,
+    Full,
+}
+
+impl PermissionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Auto => "auto",
+            Self::Full => "full",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -165,6 +184,7 @@ pub struct AppSettings {
     pub removed_projects: Vec<String>,
     pub thinking_level: Option<String>,
     pub default_model: Option<ModelInfo>,
+    pub default_permission: PermissionMode,
     pub projects_directory: String,
     pub custom_projects_directory: String,
     pub files_directory: String,
@@ -188,6 +208,7 @@ impl Default for AppSettings {
             removed_projects: Vec::new(),
             thinking_level: None,
             default_model: None,
+            default_permission: PermissionMode::Ask,
             projects_directory: String::new(),
             custom_projects_directory: String::new(),
             files_directory: String::new(),
@@ -238,6 +259,9 @@ pub struct AppSettingsPatch {
     pub default_model: Option<ModelInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub default_permission: Option<PermissionMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub projects_directory: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -267,6 +291,7 @@ pub struct RuntimeSnapshot {
     pub session_id: String,
     pub session_file: Option<String>,
     pub read_only: Option<String>,
+    pub permission_mode: PermissionMode,
     pub model: Option<ModelInfo>,
     pub models: Vec<ModelInfo>,
     pub thinking_level: String,
@@ -353,6 +378,7 @@ fn export_frontend_types() {
         Selection::decl(),
         SessionPreference::decl(),
         AppTheme::decl(),
+        PermissionMode::decl(),
         AppSettings::decl(),
         AppSettingsPatch::decl(),
         WorkspaceCatalog::decl(),

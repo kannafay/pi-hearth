@@ -13,6 +13,7 @@ let callbacks: Map<number, (message: WireMessage) => void>
 let nextId = 0
 const snapshot: RuntimeSnapshot = {
   instanceId: 'pi-1',
+  permissionMode: 'ask',
   projectPath: 'project',
   sessionId: 'session-1',
   sessionFile: null,

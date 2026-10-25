@@ -143,6 +143,7 @@ test('startup permits a general conversation and initializes only once', async (
   expect(loadCatalog).toHaveBeenCalledTimes(1)
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(null, undefined, {
     defaultModel: null,
+    defaultPermission: 'ask',
   })
   expect(useWorkspaceStore.getState().projectPath).toBeNull()
 })
@@ -188,6 +189,7 @@ test('projects can contain multiple sessions and each open selects the exact fil
   await useWorkspaceStore.getState().newConversation(null)
   expect(useConversationStore.getState().connect).toHaveBeenLastCalledWith(null, undefined, {
     defaultModel: null,
+    defaultPermission: 'ask',
   })
 })
 
@@ -256,7 +258,7 @@ test('choosing another project preserves the unsent draft and attachments', asyn
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     undefined,
-    { defaultModel: null },
+    { defaultModel: null, defaultPermission: 'ask' },
   )
 })
 
@@ -271,7 +273,7 @@ test('an empty saved conversation still creates a separate new chat', async () =
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     undefined,
-    { defaultModel: null },
+    { defaultModel: null, defaultPermission: 'ask' },
   )
 })
 
@@ -525,6 +527,7 @@ test('refresh after a local reply updates the sidebar without reconnecting or cl
 test('restoring thinking preferences does not make the catalog reconnect a resident session', async () => {
   const snapshot: RuntimeSnapshot = {
     instanceId: 'resident-pi',
+    permissionMode: 'ask',
     projectPath: session.cwd,
     sessionFile: session.path,
     sessionId: session.id,
@@ -680,6 +683,7 @@ test('creating a project uses the returned canonical folder and starts its own s
   })
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\新项目', undefined, {
     defaultModel: null,
+    defaultPermission: 'ask',
   })
 })
 
@@ -690,6 +694,7 @@ test('adding an existing folder updates its independent project name without dup
   expect(useWorkspaceStore.getState().projects).toEqual([{ path: 'D:\\source', name: '设计讨论' }])
   expect(useConversationStore.getState().connect).toHaveBeenCalledWith('D:\\source', undefined, {
     defaultModel: null,
+    defaultPermission: 'ask',
   })
 })
 
@@ -812,7 +817,7 @@ test('archiving the current conversation opens a fresh chat and cannot interrupt
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     undefined,
-    { defaultModel: null },
+    { defaultModel: null, defaultPermission: 'ask' },
   )
   expect(useWorkspaceStore.getState().selectedSessionPath).toBe('new.jsonl')
 })
@@ -857,7 +862,7 @@ test('startup restores session preferences without reopening the selected archiv
   expect(useConversationStore.getState().connect).toHaveBeenCalledExactlyOnceWith(
     session.cwd,
     undefined,
-    { defaultModel: null },
+    { defaultModel: null, defaultPermission: 'ask' },
   )
 })
 

@@ -61,6 +61,7 @@ impl Conversation {
                 session_id: String::new(),
                 session_file: None,
                 read_only: None,
+                permission_mode: Default::default(),
                 model: None,
                 models: vec![],
                 thinking_level: "off".into(),
@@ -84,6 +85,7 @@ impl Conversation {
         next.snapshot.session_id = std::mem::take(&mut previous.session_id);
         next.snapshot.session_file = previous.session_file.take();
         next.snapshot.model = previous.model.take();
+        next.snapshot.permission_mode = previous.permission_mode;
         next.snapshot.models = std::mem::take(&mut previous.models);
         next.snapshot.thinking_level = std::mem::take(&mut previous.thinking_level);
         next.snapshot.available_thinking_levels =
@@ -438,6 +440,17 @@ impl Conversation {
         }
         let data = &record["data"];
         match record["command"].as_str() {
+            Some("get_entries") => {
+                self.snapshot.permission_mode = data["entries"]
+                    .as_array()
+                    .and_then(|entries| {
+                        entries.iter().rev().find(|entry| {
+                            entry["type"] == "custom" && entry["customType"] == "hearth-permission"
+                        })
+                    })
+                    .and_then(|entry| serde_json::from_value(entry["data"]["mode"].clone()).ok())
+                    .unwrap_or_default();
+            }
             Some("get_state") => {
                 self.snapshot.session_id = data["sessionId"].as_str().unwrap_or_default().into();
                 self.snapshot.session_file = data["sessionFile"].as_str().map(str::to_owned);
@@ -847,5 +860,29 @@ mod tests {
         assert!(
             matches!(&events[0].data, EventData::RunFinished {status,..} if status == "cancelled")
         );
+    }
+
+    #[test]
+    fn permission_metadata_uses_the_latest_entry_and_defaults_legacy_sessions_to_ask() {
+        let mut conversation = Conversation::new("runtime".into(), "project".into());
+        conversation.response(
+            &json!({"success":true,"command":"get_entries","data":{"entries":[
+                {"type":"custom","customType":"hearth-permission","data":{"mode":"full"}},
+                {"type":"custom","customType":"other","data":{"mode":"ask"}},
+                {"type":"custom","customType":"hearth-permission","data":{"mode":"auto"}}
+            ]}}),
+        );
+        assert_eq!(conversation.snapshot.permission_mode, PermissionMode::Auto);
+        conversation.renew("reattached".into());
+        assert_eq!(conversation.snapshot.permission_mode, PermissionMode::Auto);
+        conversation
+            .response(&json!({"success":true,"command":"get_entries","data":{"entries":[]}}));
+        assert_eq!(conversation.snapshot.permission_mode, PermissionMode::Ask);
+        conversation.response(
+            &json!({"success":true,"command":"get_entries","data":{"entries":[
+                {"type":"custom","customType":"hearth-permission","data":{"mode":"invalid"}}
+            ]}}),
+        );
+        assert_eq!(conversation.snapshot.permission_mode, PermissionMode::Ask);
     }
 }
