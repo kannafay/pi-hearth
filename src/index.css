@@ -51,6 +51,11 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+:root,
+.workspace-navigation {
+  --sidebar-row-hover: color-mix(in oklch, var(--sidebar-row-selected) 70%, transparent);
+}
+
 :root {
   --titlebar-height: 40px;
   --workspace-inset: 4px;
@@ -68,7 +73,7 @@
   --workspace-border: oklch(0.94 0.002 300);
   --caption-hover: oklch(0.9 0.006 300);
   --caption-pressed: oklch(0.85 0.006 300);
-  --titlebar-hover: oklch(1 0 0 / 80%);
+  --titlebar-hover: var(--sidebar-row-hover);
   --background: oklch(1 0 0);
   --composer-background: var(--background);
   --composer-project-background: oklch(0.98 0 0);
@@ -115,7 +120,7 @@
   --workspace-border: oklch(1 0 0 / 9%);
   --caption-hover: oklch(0.37 0.008 300);
   --caption-pressed: oklch(0.43 0.008 300);
-  --titlebar-hover: var(--caption-hover);
+  --titlebar-hover: var(--sidebar-row-hover);
   --background: #181818;
   --composer-background: #363636;
   --composer-project-background: #2f2f2f;
@@ -260,7 +265,6 @@ select {
 .workspace-navigation {
   --muted: var(--background);
   --sidebar-accent: var(--muted);
-  --sidebar-row-accent: var(--sidebar-row-selected);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
@@ -276,7 +280,7 @@ select {
 }
 
 :is(.sidebar-session-row, .sidebar-project-row) {
-  --sidebar-row-surface: color-mix(in oklch, var(--sidebar-row-accent) 70%, transparent);
+  --sidebar-row-surface: var(--sidebar-row-hover);
   --sidebar-row-actions-width: 3.625rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
