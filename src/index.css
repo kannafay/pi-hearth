@@ -69,7 +69,6 @@
   --caption-hover: oklch(0.9 0.006 300);
   --caption-pressed: oklch(0.85 0.006 300);
   --titlebar-hover: oklch(1 0 0 / 80%);
-  --titlebar-pressed: oklch(0.96 0 0);
   --background: oklch(1 0 0);
   --composer-background: var(--background);
   --composer-project-background: oklch(0.98 0 0);
@@ -117,7 +116,6 @@
   --caption-hover: oklch(0.37 0.008 300);
   --caption-pressed: oklch(0.43 0.008 300);
   --titlebar-hover: var(--caption-hover);
-  --titlebar-pressed: var(--caption-pressed);
   --background: #181818;
   --composer-background: #363636;
   --composer-project-background: #2f2f2f;
