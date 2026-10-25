@@ -45,10 +45,11 @@ export function PermissionSettings() {
           </SelectTrigger>
           <SelectContent width="content">
             <SelectGroup>
-              {permissionOptions.map((item) => (
+              {permissionOptions.map(({ icon: Icon, ...item }) => (
                 <SelectItem
                   key={item.value}
                   value={item.value}
+                  icon={<Icon aria-hidden strokeWidth={1.6} />}
                   tone={item.value === 'full' ? 'warning' : 'default'}
                 >
                   {item.label}

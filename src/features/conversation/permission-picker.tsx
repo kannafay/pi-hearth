@@ -1,4 +1,3 @@
-import { Shield, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   Select,
@@ -21,7 +20,7 @@ export function PermissionPicker() {
       changePermission: state.changePermission,
     })),
   )
-  const Icon = mode === 'full' ? ShieldAlert : mode === 'auto' ? Shield : ShieldCheck
+  const Icon = (permissionOptions.find((item) => item.value === mode) ?? permissionOptions[0]).icon
   return (
     <Select
       items={permissionOptions}
@@ -44,11 +43,12 @@ export function PermissionPicker() {
       </SelectTrigger>
       <SelectContent width="content" align="start" className="max-w-80">
         <SelectGroup>
-          {permissionOptions.map((item) => (
+          {permissionOptions.map(({ icon: ItemIcon, ...item }) => (
             <SelectItem
               key={item.value}
               value={item.value}
               description={item.description}
+              icon={<ItemIcon aria-hidden strokeWidth={1.6} />}
               tone={item.value === 'full' ? 'warning' : 'default'}
             >
               {item.label}

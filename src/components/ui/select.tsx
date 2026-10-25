@@ -136,10 +136,12 @@ function SelectItem({
   className,
   children,
   description,
+  icon,
   tone = 'default',
   ...props
 }: SelectPrimitive.Item.Props & {
   description?: React.ReactNode
+  icon?: React.ReactNode
   tone?: 'default' | 'warning'
 }) {
   const descriptionId = React.useId()
@@ -162,6 +164,18 @@ function SelectItem({
       )}
       {...props}
     >
+      {icon && (
+        <span
+          data-slot="select-item-icon"
+          className={cn(
+            'flex size-4 shrink-0 items-center justify-center text-muted-foreground',
+            description && 'mt-0.5',
+            tone === 'warning' && 'text-warning',
+          )}
+        >
+          {icon}
+        </span>
+      )}
       {description ? (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           {label}
