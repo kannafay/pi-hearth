@@ -31,7 +31,7 @@ test('the new-chat default saves independently while the current conversation ke
   expect(screen.getByText('仅用于之后新建的对话，已有会话保留各自的权限。')).toBeVisible()
   await user.tab()
   await user.keyboard(' ')
-  await user.click(await screen.findByRole('option', { name: '模型自动判断' }))
+  await user.click(await screen.findByRole('option', { name: '自动判断' }))
   await waitFor(() => expect(useWorkspaceStore.getState().defaultPermission).toBe('auto'))
   expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({ defaultPermission: 'auto' })
   expect(useConversationStore.getState().permissionMode).toBe('full')

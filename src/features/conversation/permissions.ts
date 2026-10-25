@@ -15,8 +15,8 @@ export const permissionOptions: {
   },
   {
     value: 'auto',
-    label: '模型自动判断',
-    description: '常规自动执行，危险或不确定时询问',
+    label: '自动判断',
+    description: '模型评估风险，常规自动，危险或不确定时询问',
     icon: Shield,
   },
   {
