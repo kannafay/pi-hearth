@@ -35,13 +35,22 @@ export function PermissionSettings() {
             if (isPermissionMode(value)) void save(value)
           }}
         >
-          <SelectTrigger id="default-permission" aria-label="新对话默认权限" className="w-40">
+          <SelectTrigger
+            id="default-permission"
+            aria-label="新对话默认权限"
+            className="w-40"
+            tone={mode === 'full' ? 'warning' : 'default'}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent width="content">
             <SelectGroup>
               {permissionOptions.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
+                <SelectItem
+                  key={item.value}
+                  value={item.value}
+                  tone={item.value === 'full' ? 'warning' : 'default'}
+                >
                   {item.label}
                 </SelectItem>
               ))}

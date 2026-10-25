@@ -35,6 +35,7 @@ export function PermissionPicker() {
         aria-label="会话权限"
         size="sm"
         variant="ghost"
+        tone={mode === 'full' ? 'warning' : 'default'}
         data-pending={Boolean(pending) || undefined}
         className="shrink-0"
       >
@@ -44,7 +45,12 @@ export function PermissionPicker() {
       <SelectContent width="content" align="start" className="max-w-80">
         <SelectGroup>
           {permissionOptions.map((item) => (
-            <SelectItem key={item.value} value={item.value} description={item.description}>
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              description={item.description}
+              tone={item.value === 'full' ? 'warning' : 'default'}
+            >
               {item.label}
             </SelectItem>
           ))}
