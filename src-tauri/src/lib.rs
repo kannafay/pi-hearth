@@ -21,11 +21,15 @@ fn get_app_version(app: tauri::AppHandle) -> String {
 fn set_window_theme(
     window: tauri::WebviewWindow,
     theme: Option<tauri::Theme>,
+    transition_id: Option<String>,
 ) -> Result<(), String> {
     #[cfg(windows)]
-    return theme::set_window_theme(window, theme);
+    return theme::set_window_theme(window, theme, transition_id.as_deref());
     #[cfg(not(windows))]
-    window.set_theme(theme).map_err(|error| error.to_string())
+    {
+        let _ = transition_id;
+        window.set_theme(theme).map_err(|error| error.to_string())
+    }
 }
 
 pub fn run() {
@@ -64,9 +68,13 @@ pub fn run() {
         .plugin(window_state::plugin());
     #[cfg(not(windows))]
     let builder = builder.manage(tray_menu::TrayMenuState::default());
+    #[cfg(windows)]
+    let builder = builder.manage(theme::Presentation::default());
     builder
         .setup(desktop::setup)
         .on_window_event(|window, event| {
+            #[cfg(windows)]
+            theme::on_window_event(window, event);
             window_state::on_window_event(window, event);
             if window.label() == "main"
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
@@ -85,6 +93,8 @@ pub fn run() {
             developer::developer_console_open,
             #[cfg(windows)]
             theme::get_system_theme,
+            #[cfg(windows)]
+            theme::finish_window_theme_change,
             #[cfg(not(windows))]
             tray_menu::tray_ready,
             #[cfg(not(windows))]

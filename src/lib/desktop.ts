@@ -20,8 +20,13 @@ export async function openDeveloperConsole() {
   await invoke<void>('developer_console_open')
 }
 
-export async function setWindowTheme(theme: 'light' | 'dark' | null) {
-  if (isDesktop()) await invoke<void>('set_window_theme', { theme })
+export async function setWindowTheme(theme: 'light' | 'dark' | null, transitionId?: string) {
+  if (isDesktop())
+    await invoke<void>('set_window_theme', { theme, ...(transitionId ? { transitionId } : {}) })
+}
+
+export async function finishWindowThemeChange(transitionId: string) {
+  if (isDesktop()) await invoke<void>('finish_window_theme_change', { transitionId })
 }
 
 export async function selectProjectDirectory(title = '添加项目') {

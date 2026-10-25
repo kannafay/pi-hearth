@@ -1,13 +1,14 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
-import { isDesktop, setWindowTheme } from '@/lib/desktop'
+import { finishWindowThemeChange, isDesktop, setWindowTheme } from '@/lib/desktop'
 import { observeSystemTheme, usesNativeSystemTheme } from '@/lib/system-theme'
 import { useTheme } from './use-theme'
 
 vi.mock('@/lib/desktop', () => ({
   isDesktop: vi.fn(() => false),
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
+  finishWindowThemeChange: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/system-theme', () => ({
   observeSystemTheme: vi.fn(),
@@ -26,6 +27,7 @@ function nextThemeFrame() {
 }
 
 function finishThemeFrame() {
+  nextThemeFrame()
   nextThemeFrame()
   nextThemeFrame()
 }
@@ -98,7 +100,7 @@ test('theme changes snap together and restore transitions after the latest switc
   expect(frames.size).toBe(0)
 })
 
-test('desktop colors commit before paint without waiting for native requests or stale completions', async () => {
+test('Windows retains the old scene until the matching native preparation and the final color paint', async () => {
   vi.mocked(isDesktop).mockReturnValue(true)
   const pending: (() => void)[] = []
   vi.mocked(setWindowTheme).mockImplementation(
@@ -107,44 +109,77 @@ test('desktop colors commit before paint without waiting for native requests or 
   const root = document.documentElement
   const view = renderHook(useTheme)
   act(() => useWorkspaceStore.getState().setTheme('dark'))
-  expect(root).toHaveClass('dark')
-  expect(root.style.colorScheme).toBe('dark')
+  const request = vi.mocked(setWindowTheme).mock.calls[1][1]
+  expect(request).toEqual(expect.any(String))
+  expect(root).not.toHaveClass('dark')
   expect(root).toHaveAttribute('data-theme-changing')
-  finishThemeFrame()
-  expect(root).not.toHaveAttribute('data-theme-changing')
   await act(async () => pending[1]())
   expect(root).toHaveClass('dark')
+  expect(root.style.colorScheme).toBe('dark')
+  expect(finishWindowThemeChange).not.toHaveBeenCalled()
+  nextThemeFrame()
+  expect(finishWindowThemeChange).not.toHaveBeenCalled()
+  nextThemeFrame()
+  expect(finishWindowThemeChange).not.toHaveBeenCalled()
+  nextThemeFrame()
+  expect(finishWindowThemeChange).toHaveBeenCalledExactlyOnceWith(request)
   expect(root).not.toHaveAttribute('data-theme-changing')
   await act(async () => pending[0]())
   expect(root).toHaveClass('dark')
 
   act(() => useWorkspaceStore.getState().setTheme('light'))
-  expect(root).not.toHaveClass('dark')
-  expect(root.style.colorScheme).toBe('light')
+  expect(root).toHaveClass('dark')
   await act(async () => pending[2]())
   expect(root).not.toHaveClass('dark')
+  expect(root.style.colorScheme).toBe('light')
   finishThemeFrame()
   expect(root).not.toHaveAttribute('data-theme-changing')
 
   act(() => useWorkspaceStore.getState().setTheme('dark'))
+  const finalRequest = vi.mocked(setWindowTheme).mock.calls[3][1]
   view.unmount()
-  root.classList.remove('dark')
+  await act(async () => {})
+  expect(finishWindowThemeChange).toHaveBeenLastCalledWith(finalRequest)
   await act(async () => pending[3]())
   expect(root).not.toHaveClass('dark')
   expect(root).not.toHaveAttribute('data-theme-changing')
   expect(frames.size).toBe(0)
 })
 
+test('a rapid return to the still-visible palette replaces the cover owner and ignores stale replies', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  renderHook(useTheme)
+  await act(async () => {})
+  finishThemeFrame()
+  await act(async () => {})
+  vi.mocked(finishWindowThemeChange).mockClear()
+  const pending: (() => void)[] = []
+  vi.mocked(setWindowTheme).mockImplementation(
+    () => new Promise<void>((resolve) => pending.push(resolve)),
+  )
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  act(() => useWorkspaceStore.getState().setTheme('light'))
+  const lastRequest = vi.mocked(setWindowTheme).mock.calls.at(-1)![1]
+  await act(async () => pending[1]())
+  expect(document.documentElement).not.toHaveClass('dark')
+  expect(finishWindowThemeChange).not.toHaveBeenCalled()
+  finishThemeFrame()
+  expect(finishWindowThemeChange).toHaveBeenCalledExactlyOnceWith(lastRequest)
+  await act(async () => pending[0]())
+  expect(document.documentElement).not.toHaveClass('dark')
+  expect(finishWindowThemeChange).toHaveBeenCalledTimes(1)
+})
+
 test('native theme failures leave the committed palette intact and restore interaction transitions', async () => {
   vi.mocked(isDesktop).mockReturnValue(true)
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
   renderHook(useTheme)
+  await act(async () => {})
   finishThemeFrame()
   const failure = new Error('native theme unavailable')
   vi.mocked(setWindowTheme).mockRejectedValueOnce(failure)
 
   act(() => useWorkspaceStore.getState().setTheme('dark'))
-  expect(document.documentElement).toHaveClass('dark')
   expect(document.documentElement).toHaveAttribute('data-theme-changing')
   await act(async () => {})
   expect(document.documentElement).toHaveClass('dark')

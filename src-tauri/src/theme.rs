@@ -22,10 +22,22 @@ use windows_sys::Win32::{
 
 const SYSTEM_THEME_LISTENER: usize = 0x50494810;
 
+mod presentation;
+pub use presentation::{Presentation, on_window_event};
+
+#[tauri::command]
+pub fn finish_window_theme_change(window: tauri::WebviewWindow, transition_id: String) {
+    presentation::finish(&window, Some(&transition_id));
+}
+
 pub fn set_window_theme(
     window: tauri::WebviewWindow,
     theme: Option<tauri::Theme>,
+    transition_id: Option<&str>,
 ) -> Result<(), String> {
+    if let Some(request) = transition_id {
+        presentation::begin(&window, request);
+    }
     let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as HWND;
     let set_attribute = |attribute: i32, value: i32| unsafe {
         DwmSetWindowAttribute(
@@ -54,6 +66,9 @@ pub fn set_window_theme(
     }
     if disabled {
         set_attribute(DWMWA_TRANSITIONS_FORCEDISABLED, 0);
+    }
+    if result.is_err() {
+        presentation::finish(&window, transition_id);
     }
     result
 }
