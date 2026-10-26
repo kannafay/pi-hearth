@@ -37,6 +37,9 @@ const POPUP_STYLE: usize = 0x50494802;
 const HOVER_TIMER: usize = 0x50494803;
 const FADE: Duration = Duration::from_millis(100);
 
+#[path = "selection.rs"]
+mod selection;
+
 #[derive(Clone, Copy)]
 enum Item {
     Show,
@@ -407,7 +410,9 @@ unsafe extern "system" fn owner_proc(
                 }
                 drop(previous);
             }
+            selection::begin(hwnd, wparam, unsafe { (*raw).frame.clone() });
         }
+        WM_UNINITMENUPOPUP if wparam == unsafe { (*raw).menu } => selection::end(),
         WM_MEASUREITEM if lparam != 0 => {
             let measure = unsafe { &mut *(lparam as *mut MEASUREITEMSTRUCT) };
             if measure.CtlType == ODT_MENU
@@ -434,6 +439,7 @@ unsafe extern "system" fn owner_proc(
             }
         }
         WM_NCDESTROY => unsafe {
+            selection::end();
             RemoveWindowSubclass(hwnd, Some(owner_proc), subclass);
             let owner = Box::from_raw(raw);
             reset_items(&owner);
@@ -709,15 +715,27 @@ fn paint_item(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
         };
         // Clearing and repainting text directly on the menu exposes a blank
         // frame during hover fades. Present only the completed row.
-        paint_item_contents(&buffered, item, frame);
+        paint_item_contents(&buffered, item, frame, None);
         if buffer.present(draw.hDC, draw.rcItem.left, draw.rcItem.top) {
             return;
         }
     }
-    paint_item_contents(draw, item, frame);
+    paint_item_contents(draw, item, frame, None);
 }
 
-fn paint_item_contents(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
+fn button_bounds(mut rect: RECT, item: Item, style: &Style) -> RECT {
+    rect.left += style.px(4);
+    rect.right -= style.px(4);
+    if matches!(item, Item::Show) {
+        rect.top += style.px(4);
+    }
+    if matches!(item, Item::Quit) {
+        rect.bottom -= style.px(4);
+    }
+    rect
+}
+
+fn paint_item_contents(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame, highlight: Option<f32>) {
     let style = &frame.style;
     let hdc = draw.hDC;
     let saved = unsafe { SaveDC(hdc) };
@@ -740,21 +758,15 @@ fn paint_item_contents(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
         }
         return;
     }
-    let mut button = draw.rcItem;
-    button.left += style.px(4);
-    button.right -= style.px(4);
-    if matches!(item, Item::Show) {
-        button.top += style.px(4);
-    }
-    if matches!(item, Item::Quit) {
-        button.bottom -= style.px(4);
-    }
+    let button = button_bounds(draw.rcItem, item, style);
     let selected = draw.itemState & ODS_SELECTED != 0;
-    let (amount, fading) = frame
-        .hover
-        .lock()
-        .map(|mut hover| hover.sample(item, selected, Instant::now(), style.animate))
-        .unwrap_or((selected as u8 as f32, false));
+    let (amount, fading) = highlight.map(|amount| (amount, false)).unwrap_or_else(|| {
+        frame
+            .hover
+            .lock()
+            .map(|mut hover| hover.sample(item, selected, Instant::now(), style.animate))
+            .unwrap_or((selected as u8 as f32, false))
+    });
     if fading {
         let popup = frame.popup.load(Ordering::Relaxed);
         if popup != 0 {
