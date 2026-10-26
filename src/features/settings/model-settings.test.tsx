@@ -167,7 +167,7 @@ test.each(['running', 'connecting', 'ready'] as const)(
   },
 )
 
-test('saving a default disables duplicate writes and leaves the current model unchanged', async () => {
+test('saving a default keeps the list enabled while preventing duplicate writes', async () => {
   let finish!: (value: AppSettings) => void
   vi.mocked(updateAppSettings).mockReturnValueOnce(
     new Promise((resolve) => {
@@ -176,14 +176,28 @@ test('saving a default disables duplicate writes and leaves the current model un
   )
   const user = userEvent.setup()
   render(<ModelSettings />)
+  await user.click(screen.getByRole('button', { name: 'first' }))
   await user.click(screen.getByRole('button', { name: 'second' }))
   const radio = screen.getByRole('radio', { name: 'Alpha · second' })
+  const group = screen.getByRole('radiogroup', { name: '新对话默认模型' })
   await user.click(radio)
-  expect(radio).toHaveAttribute('aria-disabled', 'true')
+  expect(group).toHaveAttribute('aria-readonly', 'true')
+  expect(group).toHaveAttribute('aria-busy', 'true')
+  for (const item of screen.getAllByRole('radio')) {
+    expect(item).not.toHaveAttribute('aria-disabled', 'true')
+    expect(item.closest('label')).not.toHaveAttribute('data-disabled')
+  }
+  await user.click(screen.getByRole('radio', { name: 'Gamma · first' }))
+  expect(updateAppSettings).toHaveBeenCalledOnce()
   expect(useConversationStore.getState().model).toEqual(third)
   finish({ defaultModel: second } as AppSettings)
   await waitFor(() => expect(radio).toBeChecked())
+  expect(group).not.toHaveAttribute('aria-readonly')
+  expect(group).toHaveAttribute('aria-busy', 'false')
   expect(updateAppSettings).toHaveBeenCalledOnce()
+  await user.click(screen.getByRole('radio', { name: 'Gamma · first' }))
+  await waitFor(() => expect(useWorkspaceStore.getState().defaultModel).toEqual(third))
+  expect(updateAppSettings).toHaveBeenCalledTimes(2)
 })
 
 test('an unavailable saved default remains remembered and explains the fallback', () => {

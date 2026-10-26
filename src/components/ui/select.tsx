@@ -153,7 +153,7 @@ function SelectItem({
 }) {
   const descriptionId = React.useId()
   const label = (
-    <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+    <SelectPrimitive.ItemText className="flex flex-1 shrink-0 items-center gap-2 whitespace-nowrap">
       {children}
     </SelectPrimitive.ItemText>
   )
@@ -164,7 +164,7 @@ function SelectItem({
       aria-describedby={description ? descriptionId : undefined}
       className={cn(
         menuItemStyles,
-        'w-full pr-8 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2',
+        'w-full pr-8',
         description && 'items-start py-1.5',
         tone === 'warning' && 'text-warning focus:text-warning data-highlighted:text-warning',
         className,

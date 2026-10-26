@@ -43,7 +43,7 @@ export function ModelSettings() {
     ? (groups.find((group) => group.provider === displayedDefault.provider)?.label ??
       providerLabel(displayedDefault))
     : ''
-  const disabled = !isDesktop() || !settingsReady || defaultModelPending
+  const disabled = !isDesktop() || !settingsReady
   const unavailable =
     defaultModel && !models.some((item) => modelKey(item) === modelKey(defaultModel))
 
@@ -70,6 +70,8 @@ export function ModelSettings() {
         aria-label="新对话默认模型"
         value={defaultModel ? modelKey(defaultModel) : null}
         disabled={disabled}
+        readOnly={defaultModelPending}
+        aria-busy={defaultModelPending}
         className="mt-5 gap-2"
         onValueChange={(value) => {
           const selected = models.find((item) => modelKey(item) === value)

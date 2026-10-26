@@ -91,8 +91,9 @@ const ProcessRecords = memo(function ProcessRecords({
   stateKey?: string
   active: boolean
 }) {
+  // Keep the top gap inside the animated height so unmounting cannot shift the reply.
   return (
-    <div role="region" aria-label="执行过程详情" className="mt-1 space-y-1">
+    <div role="region" aria-label="执行过程详情" className="space-y-1 pt-1">
       {items.map((item) =>
         item.kind === 'tool' ? (
           <ToolRecord key={item.id} tool={item.tool} />
