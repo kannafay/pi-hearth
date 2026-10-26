@@ -91,23 +91,18 @@ function FencedCode({
   const scope = useContext(CodeScope)
   const blockIndex = useContext(CodeBlockIndex)
   const fallbackKey = useId()
-  const streaming = context.isAnimating
   const [choice, setChoice] = useConversationLocalState<{
-    streaming: boolean
     open: boolean
   } | null>(
-    !streaming && scope
-      ? `code:${scope}:${blockIndex}:${offset ?? fallbackKey}:expanded`
-      : undefined,
+    scope ? `code:${scope}:${blockIndex}:${offset ?? fallbackKey}:expanded` : undefined,
     null,
   )
-  // A completed reply starts collapsed, even if its code fence closed before the reply finished.
-  const open = choice?.streaming === streaming ? choice.open : streaming
+  const open = choice?.open ?? true
 
   return (
     <Collapsible
       open={open}
-      onOpenChange={(open) => setChoice({ streaming, open })}
+      onOpenChange={(open) => setChoice({ open })}
       className="conversation-code min-w-0 max-w-full border"
     >
       <div className="conversation-code-header flex min-h-9 min-w-0 items-center gap-2 px-1">
