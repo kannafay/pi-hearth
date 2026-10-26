@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ExecutionProcess, formatElapsed } from './execution-process'
+import { ConversationLocalState } from './conversation-local-state'
 
 afterEach(() => vi.useRealTimers())
 
@@ -82,6 +83,79 @@ test('quick replies with thinking retain the duration and accessible disclosure'
   await user.click(trigger)
   await waitFor(() =>
     expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument(),
+  )
+})
+
+test('thinking collapses independently and stays collapsed as more content arrives', async () => {
+  const user = userEvent.setup()
+  const thought = { kind: 'thinking' as const, id: 'thought', text: '初始思考内容。' }
+  const view = render(<ExecutionProcess stateKey="turn" items={[thought]} active />)
+  const process = screen.getByRole('button', { name: '执行过程' })
+  const thinking = screen.getByRole('button', { name: '思考' })
+  expect(thinking).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText(thought.text)).toBeVisible()
+  await user.click(thinking)
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+  expect(process).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(screen.queryByText(thought.text)).not.toBeInTheDocument())
+  view.rerender(
+    <ExecutionProcess
+      stateKey="turn"
+      items={[{ ...thought, text: '持续收到的新内容。' }]}
+      active
+    />,
+  )
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('持续收到的新内容。')).not.toBeInTheDocument()
+  await user.click(thinking)
+  expect(screen.getByText('持续收到的新内容。')).toBeVisible()
+  await user.keyboard(' ')
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('each thinking section keeps its own choice across process reopening and virtual row remounts', async () => {
+  const user = userEvent.setup()
+  const local = new Map<string, unknown>()
+  const items = [
+    { kind: 'thinking' as const, id: 'first', text: '第一段思考。' },
+    { kind: 'thinking' as const, id: 'second', text: '第二段思考。' },
+  ]
+  const content = (stateKey = 'turn') => (
+    <ConversationLocalState initial={local}>
+      <ExecutionProcess stateKey={stateKey} items={items} active />
+    </ConversationLocalState>
+  )
+  let view = render(content())
+  await user.click(screen.getAllByRole('button', { name: '思考' })[0])
+  expect(screen.getAllByRole('button', { name: '思考' })[1]).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+  expect(screen.getByText('第二段思考。')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: '思考' })).not.toBeInTheDocument(),
+  )
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
+  expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  view.unmount()
+  view = render(content())
+  expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  expect(screen.getAllByRole('button', { name: '思考' })[1]).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+  view.unmount()
+  render(content('another-turn'))
+  expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
+    'aria-expanded',
+    'true',
   )
 })
 

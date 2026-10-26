@@ -38,6 +38,40 @@ function ElapsedTime({
   )
 }
 
+function ThinkingRecord({
+  item,
+  stateKey,
+}: {
+  item: Extract<ProcessItem, { kind: 'thinking' }>
+  stateKey?: string
+}) {
+  const [open, setOpen] = useConversationLocalState(
+    `thinking:${stateKey ?? ''}:${item.id}:expanded`,
+    true,
+  )
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="pr-1">
+      <CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-sm text-left text-[14px] font-medium text-foreground/65 transition-colors duration-160 ease-out outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
+        思考
+        <ChevronRight
+          aria-hidden
+          className={`size-3.5 shrink-0 transition-transform duration-160 ease-out ${open ? 'rotate-90' : ''}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="execution-process-content">
+        <div className="space-y-2 pt-2 text-[14px] leading-[1.65] text-muted-foreground wrap-anywhere">
+          {item.text.split(/\n\s*\n/).map((paragraph, index) => (
+            <p key={index} className="whitespace-pre-wrap">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 export function ExecutionProcess({
   stateKey,
   items,
@@ -113,19 +147,7 @@ export function ExecutionProcess({
               item.kind === 'tool' ? (
                 <ToolRecord key={item.id} tool={item.tool} compact />
               ) : item.kind === 'thinking' ? (
-                <div key={item.id} className="space-y-2 pr-1">
-                  <p className="flex items-center gap-1.5 text-[14px] font-medium text-foreground/65">
-                    <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
-                    思考
-                  </p>
-                  <div className="space-y-2 text-[14px] leading-[1.65] text-muted-foreground wrap-anywhere">
-                    {item.text.split(/\n\s*\n/).map((paragraph, index) => (
-                      <p key={index} className="whitespace-pre-wrap">
-                        {paragraph}
-                      </p>
-                    ))}
-                  </div>
-                </div>
+                <ThinkingRecord key={item.id} item={item} stateKey={stateKey} />
               ) : (
                 <p
                   key={item.id}
