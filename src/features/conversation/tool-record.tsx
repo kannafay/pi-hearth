@@ -139,7 +139,7 @@ export function ToolRecord({ tool }: { tool: ToolCall }) {
       <div className="space-y-3">
         <div>
           <p className="mb-1.5 text-xs text-muted-foreground">参数</p>
-          <pre className="bg-muted/40 p-2.5 text-xs leading-5 whitespace-pre-wrap wrap-anywhere">
+          <pre className="rounded-sm bg-muted/40 p-2.5 text-xs leading-5 whitespace-pre-wrap wrap-anywhere">
             {args.page?.content ?? tool.arguments}
           </pre>
           {tool.argumentsTruncated && (!args.page || args.page.nextOffset !== null) && (
@@ -203,7 +203,7 @@ export function ToolRecord({ tool }: { tool: ToolCall }) {
                 显示输出末尾；完整接收内容可按需加载。
               </p>
             )}
-            <pre className="bg-muted/40 p-2.5 text-xs leading-5 whitespace-pre-wrap wrap-anywhere">
+            <pre className="rounded-sm bg-muted/40 p-2.5 text-xs leading-5 whitespace-pre-wrap wrap-anywhere">
               {running ? tool.output : (output.page?.content ?? tool.output)}
             </pre>
             {tool.outputTruncated &&
