@@ -70,6 +70,7 @@ export interface ConversationData {
 }
 
 interface ConversationState extends ConversationData {
+  modelCatalog: ModelInfo[] | null
   backgroundSessions: ReadonlyMap<string, { data: ConversationData; projectPath: string | null }>
   sessionCache: SessionCache
   saveSessionView: (key: string, view: ConversationViewState) => void
@@ -482,6 +483,7 @@ export function canReuseNewConversation(state: ConversationState, projectPath: s
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
+  modelCatalog: null,
   backgroundSessions: new Map(),
   sessionCache: new Map(),
   saveSessionView: (key, view) =>

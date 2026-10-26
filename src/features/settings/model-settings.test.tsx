@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/app/store'
 import { updateAppSettings } from '@/lib/app-settings'
 import type { AppSettings } from '@/lib/generated/pi'
 import { ModelSettings } from './model-settings'
+import { ModelPicker } from '@/features/conversation/model-picker'
 import { loadModelCatalog } from '@/lib/resources'
 
 vi.mock('@/lib/app-settings', () => ({ loadAppSettings: vi.fn(), updateAppSettings: vi.fn() }))
@@ -63,7 +64,62 @@ test('refresh reads new models without changing saved defaults or the active con
   expect(useWorkspaceStore.getState().defaultModel).toEqual(first)
   expect(useConversationStore.getState().model).toEqual(third)
   expect(useConversationStore.getState().models).toEqual([first, second, third])
+  expect(useConversationStore.getState().modelCatalog).toEqual([
+    { provider: 'new', id: 'latest', name: 'Latest' },
+  ])
   expect(updateAppSettings).not.toHaveBeenCalled()
+})
+
+test.each(['ready', 'running', 'connecting'] as const)(
+  'refresh updates the composer and saved-default labels while the conversation is %s',
+  async (status) => {
+    useConversationStore.setState({ status, thinkingLevel: 'high' })
+    const before = useConversationStore.getState()
+    const renamedDefault = { ...first, name: 'Renamed Alpha', providerName: 'New Provider' }
+    const renamedCurrent = { ...third, name: 'Renamed Gamma', providerName: 'New Provider' }
+    const catalog = [renamedDefault, second, renamedCurrent]
+    vi.mocked(loadModelCatalog).mockResolvedValueOnce(catalog)
+    const user = userEvent.setup()
+    render(
+      <>
+        <ModelSettings />
+        <ModelPicker compact />
+      </>,
+    )
+    const picker = screen.getByRole('combobox', { name: '切换模型' })
+    expect(picker).toHaveTextContent('Gamma')
+    await user.click(screen.getByRole('button', { name: '刷新模型列表' }))
+    await waitFor(() => expect(picker).toHaveTextContent('Renamed Gamma'))
+    expect(screen.getByText('Renamed Alpha · New Provider')).toBeVisible()
+    const after = useConversationStore.getState()
+    expect(after.model).toBe(before.model)
+    expect(after.models).toBe(before.models)
+    expect(after.messages).toBe(before.messages)
+    expect(after.pendingSettings).toBe(before.pendingSettings)
+    expect(after.status).toBe(status)
+    expect(after.thinkingLevel).toBe('high')
+    expect(after.changeModel).not.toHaveBeenCalled()
+    expect(useWorkspaceStore.getState().defaultModel).toEqual(first)
+    expect(updateAppSettings).not.toHaveBeenCalled()
+  },
+)
+
+test('a failed refresh keeps the last successful names available in both pickers', async () => {
+  const catalog = [{ ...third, name: 'Renamed Gamma' }]
+  useConversationStore.setState({ modelCatalog: catalog })
+  vi.mocked(loadModelCatalog).mockRejectedValueOnce(new Error('catalog unavailable'))
+  const user = userEvent.setup()
+  render(
+    <>
+      <ModelSettings />
+      <ModelPicker compact />
+    </>,
+  )
+  await user.click(screen.getByRole('button', { name: '刷新模型列表' }))
+  expect(await screen.findByText('Error: catalog unavailable')).toBeVisible()
+  expect(screen.getByRole('combobox', { name: '切换模型' })).toHaveTextContent('Renamed Gamma')
+  expect(useConversationStore.getState().modelCatalog).toBe(catalog)
+  expect(useConversationStore.getState().changeModel).not.toHaveBeenCalled()
 })
 
 test('provider groups save the exact default provider/model without changing the current conversation', async () => {

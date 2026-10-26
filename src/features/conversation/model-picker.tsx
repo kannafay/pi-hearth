@@ -18,15 +18,21 @@ export function ModelPicker({
   label?: string
   compact?: boolean
 }) {
-  const { models, model, status, readOnly, settingsPending, changeModel } = useConversationStore(
-    useShallow((state) => ({
-      models: state.models,
-      model: state.pendingSettings?.model ?? state.model,
-      status: state.status,
-      readOnly: state.readOnly,
-      settingsPending: state.settingsPending,
-      changeModel: state.changeModel,
-    })),
+  const { runtimeModels, modelCatalog, model, status, readOnly, settingsPending, changeModel } =
+    useConversationStore(
+      useShallow((state) => ({
+        runtimeModels: state.models,
+        modelCatalog: state.modelCatalog,
+        model: state.pendingSettings?.model ?? state.model,
+        status: state.status,
+        readOnly: state.readOnly,
+        settingsPending: state.settingsPending,
+        changeModel: state.changeModel,
+      })),
+    )
+  // Refresh display metadata without changing the runtime's selectable models.
+  const models = runtimeModels.map(
+    (model) => modelCatalog?.find((item) => modelKey(item) === modelKey(model)) ?? model,
   )
   const groups = groupModelsByProvider(models)
   const items = models.map((item) => ({

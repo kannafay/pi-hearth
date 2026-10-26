@@ -60,6 +60,39 @@ test('the composer model picker switches directly to a configured provider/model
   expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
 })
 
+test('refreshed names survive stale runtime metadata and match both provider and model ID', async () => {
+  const first = { provider: 'first', id: 'shared', name: 'Alpha' }
+  const second = { provider: 'second', id: 'shared', name: 'Beta' }
+  const renamed = { ...first, name: 'Renamed Alpha', providerName: 'Renamed Provider' }
+  const changeModel = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    status: 'ready',
+    model: first,
+    models: [first, second],
+    changeModel,
+  })
+  const user = userEvent.setup()
+  render(<ModelPicker compact />)
+  const picker = screen.getByRole('combobox', { name: '切换模型' })
+  act(() => useConversationStore.setState({ modelCatalog: [renamed] }))
+  expect(picker).toHaveTextContent('Renamed Alpha')
+  act(() => useConversationStore.setState({ model: { ...first }, models: [{ ...first }, second] }))
+  expect(picker).toHaveTextContent('Renamed Alpha')
+  await user.tab()
+  await user.keyboard(' ')
+  expect(screen.getByRole('group', { name: 'Renamed Provider' })).toBeVisible()
+  expect(screen.getByRole('group', { name: 'second' })).toBeVisible()
+  await user.click(screen.getByRole('option', { name: 'Beta' }))
+  expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
+  act(() =>
+    useConversationStore.setState({
+      pendingSettings: { model: second, thinkingLevel: 'high' },
+      settingsPending: 'model',
+    }),
+  )
+  expect(picker).toHaveTextContent('Beta')
+})
+
 test('the model picker supports keyboard selection and Escape without changing models', async () => {
   const first = { provider: 'first', id: 'a', name: 'Alpha' }
   const second = { provider: 'second', id: 'b', name: 'Beta' }

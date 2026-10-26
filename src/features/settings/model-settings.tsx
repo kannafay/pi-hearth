@@ -10,20 +10,17 @@ import { SettingsListGroup } from './settings-list-group'
 import { useState } from 'react'
 import { FieldError } from '@/components/ui/field'
 import { loadModelCatalog } from '@/lib/resources'
-import type { ModelInfo } from '@/lib/generated/pi'
 import { SettingsRefreshButton } from './settings-refresh-button'
 
 export function ModelSettings() {
-  const currentModels = useConversationStore((state) => state.models)
-  const [refreshedModels, setRefreshedModels] = useState<ModelInfo[] | null>(null)
+  const models = useConversationStore((state) => state.modelCatalog ?? state.models)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const models = refreshedModels ?? currentModels
   async function refresh() {
     setLoading(true)
     setError(null)
     try {
-      setRefreshedModels(await loadModelCatalog())
+      useConversationStore.setState({ modelCatalog: await loadModelCatalog() })
     } catch (error) {
       setError(String(error))
     } finally {
@@ -39,9 +36,12 @@ export function ModelSettings() {
     })),
   )
   const groups = groupModelsByProvider(models)
-  const defaultProviderLabel = defaultModel
-    ? (groups.find((group) => group.provider === defaultModel.provider)?.label ??
-      providerLabel(defaultModel))
+  const displayedDefault = defaultModel
+    ? (models.find((item) => modelKey(item) === modelKey(defaultModel)) ?? defaultModel)
+    : null
+  const defaultProviderLabel = displayedDefault
+    ? (groups.find((group) => group.provider === displayedDefault.provider)?.label ??
+      providerLabel(displayedDefault))
     : ''
   const disabled = !isDesktop() || !settingsReady || defaultModelPending
   const unavailable =
@@ -60,8 +60,8 @@ export function ModelSettings() {
           />
         }
         description={
-          defaultModel
-            ? `${defaultModel.name} · ${defaultProviderLabel}`
+          displayedDefault
+            ? `${displayedDefault.name} · ${defaultProviderLabel}`
             : '尚未设置，新对话将自动选择可用模型。'
         }
       />
