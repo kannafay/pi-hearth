@@ -1,7 +1,7 @@
 // Generated from Rust DTOs by `cargo test export_frontend_types`.
 // Do not edit manually.
 
-export type ModelInfo = { provider: string, id: string, name: string, };
+export type ModelInfo = { provider: string, providerName?: string, id: string, name: string, };
 
 export type Attachment = { id: string, name: string, kind: string, mimeType: string, size: number, preview: string | null, sourcePath?: string, text?: string, };
 

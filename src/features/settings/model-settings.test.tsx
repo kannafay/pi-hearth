@@ -32,6 +32,25 @@ beforeEach(() => {
   })
 })
 
+test('settings use friendly provider names even for defaults saved before names were supported', async () => {
+  useConversationStore.setState({
+    models: [
+      { ...first, providerName: '火山 Agent Plan' },
+      { ...third, providerName: '火山 Agent Plan' },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<ModelSettings />)
+  expect(screen.getByText('Alpha · 火山 Agent Plan')).toBeVisible()
+  expect(screen.queryByText('Alpha · first')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '火山 Agent Plan' }))
+  expect(screen.getByRole('radio', { name: 'Alpha · 火山 Agent Plan' })).toBeChecked()
+  await user.click(screen.getByRole('radio', { name: 'Gamma · 火山 Agent Plan' }))
+  await waitFor(() => expect(useWorkspaceStore.getState().defaultModel?.id).toBe(third.id))
+  expect(useWorkspaceStore.getState().defaultModel?.provider).toBe('first')
+  expect(useConversationStore.getState().model).toEqual(third)
+})
+
 test('refresh reads new models without changing saved defaults or the active conversation', async () => {
   vi.mocked(loadModelCatalog).mockResolvedValueOnce([
     { provider: 'new', id: 'latest', name: 'Latest' },

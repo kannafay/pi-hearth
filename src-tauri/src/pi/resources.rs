@@ -148,7 +148,12 @@ pub async fn pi_models(app: tauri::AppHandle) -> Result<Vec<ModelInfo>, String> 
     .await;
     let _ = tokio::fs::remove_dir_all(&preview).await;
     let value = result.map_err(|error| redact(error, &config.secrets))?;
-    serde_json::from_value(value).map_err(|_| "模型列表返回了无效数据。".into())
+    let mut models: Vec<ModelInfo> =
+        serde_json::from_value(value).map_err(|_| "模型列表返回了无效数据。")?;
+    for model in &mut models {
+        model.provider_name = config.provider_names.get(&model.provider).cloned();
+    }
+    Ok(models)
 }
 
 #[cfg(test)]

@@ -488,6 +488,7 @@ mod tests {
                     provider: "provider-a".into(),
                     id: "shared-id".into(),
                     name: "Saved Default".into(),
+                    provider_name: None,
                 }),
                 ..Default::default()
             },
@@ -518,7 +519,8 @@ mod tests {
                     default_model: Some(ModelInfo {
                         provider: String::new(),
                         id: "other".into(),
-                        name: "Invalid".into()
+                        name: "Invalid".into(),
+                        provider_name: None,
                     }),
                     ..Default::default()
                 }

@@ -7,6 +7,7 @@ use std::{
 pub struct RuntimeConfig {
     pub environment: HashMap<String, String>,
     pub secrets: Vec<String>,
+    pub provider_names: HashMap<String, String>,
 }
 
 pub(super) fn mcp_secrets(source: &Path, project: &Path) -> Vec<String> {
@@ -99,6 +100,16 @@ pub fn prepare_config(source: &Path, target: &Path) -> Result<RuntimeConfig, Str
             }
         }
     }
+    let provider_names = providers
+        .iter()
+        .filter_map(|(id, provider)| {
+            provider["name"]
+                .as_str()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| (id.clone(), name.to_owned()))
+        })
+        .collect();
     for provider in providers.values_mut() {
         protect_values(provider, &mut environment, &mut secrets)?;
     }
@@ -116,6 +127,7 @@ pub fn prepare_config(source: &Path, target: &Path) -> Result<RuntimeConfig, Str
     Ok(RuntimeConfig {
         environment,
         secrets,
+        provider_names,
     })
 }
 
@@ -232,6 +244,31 @@ pub fn redact(mut text: String, secrets: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_provider_names_are_trimmed_and_kept_separate_from_provider_ids() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/provider-name-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        let text = json!({"providers":{"cc-switch-one":{"name":" 火山 Agent Plan ","apiKey":"test-secret"},"blank":{"name":" "},"legacy":{}}}).to_string();
+        std::fs::write(source.join("models.json"), &text).unwrap();
+        let config = prepare_config(&source, &root.join("prepared")).unwrap();
+        assert_eq!(
+            config.provider_names,
+            HashMap::from([("cc-switch-one".into(), "火山 Agent Plan".into())])
+        );
+        assert_eq!(
+            std::fs::read_to_string(source.join("models.json")).unwrap(),
+            text
+        );
+        assert!(
+            !serde_json::to_string(&config.provider_names)
+                .unwrap()
+                .contains("test-secret")
+        );
+    }
 
     #[test]
     fn mcp_credentials_are_redacted_without_changing_source_files() {

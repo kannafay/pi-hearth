@@ -430,6 +430,7 @@ impl PiClient {
                                     if record["type"] == "response" {
                                         if let Some(request) = record["id"].as_str().and_then(|id| pending.remove(id)) {
                                             conversation.response(&record);
+                                            conversation.apply_provider_names(&config.provider_names);
                                             if request.writes && record["success"] == true {
                                                 *runtime_revision.lock().unwrap() = conversation.snapshot.session_file.as_deref().and_then(FileRevision::read);
                                             }
@@ -2251,6 +2252,7 @@ mod tests {
                     provider: "reuse-test".into(),
                     id: "first".into(),
                     name: "Offline First".into(),
+                    provider_name: None,
                 }),
                 ..Default::default()
             },
@@ -2483,6 +2485,7 @@ mod tests {
                     provider: "removed-provider".into(),
                     id: "gone".into(),
                     name: "Gone".into(),
+                    provider_name: None,
                 }),
                 ..Default::default()
             },

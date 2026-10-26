@@ -1,7 +1,7 @@
 use super::tool_output::{ARGUMENT_PREVIEW, OUTPUT_PREVIEW, preview, result_text};
 use super::types::*;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
@@ -53,6 +53,17 @@ pub struct Conversation {
 }
 
 impl Conversation {
+    pub fn apply_provider_names(&mut self, names: &HashMap<String, String>) {
+        for model in self
+            .snapshot
+            .model
+            .iter_mut()
+            .chain(self.snapshot.models.iter_mut())
+        {
+            model.provider_name = names.get(&model.provider).cloned();
+        }
+    }
+
     pub fn new(instance_id: String, project_path: String) -> Self {
         Self {
             snapshot: RuntimeSnapshot {
@@ -664,6 +675,7 @@ impl Conversation {
 fn model_info(value: &Value) -> Option<ModelInfo> {
     Some(ModelInfo {
         provider: value["provider"].as_str()?.into(),
+        provider_name: None,
         id: value["id"].as_str()?.into(),
         name: value["name"].as_str().or(value["id"].as_str())?.into(),
     })
@@ -672,6 +684,36 @@ fn model_info(value: &Value) -> Option<ModelInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_responses_use_provider_display_metadata_without_changing_identity() {
+        let mut conversation = Conversation::new("instance".into(), "cwd".into());
+        conversation.response(&json!({"success":true,"command":"get_available_models","data":{"models":[{"provider":"cc-switch-one","id":"shared","name":"One"},{"provider":"legacy","id":"shared","name":"Two"}]}}));
+        conversation.response(&json!({"success":true,"command":"get_state","data":{"model":{"provider":"cc-switch-one","id":"shared","name":"One"}}}));
+        conversation.apply_provider_names(&HashMap::from([(
+            "cc-switch-one".into(),
+            "火山 Agent Plan".into(),
+        )]));
+        assert_eq!(
+            conversation.snapshot.model.as_ref().unwrap().provider,
+            "cc-switch-one"
+        );
+        assert_eq!(
+            conversation
+                .snapshot
+                .model
+                .as_ref()
+                .unwrap()
+                .provider_name
+                .as_deref(),
+            Some("火山 Agent Plan")
+        );
+        assert_eq!(
+            conversation.snapshot.models[0].provider_name.as_deref(),
+            Some("火山 Agent Plan")
+        );
+        assert!(conversation.snapshot.models[1].provider_name.is_none());
+    }
 
     #[test]
     fn turn_timing_is_finalized_once_and_restored_from_transcript_completion() {

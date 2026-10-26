@@ -60,7 +60,7 @@ export function ModelPicker({
       >
         {groups.map((group) => (
           <SelectGroup key={group.provider}>
-            <SelectLabel>{group.provider}</SelectLabel>
+            <SelectLabel>{group.label}</SelectLabel>
             {group.models.map((item) => (
               <SelectItem key={modelKey(item)} value={modelKey(item)}>
                 {item.name}

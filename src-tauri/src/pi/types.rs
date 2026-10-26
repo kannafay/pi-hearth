@@ -5,6 +5,9 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub provider_name: Option<String>,
     pub id: String,
     pub name: String,
 }

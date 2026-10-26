@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
+import { groupModelsByProvider, modelKey, providerLabel } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
@@ -39,6 +39,10 @@ export function ModelSettings() {
     })),
   )
   const groups = groupModelsByProvider(models)
+  const defaultProviderLabel = defaultModel
+    ? (groups.find((group) => group.provider === defaultModel.provider)?.label ??
+      providerLabel(defaultModel))
+    : ''
   const disabled = !isDesktop() || !settingsReady || defaultModelPending
   const unavailable =
     defaultModel && !models.some((item) => modelKey(item) === modelKey(defaultModel))
@@ -57,7 +61,7 @@ export function ModelSettings() {
         }
         description={
           defaultModel
-            ? `${defaultModel.name} · ${defaultModel.provider}`
+            ? `${defaultModel.name} · ${defaultProviderLabel}`
             : '尚未设置，新对话将自动选择可用模型。'
         }
       />
@@ -73,11 +77,7 @@ export function ModelSettings() {
         }}
       >
         {groups.map((group) => (
-          <SettingsListGroup
-            key={group.provider}
-            title={group.provider}
-            count={group.models.length}
-          >
+          <SettingsListGroup key={group.provider} title={group.label} count={group.models.length}>
             {group.models.map((item) => (
               <FieldLabel
                 key={modelKey(item)}
@@ -86,7 +86,7 @@ export function ModelSettings() {
               >
                 <RadioGroupItem
                   value={modelKey(item)}
-                  aria-label={`${item.name} · ${item.provider}`}
+                  aria-label={`${item.name} · ${group.label}`}
                 />
                 <span className="min-w-0 text-[13px]">
                   <span className="block truncate">{item.name}</span>
