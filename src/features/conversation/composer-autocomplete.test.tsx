@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -47,10 +47,39 @@ test('slash menu merges app actions with loaded skills and keyboard completion d
   await user.type(input, '/')
   expect(screen.getByRole('option', { name: /\/new/ })).toBeVisible()
   expect(await screen.findByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  expect(
+    within(screen.getByRole('group', { name: '命令' })).getByRole('option', { name: /\/new/ }),
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole('group', { name: '技能' })).getByRole('option', {
+      name: /\/skill:frontend-design/,
+    }),
+  ).toBeVisible()
   await user.keyboard('model{Tab}')
   expect(input).toHaveValue('/model ')
   expect(screen.queryByRole('listbox', { name: '命令与技能' })).not.toBeInTheDocument()
   expect(input).toHaveFocus()
+  expect(useConversationStore.getState().send).not.toHaveBeenCalled()
+})
+
+test('group headings are skipped during keyboard navigation and empty groups disappear when filtering', async () => {
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  const skill = await screen.findByRole('option', { name: /\/skill:frontend-design/ })
+  await user.keyboard('{ArrowUp}')
+  expect(skill).toHaveAttribute('aria-selected', 'true')
+  expect(input).toHaveAttribute('aria-activedescendant', skill.id)
+  await user.keyboard('{ArrowUp}')
+  expect(screen.getByRole('option', { name: /\/compact/ })).toHaveAttribute('aria-selected', 'true')
+  await user.keyboard('{ArrowDown}')
+  expect(skill).toHaveAttribute('aria-selected', 'true')
+  await user.keyboard('skill:')
+  expect(await screen.findByRole('group', { name: '技能' })).toBeVisible()
+  expect(screen.queryByRole('group', { name: '命令' })).not.toBeInTheDocument()
+  await user.keyboard('{Tab}')
+  expect(input).toHaveValue('/skill:frontend-design ')
   expect(useConversationStore.getState().send).not.toHaveBeenCalled()
 })
 

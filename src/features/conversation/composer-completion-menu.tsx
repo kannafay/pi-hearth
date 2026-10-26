@@ -9,6 +9,16 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
   }, [completion.active, completion.open, completion.items.length])
   if (!completion.open) return null
+  const indexedItems = completion.items.map((item, index) => ({ item, index }))
+  const groups = (
+    completion.kind === 'file'
+      ? [{ key: 'file', title: null, items: indexedItems }]
+      : (['command', 'skill'] as const).map((kind) => ({
+          key: kind,
+          title: kind === 'command' ? '命令' : '技能',
+          items: indexedItems.filter(({ item }) => item.kind === kind),
+        }))
+  ).filter((group) => group.items.length)
   return (
     <div className="absolute bottom-full left-0 z-30 mb-2 w-full max-w-lg overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 duration-100 motion-reduce:animate-none">
       <div className="flex h-9 items-center justify-between px-3 text-xs text-muted-foreground">
@@ -23,37 +33,55 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
           aria-label={completion.kind === 'file' ? '项目文件' : '命令与技能'}
           aria-busy={completion.loading}
         >
-          {completion.items.map((item, index) => {
-            const Icon = item.kind === 'skill' ? BookOpen : item.kind === 'file' ? File : Terminal
-            return (
-              <button
-                key={item.value}
-                id={`${completion.id}-${index}`}
-                role="option"
-                tabIndex={-1}
-                aria-selected={completion.active === index}
-                onPointerMove={() => completion.setActive(index)}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => completion.select(item)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left outline-none transition-colors hover:bg-accent aria-selected:bg-accent ${item.kind === 'file' ? 'py-2' : 'py-1.5'}`}
-              >
-                <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
-                    {item.kind === 'command' && (
-                      <span className="shrink-0 text-muted-foreground">/{item.value}</span>
-                    )}
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  {item.kind === 'file' && (
-                    <span className="block truncate text-xs leading-5 text-muted-foreground">
-                      {item.description}
+          {groups.map((group, groupIndex) => (
+            <div
+              key={group.key}
+              role={group.title ? 'group' : undefined}
+              aria-labelledby={group.title ? `${completion.id}-${group.key}-label` : undefined}
+              className={groupIndex ? 'mt-1 border-t pt-1' : undefined}
+            >
+              {group.title && (
+                <div
+                  id={`${completion.id}-${group.key}-label`}
+                  className="px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {group.title}
+                </div>
+              )}
+              {group.items.map(({ item, index }) => {
+                const Icon =
+                  item.kind === 'skill' ? BookOpen : item.kind === 'file' ? File : Terminal
+                return (
+                  <button
+                    key={item.value}
+                    id={`${completion.id}-${index}`}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={completion.active === index}
+                    onPointerMove={() => completion.setActive(index)}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => completion.select(item)}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left outline-none transition-colors hover:bg-accent aria-selected:bg-accent ${item.kind === 'file' ? 'py-2' : 'py-1.5'}`}
+                  >
+                    <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
+                        {item.kind === 'command' && (
+                          <span className="shrink-0 text-muted-foreground">/{item.value}</span>
+                        )}
+                        <span className="truncate">{item.label}</span>
+                      </span>
+                      {item.kind === 'file' && (
+                        <span className="block truncate text-xs leading-5 text-muted-foreground">
+                          {item.description}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              </button>
-            )
-          })}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
           {!completion.items.length && !completion.loading && !completion.error && (
             <p className="px-3 py-4 text-xs text-muted-foreground">
               {completion.kind === 'file' ? '未找到匹配文件' : '未找到匹配命令'}
