@@ -6,8 +6,9 @@ import type { ComposerCompletion } from './use-composer-completion'
 export function ComposerCompletionMenu({ completion }: { completion: ComposerCompletion }) {
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
+    if (!completion.open || !completion.scrollToActive) return
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
-  }, [completion.active, completion.open, completion.items.length])
+  }, [completion.active, completion.open, completion.items.length, completion.scrollToActive])
   if (!completion.open) return null
   const title = completion.kind === 'file' ? '项目文件' : '快捷操作'
   const indexedItems = completion.items.map((item, index) => ({ item, index }))

@@ -29,7 +29,7 @@ export function useComposerCompletion({
   const [revision, setRevision] = useState(0)
   const [commandAttempt, setCommandAttempt] = useState(0)
   const [dismissed, setDismissed] = useState('')
-  const [highlight, setHighlight] = useState({ key: '', index: 0 })
+  const [highlight, setHighlight] = useState({ key: '', index: 0, fromPointer: false })
   const [result, setResult] = useState<{
     key: string
     paths: string[]
@@ -146,10 +146,11 @@ export function useComposerCompletion({
     open,
     items,
     active,
+    scrollToActive: highlight.key !== key || !highlight.fromPointer,
     loading,
     error,
     kind: query?.kind,
-    setActive: (index: number) => setHighlight({ key, index }),
+    setActive: (index: number) => setHighlight({ key, index, fromPointer: true }),
     select,
     retry: () => {
       if (kind === 'command') setCommandAttempt((value) => value + 1)
@@ -189,6 +190,7 @@ export function useComposerCompletion({
         setHighlight({
           key,
           index: (active + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length,
+          fromPointer: false,
         })
         return true
       }

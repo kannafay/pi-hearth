@@ -105,6 +105,34 @@ test('loaded commands survive local filtering, focus changes and switching throu
   expect(loadComposerCommands).toHaveBeenCalledExactlyOnceWith('runtime')
 })
 
+test('hovering edge items only highlights them while keyboard navigation still scrolls selections into view', async () => {
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  const last = await screen.findByRole('option', { name: /\/skill:frontend-design/ })
+  const first = screen.getByRole('option', { name: /\/new/ })
+  const scrollLast = vi.fn()
+  const scrollFirst = vi.fn()
+  last.scrollIntoView = scrollLast
+  first.scrollIntoView = scrollFirst
+
+  fireEvent.pointerMove(last, { pointerType: 'mouse' })
+  expect(last).toHaveAttribute('aria-selected', 'true')
+  expect(scrollLast).not.toHaveBeenCalled()
+
+  await user.keyboard('{ArrowDown}')
+  expect(first).toHaveAttribute('aria-selected', 'true')
+  expect(scrollFirst).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+
+  scrollFirst.mockClear()
+  fireEvent.pointerMove(first, { pointerType: 'mouse' })
+  expect(scrollFirst).not.toHaveBeenCalled()
+  await user.keyboard('{ArrowUp}')
+  expect(last).toHaveAttribute('aria-selected', 'true')
+  expect(scrollLast).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+})
+
 test('command caches are isolated by runtime and reused when returning to a resident conversation', async () => {
   const user = userEvent.setup()
   render(<Composer onSendStart={() => {}} />)
