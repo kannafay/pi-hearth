@@ -1,6 +1,4 @@
 import { useShallow } from 'zustand/react/shallow'
-import { ChevronRight } from 'lucide-react'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { groupModelsByProvider, modelKey } from '@/features/conversation/models'
 import { useConversationStore } from '@/features/conversation/store'
@@ -8,6 +6,7 @@ import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
 import { SettingsRow } from './settings-row'
 import { FieldLabel } from '@/components/ui/field'
+import { SettingsListGroup } from './settings-list-group'
 
 export function ModelSettings() {
   const models = useConversationStore((state) => state.models)
@@ -45,43 +44,32 @@ export function ModelSettings() {
         }}
       >
         {groups.map((group) => (
-          <Collapsible key={group.provider} className="overflow-hidden rounded-md border">
-            <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-left text-[13px] transition-colors duration-160 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-(--dialog-ease) in-data-panel-open:rotate-90" />
-              <span className="min-w-0 flex-1 truncate">{group.provider}</span>
-              <span className="text-xs text-muted-foreground" aria-hidden>
-                {group.models.length}
-              </span>
-            </CollapsibleTrigger>
-            <CollapsibleContent
-              role="group"
-              aria-label={group.provider}
-              className="settings-model-content"
-            >
-              <div className="border-t p-1">
-                {group.models.map((item) => (
-                  <FieldLabel
-                    key={modelKey(item)}
-                    data-disabled={disabled || undefined}
-                    variant="option"
-                  >
-                    <RadioGroupItem
-                      value={modelKey(item)}
-                      aria-label={`${item.name} · ${item.provider}`}
-                    />
-                    <span className="min-w-0 text-[13px]">
-                      <span className="block truncate">{item.name}</span>
-                      {item.id !== item.name && (
-                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                          {item.id}
-                        </span>
-                      )}
+          <SettingsListGroup
+            key={group.provider}
+            title={group.provider}
+            count={group.models.length}
+          >
+            {group.models.map((item) => (
+              <FieldLabel
+                key={modelKey(item)}
+                data-disabled={disabled || undefined}
+                variant="option"
+              >
+                <RadioGroupItem
+                  value={modelKey(item)}
+                  aria-label={`${item.name} · ${item.provider}`}
+                />
+                <span className="min-w-0 text-[13px]">
+                  <span className="block truncate">{item.name}</span>
+                  {item.id !== item.name && (
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                      {item.id}
                     </span>
-                  </FieldLabel>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+                  )}
+                </span>
+              </FieldLabel>
+            ))}
+          </SettingsListGroup>
         ))}
       </RadioGroup>
       {!groups.length && <p className="mt-5 text-xs text-muted-foreground">暂无可用模型</p>}

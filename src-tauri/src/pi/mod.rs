@@ -5,6 +5,7 @@ mod config;
 pub mod files;
 pub(crate) mod process_tree;
 mod protocol;
+pub mod resources;
 mod rewrite;
 mod search;
 mod session_pool;

@@ -77,6 +77,13 @@ pub async fn helper(data: &Path, request: Value) -> Result<Value, String> {
     static INSTALL: Mutex<()> = Mutex::const_new(());
     {
         let _install = INSTALL.lock().await;
+        let resources = runtime.join("resources.mjs");
+        let resources_source = include_str!("../../../runtime/resources.mjs");
+        if tokio::fs::read_to_string(&resources).await.ok().as_deref() != Some(resources_source) {
+            tokio::fs::write(&resources, resources_source)
+                .await
+                .map_err(|_| "无法准备资源适配器。")?;
+        }
         let source = include_str!("../../../runtime/session-catalog.mjs");
         if tokio::fs::read_to_string(&helper_path)
             .await

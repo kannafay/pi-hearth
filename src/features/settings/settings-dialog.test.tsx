@@ -7,6 +7,7 @@ import { useTheme } from '@/app/use-theme'
 import { useMediaQuery } from '@/app/use-media-query'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
 import { getAppVersion, isDesktop, setWindowTheme } from '@/lib/desktop'
+import { loadResourceCatalog } from '@/lib/resources'
 
 vi.mock('@/lib/desktop', () => ({
   getAppVersion: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('@/lib/desktop', () => ({
   openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
+vi.mock('@/lib/resources', () => ({ loadResourceCatalog: vi.fn() }))
 vi.mock('@/lib/system-theme', () => ({
   usesNativeSystemTheme: () => true,
   observeSystemTheme: async (onChange: (dark: boolean) => void) => {
@@ -35,6 +37,7 @@ beforeEach(() => {
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   vi.mocked(isDesktop).mockReturnValue(false)
   vi.mocked(getAppVersion).mockReset()
+  vi.mocked(loadResourceCatalog).mockReset()
   vi.mocked(setWindowTheme).mockClear()
 })
 
@@ -58,6 +61,20 @@ test('desktop diagnostics displays the version returned by Rust', async () => {
   render(<SettingsHarness />)
   await user.click(screen.getByRole('tab', { name: '运行诊断' }))
   expect(await screen.findByText('已连接桌面核心，版本 0.1.0')).toBeVisible()
+})
+
+test('skills and MCP navigation share a read-only catalog without loading it on other pages', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  vi.mocked(loadResourceCatalog).mockResolvedValue({ skills: [], mcp: [], warnings: [] })
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  expect(loadResourceCatalog).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('tab', { name: '技能' }))
+  expect(await screen.findByText('未发现技能。')).toBeVisible()
+  await user.click(screen.getByRole('tab', { name: 'MCP' }))
+  expect(await screen.findByText('未发现 MCP 服务配置。')).toBeVisible()
+  expect(loadResourceCatalog).toHaveBeenCalledExactlyOnceWith(null)
 })
 
 test('a failed desktop command is visible while settings remains usable', async () => {

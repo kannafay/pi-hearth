@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Activity, Archive, HardDrive, Info, Palette, SlidersHorizontal } from 'lucide-react'
+import {
+  Activity,
+  Archive,
+  BookOpen,
+  HardDrive,
+  Info,
+  Palette,
+  Plug,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
 import { useMediaQuery } from '@/app/use-media-query'
@@ -26,10 +35,14 @@ import { StorageLocationSettings } from './storage-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
+import { ResourceSettings } from './resource-settings'
+import { useResourceCatalog } from './use-resource-catalog'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
   { value: 'models', label: '模型与凭证', icon: SlidersHorizontal },
+  { value: 'skills', label: '技能', icon: BookOpen },
+  { value: 'mcp', label: 'MCP', icon: Plug },
   { value: 'storage', label: '存储', icon: HardDrive },
   { value: 'archived', label: '归档', icon: Archive },
   { value: 'diagnostics', label: '运行诊断', icon: Activity },
@@ -81,6 +94,7 @@ export function SettingsDialog({
   const status = useConversationStore((state) => state.status)
   const compact = useMediaQuery('(width < 640px)')
   const [section, setSection] = useState<SettingsSection>('appearance')
+  const resources = useResourceCatalog(open, section === 'skills' || section === 'mcp')
   const currentSection = sections.find((item) => item.value === section) ?? sections[0]
   const SectionIcon = currentSection.icon
   const [version, setVersion] = useState<string | null>(null)
@@ -114,13 +128,16 @@ export function SettingsDialog({
       open={open}
       onOpenChange={onOpenChange}
       onOpenChangeComplete={(nextOpen) => {
-        if (!nextOpen) setSection('appearance')
+        if (!nextOpen) {
+          setSection('appearance')
+          resources.refresh()
+        }
       }}
     >
       <DialogContent layout="panel" size="xl" className="settings-dialog">
         <DialogTitle className="sr-only">设置</DialogTitle>
         <DialogDescription className="sr-only">
-          Pi Hearth 的外观、模型、归档与运行信息。
+          Pi Hearth 的外观、模型、技能、MCP、存储、归档与运行信息。
         </DialogDescription>
         <Tabs
           value={section}
@@ -218,6 +235,16 @@ export function SettingsDialog({
             >
               <PermissionSettings />
               <ModelSettings />
+            </SettingsPanel>
+            <SettingsPanel
+              value="skills"
+              title="技能"
+              description="查看本机和当前项目的技能及加载状态。"
+            >
+              <ResourceSettings kind="skills" state={resources} />
+            </SettingsPanel>
+            <SettingsPanel value="mcp" title="MCP" description="查看 MCP 服务配置及加载状态。">
+              <ResourceSettings kind="mcp" state={resources} />
             </SettingsPanel>
             <SettingsPanel
               value="storage"

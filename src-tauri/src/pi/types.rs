@@ -361,6 +361,40 @@ pub struct PiEvent {
     pub data: EventData,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceScope {
+    Global,
+    Project,
+    Custom,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceStatus {
+    Unloaded,
+    Disabled,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceInfo {
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub scope: ResourceScope,
+    pub status: ResourceStatus,
+    pub manual_only: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceCatalog {
+    pub skills: Vec<ResourceInfo>,
+    pub mcp: Vec<ResourceInfo>,
+    pub warnings: Vec<String>,
+}
+
 #[cfg(test)]
 #[test]
 fn export_frontend_types() {
@@ -384,6 +418,10 @@ fn export_frontend_types() {
         WorkspaceCatalog::decl(),
         ProjectInstructions::decl(),
         RuntimeSnapshot::decl(),
+        ResourceScope::decl(),
+        ResourceStatus::decl(),
+        ResourceInfo::decl(),
+        ResourceCatalog::decl(),
         EventData::decl(),
         PiEvent::decl(),
     ];
