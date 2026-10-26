@@ -60,7 +60,7 @@ export function ThinkingPicker() {
               data-pending={Boolean(settingsPending) || undefined}
               size="sm"
               variant="ghost"
-              className="shrink-0"
+              className="shrink-0 text-[13px] leading-5"
             />
           }
         >

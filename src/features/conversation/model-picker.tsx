@@ -48,7 +48,7 @@ export function ModelPicker({
         data-pending={Boolean(settingsPending) || undefined}
         size="sm"
         variant={compact ? 'ghost' : 'default'}
-        className={compact ? 'max-w-64 min-w-0' : 'max-w-72'}
+        className={compact ? 'max-w-64 min-w-0 text-[13px] leading-5' : 'max-w-72'}
       >
         <SelectValue placeholder="选择模型" />
       </SelectTrigger>

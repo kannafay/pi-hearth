@@ -36,7 +36,7 @@ export function PermissionPicker() {
         variant="ghost"
         tone={mode === 'full' ? 'warning' : 'default'}
         data-pending={Boolean(pending) || undefined}
-        className="shrink-0"
+        className="shrink-0 text-[13px] leading-5"
       >
         <Icon aria-hidden strokeWidth={1.6} />
         <SelectValue />
