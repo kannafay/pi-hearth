@@ -114,6 +114,8 @@ export function installScrollbars(root: HTMLElement) {
     const changed = records.some((record) => {
       const target = record.target
       if (!(target instanceof HTMLElement) || target.closest('.os-scrollbar')) return false
+      // Code tokens cannot introduce scroll panes; their viewport already observes size changes.
+      if (target.closest('[data-streamdown="code-block-body"] pre')) return false
       if (record.type === 'attributes') return !instances.has(target) && target.matches(scrollable)
       // Only structural changes to scroll containers need discovery. Highlighted
       // tokens, clocks and unrelated button classes do not change that inventory.

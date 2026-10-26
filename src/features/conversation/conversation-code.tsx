@@ -2,7 +2,6 @@ import { createContext, useContext, useId, type ComponentProps, type ReactNode }
 import { ChevronRight, CodeXml } from 'lucide-react'
 import {
   Block,
-  CodeBlock,
   CodeBlockCopyButton,
   CodeBlockDownloadButton,
   defaultComponents,
@@ -15,6 +14,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useConversationLocalState } from './conversation-local-state'
+import { CodeBody } from './code-body'
 
 const CodeScope = createContext<string | undefined>(undefined)
 const CodeBlockIndex = createContext(0)
@@ -111,7 +111,7 @@ function FencedCode({
       className="conversation-code min-w-0 max-w-full border"
     >
       <div className="conversation-code-header flex min-h-9 min-w-0 items-center gap-2 px-1">
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch px-2 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch px-2 text-left text-xs font-medium text-muted-foreground transition-colors duration-150 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
           <CodeXml aria-hidden className="size-3.5 shrink-0 stroke-[1.6]" />
           <span className="truncate">{language || '代码'}</span>
           <ChevronRight
@@ -150,7 +150,8 @@ function FencedCode({
         </div>
       </div>
       <CollapsibleContent className="conversation-code-content">
-        <CodeBlock
+        <CodeBody
+          open={open}
           code={code}
           language={language || 'text'}
           isIncomplete={isIncomplete}

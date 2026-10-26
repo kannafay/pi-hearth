@@ -679,7 +679,7 @@ select {
 }
 
 .conversation-code [data-streamdown='code-block'] {
-  /* Virtual rows already limit mounted code. Measure its actual height for the disclosure. */
+  /* Measure the capped viewport rather than the library's placeholder height. */
   content-visibility: visible !important;
   min-width: 0;
   margin: 0;
@@ -717,13 +717,14 @@ select {
 }
 
 .conversation-code [data-streamdown='code-block-body'] {
+  --code-line-height: 20.8px;
   min-width: 0;
   border: 0;
   border-radius: 0;
   padding: 12px;
   background: transparent;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: var(--code-line-height);
   /* Let vertical wheel input continue into the conversation at the code area's edges. */
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
@@ -731,6 +732,8 @@ select {
 }
 
 .conversation-code [data-streamdown='code-block-body'] pre {
+  min-width: 100%;
+  width: max-content;
   background: transparent;
   font-family: 'Cascadia Code', Consolas, 'SFMono-Regular', monospace;
   font-size: inherit;
@@ -742,6 +745,29 @@ select {
   font-family: inherit;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  line-height: var(--code-line-height);
+}
+
+.conversation-code-chunk {
+  position: relative;
+  display: block;
+  min-height: calc(var(--code-chunk-lines) * var(--code-line-height));
+  white-space: pre;
+}
+
+.conversation-code-chunk[data-line-labels] {
+  padding-inline-start: 40px;
+}
+
+.conversation-code-chunk[data-line-labels]::before {
+  content: attr(data-line-labels);
+  position: absolute;
+  inset-inline-start: 0;
+  width: 24px;
+  text-align: right;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
 }
 
 [data-conversation-message]:is(:hover, :focus-within) .message-actions,

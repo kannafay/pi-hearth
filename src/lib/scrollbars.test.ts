@@ -133,6 +133,28 @@ function contentResizeObserver() {
   }
 }
 
+test('syntax token updates skip scroll-container discovery while code sizing still updates its scrollbar', async () => {
+  const observer = contentResizeObserver()
+  const element = pane()
+  element.setAttribute('data-streamdown', 'code-block-body')
+  const pre = document.createElement('pre')
+  element.replaceChildren(pre)
+  root.append(element)
+  stop = installScrollbars(root)
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  const scan = vi.spyOn(root, 'querySelectorAll')
+  const token = document.createElement('span')
+  const matches = vi.spyOn(token, 'matches')
+  pre.append(token)
+  token.append(document.createElement('span'))
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  expect(scan).not.toHaveBeenCalled()
+  expect(matches).not.toHaveBeenCalledWith(expect.stringContaining('data-scroll-area'))
+  const update = vi.spyOn(OverlayScrollbars(element)!, 'update')
+  observer.resize(pre)
+  expect(update).toHaveBeenCalledWith(true)
+})
+
 test('content resizing updates its owning scrollbar on every frame and batches sibling boxes', () => {
   const observer = contentResizeObserver()
   const element = pane()
