@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from './store'
-import { useConversationStore } from '@/features/conversation/store'
+import { emptyConversation, useConversationStore } from '@/features/conversation/store'
 import {
   loadCatalog,
   addProject,
@@ -10,7 +10,7 @@ import {
   deleteArchivedSessions,
 } from '@/lib/workspace'
 import { rememberSession } from '@/features/conversation/session-cache'
-import { sessionKey } from '@/lib/session-preferences'
+import { sessionKey, visibleSessions } from '@/lib/session-preferences'
 import type { PiEvent, RuntimeSnapshot, SessionInfo, WorkspaceCatalog } from '@/lib/generated/pi'
 import * as pi from '@/lib/pi'
 import * as thinkingPreference from '@/features/conversation/thinking-preference'
@@ -390,6 +390,133 @@ test('local metadata preserves catalog titles, preferences and path identity wit
   expect(useWorkspaceStore.getState().sessionPreferences[session.path]?.pinned).toBe(true)
 })
 
+test('restoring settings after a new conversation arrives does not move the opened chat before or after refresh', async () => {
+  const older = { ...session, modified: 1000, messageCount: 2 }
+  const newer = { ...older, id: 'new', path: 'new.jsonl', title: '新会话', modified: 2000 }
+  const snapshot: RuntimeSnapshot = {
+    instanceId: 'restored',
+    sessionId: older.id,
+    sessionFile: older.path,
+    projectPath: older.cwd,
+    readOnly: null,
+    permissionMode: 'ask',
+    activeRunId: null,
+    sequence: 42,
+    model: null,
+    models: [],
+    thinkingLevel: 'low',
+    availableThinkingLevels: ['low', 'high'],
+    messages: [
+      {
+        id: 'old-user',
+        role: 'user',
+        text: '旧问题',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        timestamp: 900,
+        startedAt: 900,
+        finishedAt: 1500,
+      },
+      {
+        id: 'old-reply',
+        role: 'assistant',
+        text: '旧回复',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        timestamp: 1000,
+      },
+    ],
+    tools: [],
+    timeline: [],
+  }
+  useWorkspaceStore.setState({
+    ...catalog,
+    sessions: [newer, older],
+    initialized: true,
+    projectPath: older.cwd,
+    selectedSessionPath: older.path,
+  })
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  const order = () => {
+    const state = useWorkspaceStore.getState()
+    return visibleSessions(state.sessions, state.sessionPreferences, state.sessionOrder).map(
+      (item) => item.id,
+    )
+  }
+  expect(order()).toEqual([newer.id, older.id])
+  vi.spyOn(Date, 'now').mockReturnValue(5000)
+  vi.spyOn(pi, 'setPiThinkingLevel').mockResolvedValue(snapshot)
+  vi.spyOn(thinkingPreference, 'saveThinkingPreference').mockResolvedValue()
+  await useConversationStore.getState().changeThinkingLevel('low')
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(order()).toEqual([newer.id, older.id])
+  expect(useWorkspaceStore.getState().sessions.find((item) => item.id === older.id)?.modified).toBe(
+    1000,
+  )
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [newer, older] })
+  await useWorkspaceStore.getState().refresh()
+  expect(order()).toEqual([newer.id, older.id])
+  expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+})
+
+test('restored completion times do not reorder chats, while a real new message still updates activity', () => {
+  const older = { ...session, modified: 1000, messageCount: 1 }
+  const newer = { ...older, id: 'new', path: 'new.jsonl', modified: 2000 }
+  useWorkspaceStore.setState({
+    ...catalog,
+    sessions: [newer, older],
+    selectedSessionPath: older.path,
+  })
+  useConversationStore.setState({
+    instanceId: 'restored',
+    sessionId: older.id,
+    sessionFile: older.path,
+    lastLocalActivityAt: null,
+    messages: [
+      {
+        id: 'old-user',
+        role: 'user',
+        text: '旧问题',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        timestamp: 1000,
+        startedAt: 1000,
+        finishedAt: 3500,
+      },
+    ],
+  })
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(visibleSessions(useWorkspaceStore.getState().sessions, {}).map((item) => item.id)).toEqual(
+    [newer.id, older.id],
+  )
+  useConversationStore.setState({
+    messages: [
+      ...useConversationStore.getState().messages,
+      {
+        id: 'new-user',
+        role: 'user',
+        text: '新问题',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        timestamp: 4000,
+      },
+    ],
+  })
+  useWorkspaceStore.getState().syncActiveSession()
+  expect(visibleSessions(useWorkspaceStore.getState().sessions, {}).map((item) => item.id)).toEqual(
+    [older.id, newer.id],
+  )
+  expect(
+    visibleSessions(useWorkspaceStore.getState().sessions, {}, [newer.path, older.path]).map(
+      (item) => item.id,
+    ),
+  ).toEqual([newer.id, older.id])
+})
+
 test('a new session stays selected through local events and catalog refresh with a Windows path alias', async () => {
   const native = {
     ...session,
@@ -483,6 +610,54 @@ test('periodic catalogs retain an active new session until persistence but respe
   await useWorkspaceStore.getState().refresh()
   expect(useWorkspaceStore.getState().sessions).toEqual([])
 })
+
+test.each([false, true])(
+  'a delayed catalog cannot move a replying session behind a newer chat (background: %s)',
+  async (background) => {
+    const active = { ...session, modified: 3000, messageCount: 3 }
+    const newer = { ...session, id: 'new', path: 'new.jsonl', modified: 2000 }
+    const live = {
+      ...emptyConversation,
+      instanceId: 'active-runtime',
+      sessionId: active.id,
+      sessionFile: active.path,
+      status: 'running' as const,
+      activeRunId: 'run',
+    }
+    useWorkspaceStore.setState({
+      ...catalog,
+      sessions: [active, newer],
+      initialized: true,
+      projectPath: session.cwd,
+    })
+    useConversationStore.setState(
+      background
+        ? {
+            instanceId: 'new-runtime',
+            sessionId: newer.id,
+            sessionFile: newer.path,
+            status: 'ready',
+            backgroundSessions: new Map([
+              [live.instanceId, { data: live, projectPath: session.cwd }],
+            ]),
+          }
+        : live,
+    )
+    vi.mocked(loadCatalog).mockResolvedValue({
+      ...catalog,
+      sessions: [newer, { ...active, modified: 1000, messageCount: 1 }],
+    })
+    await useWorkspaceStore.getState().refresh()
+    const state = useWorkspaceStore.getState()
+    expect(
+      visibleSessions(state.sessions, state.sessionPreferences).map((item) => item.id),
+    ).toEqual([active.id, newer.id])
+    expect(state.sessions.find((item) => item.id === active.id)).toMatchObject({
+      modified: 3000,
+      messageCount: 3,
+    })
+  },
+)
 
 test('completion during startup connection runs its queued catalog as soon as startup finishes', async () => {
   let connected!: () => void

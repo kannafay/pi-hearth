@@ -561,10 +561,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       : (get().projectPath ?? get().generalCwd)
     if (!cwd) return
     const previous = get().sessions.find((session) => isCurrentSession(session, conversation))
+    // Match Pi's catalog activity: restoring settings or timing metadata is not
+    // a new message and must not move a conversation when it is opened.
     const modified = messages.reduce(
       (latest, message) =>
-        Math.max(latest, message.timestamp ?? 0, message.startedAt ?? 0, message.finishedAt ?? 0),
-      Math.max(previous?.modified ?? 0, conversation.lastLocalActivityAt ?? 0),
+        Math.max(
+          latest,
+          message.timestamp ?? Math.max(message.startedAt ?? 0, message.finishedAt ?? 0),
+        ),
+      previous?.modified ?? 0,
     )
     const session: SessionInfo = {
       path: previous?.path ?? sessionFile,
@@ -616,18 +621,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const previous = get().sessions.find((session) => isCurrentSession(session, conversation))
       const next = catalog.sessions.find((session) => isCurrentSession(session, conversation))
       const connecting = conversation.status === 'connecting'
+      const replying = get().sessions.filter((session) => isSessionBusy(session, conversation))
       set({
         ...catalogState(catalog),
-        // New native sessions may not be written to disk until the first reply ends.
+        // Pi's persisted history can lag behind a foreground or background reply.
         sessions: [
-          ...get().sessions.filter(
+          ...replying.filter(
             (session) =>
-              isSessionBusy(session, conversation) &&
               !catalog.sessions.some((entry) =>
                 isCurrentSession(entry, { sessionId: session.id, sessionFile: session.path }),
               ),
           ),
-          ...catalog.sessions,
+          ...catalog.sessions.map((session) => {
+            const local = replying.find((entry) =>
+              isCurrentSession(session, { sessionId: entry.id, sessionFile: entry.path }),
+            )
+            return local
+              ? {
+                  ...session,
+                  modified: Math.max(session.modified, local.modified),
+                  messageCount: Math.max(session.messageCount, local.messageCount),
+                }
+              : session
+          }),
         ],
         ...(connecting ? {} : { selectedSessionPath: next?.path ?? previous?.path ?? path }),
         error: null,
