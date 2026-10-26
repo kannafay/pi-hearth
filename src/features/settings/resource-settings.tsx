@@ -1,10 +1,11 @@
 import { useConversationStore } from '@/features/conversation/store'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { FolderOpen } from 'lucide-react'
 import { FieldDescription, FieldError } from '@/components/ui/field'
 import { isDesktop } from '@/lib/desktop'
 import { SettingsRefreshButton } from './settings-refresh-button'
+import { SettingsListGroup } from './settings-list-group'
 import type { ResourceCatalogState } from './use-resource-catalog'
 import type { ResourceKind } from '@/lib/resources'
 
@@ -38,11 +39,6 @@ export function ResourceSettings({
           onClick={state.refresh}
         />
       </div>
-      {state.loading && (
-        <p role="status" className="text-xs text-muted-foreground">
-          正在读取{label}列表…
-        </p>
-      )}
       {state.error && <FieldError>{state.error}</FieldError>}
       {!state.loading && entries?.length === 0 && (
         <p className="text-xs leading-6 text-muted-foreground">
@@ -50,38 +46,68 @@ export function ResourceSettings({
         </p>
       )}
       {Boolean(entries?.length) && (
-        <ul className="divide-y overflow-hidden rounded-md border">
+        <ul className="space-y-2">
           {entries?.map((item) => (
-            <li
-              key={`${item.source}:${item.name}`}
-              className="flex min-w-0 items-center gap-3 px-3 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="w-fit min-w-0 max-w-full justify-start px-0 font-normal"
-                        disabled={!isDesktop()}
-                        onClick={() => void state.open(kind, item)}
-                      />
-                    }
+            <li key={`${kind}:${item.source}:${item.name}`}>
+              <SettingsListGroup
+                title={item.name}
+                control={
+                  <Switch
+                    aria-label={`${label} ${item.name}`}
+                    checked={item.enabled}
+                    disabled={Boolean(disabled)}
+                    onCheckedChange={(enabled) => void state.setEnabled(kind, item, enabled)}
+                  />
+                }
+              >
+                <div className="space-y-3 p-2 text-xs">
+                  <dl className="space-y-3">
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">
+                        {kind === 'skills' ? '说明' : '服务类型'}
+                      </dt>
+                      <dd className="leading-5 wrap-anywhere">{item.description || '暂无说明'}</dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">来源</dt>
+                      <dd>
+                        {{ global: '全局', project: '当前项目', custom: '自定义路径' }[item.scope]}
+                      </dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-muted-foreground">
+                        {kind === 'skills' ? '技能文件' : '配置文件'}
+                      </dt>
+                      <dd className="font-mono leading-5 break-all">{item.source}</dd>
+                    </div>
+                    {kind === 'skills' && (
+                      <div className="space-y-1">
+                        <dt className="text-muted-foreground">调用方式</dt>
+                        <dd>{item.manualOnly ? '仅手动调用' : '允许模型自动选择'}</dd>
+                      </div>
+                    )}
+                    {kind === 'mcp' && item.configuration && (
+                      <div className="space-y-1">
+                        <dt className="text-muted-foreground">连接配置</dt>
+                        <dd>
+                          <pre className="tool-record-code max-h-60 overflow-auto rounded-sm border bg-muted/40 p-2.5 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere">
+                            {item.configuration}
+                          </pre>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!isDesktop()}
+                    onClick={() => void state.open(kind, item)}
                   >
-                    <span className="truncate">{item.name}</span>
-                  </TooltipTrigger>
-                  <TooltipContent align="start" className="wrap-anywhere" showArrow={false}>
-                    {item.source}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Switch
-                aria-label={`${label} ${item.name}`}
-                checked={item.enabled}
-                disabled={Boolean(disabled)}
-                onCheckedChange={(enabled) => void state.setEnabled(kind, item, enabled)}
-              />
+                    <FolderOpen />
+                    {kind === 'skills' ? '打开目录' : '编辑配置'}
+                  </Button>
+                </div>
+              </SettingsListGroup>
             </li>
           ))}
         </ul>

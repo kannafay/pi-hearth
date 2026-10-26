@@ -5,7 +5,10 @@ use super::{
     types::{ModelInfo, ResourceCatalog},
 };
 use serde_json::json;
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 
@@ -45,16 +48,19 @@ async fn list(data: &Path, project_path: Option<String>) -> Result<ResourceCatal
     .await?;
     let mut result: ResourceCatalog =
         serde_json::from_value(value).map_err(|_| "资源列表返回了无效数据。")?;
-    let settings = preferences(data).await?;
+    apply_preferences(&mut result, &preferences(data).await?);
+    Ok(result)
+}
+
+fn apply_preferences(result: &mut ResourceCatalog, settings: &HashMap<String, bool>) {
     for (kind, items) in [("skills", &mut result.skills), ("mcp", &mut result.mcp)] {
         for item in items {
             item.enabled = settings
                 .get(&key(kind, &item.source, &item.name))
                 .copied()
-                .unwrap_or(false);
+                .unwrap_or(item.enabled);
         }
     }
-    Ok(result)
 }
 
 fn find(catalog: &ResourceCatalog, kind: &str, source: &str, name: &str) -> Result<String, String> {
@@ -119,6 +125,15 @@ pub async fn pi_resource_open(
         .app_local_data_dir()
         .map_err(|_| "无法定位应用数据目录。")?;
     let source = find(&list(&data, project_path).await?, &kind, &source, &name)?;
+    let target = open_target(&kind, &source)?;
+    if kind == "mcp" {
+        catalog::reveal_path(&target)
+    } else {
+        catalog::open_path(&target)
+    }
+}
+
+fn open_target(kind: &str, source: &str) -> Result<PathBuf, String> {
     let file = dunce::canonicalize(source).map_err(|_| "资源文件不存在或无法访问。")?;
     if !file.is_file()
         || !file
@@ -127,7 +142,14 @@ pub async fn pi_resource_open(
     {
         return Err("只能打开技能或 MCP 配置文件。".into());
     }
-    catalog::open_path(&file)
+    match kind {
+        "skills" => file
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or("无法定位资源目录。".into()),
+        "mcp" => Ok(file),
+        _ => Err("无效的资源类型。".into()),
+    }
 }
 
 #[tauri::command]
@@ -159,6 +181,56 @@ pub async fn pi_models(app: tauri::AppHandle) -> Result<Vec<ModelInfo>, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn skill_opening_targets_the_directory_and_mcp_reveals_the_exact_file() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/resource-open-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let directory = root.join("skills/review");
+        std::fs::create_dir_all(&directory).unwrap();
+        let skill = directory.join("SKILL.md");
+        let mcp = root.join("mcp.json");
+        std::fs::write(&skill, "Test skill.").unwrap();
+        std::fs::write(&mcp, "{}").unwrap();
+        assert_eq!(
+            open_target("skills", skill.to_str().unwrap()).unwrap(),
+            dunce::canonicalize(directory).unwrap()
+        );
+        assert_eq!(
+            open_target("mcp", mcp.to_str().unwrap()).unwrap(),
+            dunce::canonicalize(&mcp).unwrap()
+        );
+        assert!(open_target("skills", root.join("missing.md").to_str().unwrap()).is_err());
+        assert!(open_target("other", mcp.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn desktop_overrides_preserve_unmodified_pi_defaults() {
+        let item = |name: &str, enabled: bool| json!({"name":name,"description":"","source":"C:/agent/config","scope":"global","status":"unloaded","manualOnly":false,"enabled":enabled});
+        let mut catalog: ResourceCatalog = serde_json::from_value(json!({
+            "skills":[item("review", true),item("manual", true)],
+            "mcp":[item("docs", true),item("disabled", false)],
+            "warnings":[]
+        }))
+        .unwrap();
+        apply_preferences(&mut catalog, &HashMap::new());
+        assert!(catalog.skills.iter().all(|item| item.enabled));
+        assert!(catalog.mcp[0].enabled);
+        assert!(!catalog.mcp[1].enabled);
+        apply_preferences(
+            &mut catalog,
+            &HashMap::from([
+                (key("skills", "C:/agent/config", "review"), false),
+                (key("mcp", "C:/agent/config", "docs"), false),
+                (key("mcp", "C:/agent/config", "disabled"), true),
+            ]),
+        );
+        assert!(!catalog.skills[0].enabled);
+        assert!(catalog.skills[1].enabled);
+        assert!(!catalog.mcp[0].enabled);
+        assert!(catalog.mcp[1].enabled);
+    }
+
     #[tokio::test]
     async fn preferences_keep_each_resource_independent_after_reopen() {
         let data = Path::new(env!("CARGO_MANIFEST_DIR"))

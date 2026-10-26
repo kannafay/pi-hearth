@@ -390,6 +390,9 @@ pub struct ResourceInfo {
     pub manual_only: bool,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub configuration: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]

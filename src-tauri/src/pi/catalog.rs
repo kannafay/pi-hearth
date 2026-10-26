@@ -565,6 +565,54 @@ pub fn workspace_open_project_folder(path: String) -> Result<(), String> {
     open_path(&directory)
 }
 
+pub(super) fn reveal_path(file: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::{
+            Foundation::RPC_E_CHANGED_MODE,
+            System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize},
+            UI::Shell::{ILCreateFromPathW, ILFree, SHOpenFolderAndSelectItems},
+        };
+        let initialized =
+            unsafe { CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32) };
+        if initialized < 0 && initialized != RPC_E_CHANGED_MODE {
+            return Err("无法初始化文件定位功能。".into());
+        }
+        let path: Vec<u16> = file.as_os_str().encode_wide().chain(Some(0)).collect();
+        let item = unsafe { ILCreateFromPathW(path.as_ptr()) };
+        let result = if item.is_null() {
+            Err("配置文件不存在或无法定位。".into())
+        } else {
+            // With no child array, the absolute item opens its parent and selects the file.
+            let result = unsafe { SHOpenFolderAndSelectItems(item, 0, std::ptr::null(), 0) };
+            unsafe { ILFree(item) };
+            if result >= 0 {
+                Ok(())
+            } else {
+                Err("无法在文件管理器中选中配置文件。".into())
+            }
+        };
+        if initialized >= 0 {
+            unsafe { CoUninitialize() };
+        }
+        result
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(file)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "无法在文件管理器中选中配置文件。".into())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        open_path(file.parent().ok_or("无法定位配置目录。")?)
+    }
+}
+
 pub(super) fn open_path(directory: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {

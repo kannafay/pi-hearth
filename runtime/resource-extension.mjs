@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { resourceCatalog, resourceKey, readResourcePreferences } from './resources.mjs'
+import { resourceCatalog, resourceEnabled, readResourcePreferences } from './resources.mjs'
 
 export const reloadResourcesCommand = 'hearth-resources-reload'
 
@@ -12,9 +11,14 @@ export function selectedMcpConfig(loaded, preferences) {
     autoEnableCodemode: false,
     errors: loaded.errors.length ? ['MCP 配置有误，请检查配置文件。'] : [],
     servers: loaded.servers
-      .filter(
-        (entry) =>
-          preferences[resourceKey('mcp', entry.override || entry.source, entry.name)] === true,
+      .filter((entry) =>
+        resourceEnabled(
+          preferences,
+          'mcp',
+          entry.override || entry.source,
+          entry.name,
+          entry.config.enabled !== false,
+        ),
       )
       .map((entry) => ({
         ...entry,
@@ -49,10 +53,6 @@ export default async function registerResources(pi) {
   })
   pi.on('resources_discover', async (event) => {
     const preferences = await readResourcePreferences(configFile)
-    if (
-      !Object.entries(preferences).some(([key, enabled]) => enabled && key.startsWith('["skills",'))
-    )
-      return { skillPaths: [] }
     const sdk = await module('core/skills.js')
     const found = await resourceCatalog(
       { projectPath: event.cwd },
@@ -64,13 +64,13 @@ export default async function registerResources(pi) {
     )
     return {
       skillPaths: found.skills
-        .filter((item) => preferences[resourceKey('skills', item.source, item.name)] === true)
+        .filter((item) =>
+          resourceEnabled(preferences, 'skills', item.source, item.name, item.enabled),
+        )
         .map((item) => item.source),
     }
   })
   const preferences = await readResourcePreferences(configFile)
-  if (!Object.entries(preferences).some(([key, enabled]) => enabled && key.startsWith('["mcp",')))
-    return
   const [{ createMcpExtension }, { loadMcpConfig }] = await Promise.all([
     module('extensions/mcp/index.js'),
     module('extensions/mcp/config.js'),
@@ -79,7 +79,7 @@ export default async function registerResources(pi) {
     loadConfig: (ctx) =>
       selectedMcpConfig(
         loadMcpConfig({ agentDir, cwd: ctx.cwd, projectTrusted: true }),
-        JSON.parse(readFileSync(configFile, 'utf8')),
+        preferences,
       ),
     updateConfig: () => {
       throw new Error('请在 Pi Hearth 设置中更改启停状态。')

@@ -1742,6 +1742,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pi_resources_load_on_startup_without_desktop_preferences() {
+        let fixture = ResidentFixture::new().await;
+        fixture.manager.disconnect().await;
+        let data = fixture.root.join("data");
+        assert!(!data.join("resources.json").exists());
+        let skill = fixture.source.join("skills/inherited/SKILL.md");
+        std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        std::fs::write(
+            &skill,
+            "---\nname: inherited-resource-test\ndescription: test skill\n---\nTest instructions.\n",
+        ).unwrap();
+        let marker = fixture.root.join("inherited-mcp-started");
+        let disabled_marker = fixture.root.join("disabled-mcp-started");
+        let server = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/mcp-server.mjs");
+        let mcp = fixture.source.join("mcp.json");
+        std::fs::write(
+            &mcp,
+            json!({"mcpServers":{
+                "inherited":{"command":"node","args":[server,marker]},
+                "disabled":{"command":"node","args":[server,disabled_marker],"enabled":false}
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        let source_before = std::fs::read(&mcp).unwrap();
+        let client = PiClient::spawn_with_source(
+            fixture.projects[0].clone(),
+            &data,
+            Channel::new(|_| Ok(())),
+            None,
+            &fixture.source,
+        )
+        .await
+        .unwrap();
+        client.check_guard().await.unwrap();
+        let commands = client
+            .request(json!({"type":"get_commands"}), None)
+            .await
+            .unwrap();
+        assert!(
+            commands["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|command| command["name"] == "skill:inherited-resource-test")
+        );
+        timeout(Duration::from_secs(10), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!disabled_marker.exists());
+        assert!(!data.join("resources.json").exists());
+        assert_eq!(std::fs::read(&mcp).unwrap(), source_before);
+        client.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn resource_switches_reload_skills_and_mcp_without_replacing_the_session() {
         let fixture = ResidentFixture::new().await;
         let data = fixture.root.join("data");
@@ -1768,6 +1828,8 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .into_owned();
+        let source_mcp_before = std::fs::read(&mcp).unwrap();
+        let source_skill_before = std::fs::read(&skill).unwrap();
         let skill_key = serde_json::to_string(&("skills", &skill, "switch-test")).unwrap();
         let mcp_key = serde_json::to_string(&("mcp", &mcp, "fixture")).unwrap();
         let settings = HashMap::from([(skill_key.clone(), true), (mcp_key.clone(), true)]);
@@ -1829,6 +1891,8 @@ mod tests {
                 .iter()
                 .any(|c| c["name"] == "skill:switch-test")
         );
+        assert_eq!(std::fs::read(&mcp).unwrap(), source_mcp_before);
+        assert_eq!(std::fs::read(&skill).unwrap(), source_skill_before);
         fixture.manager.disconnect().await;
     }
 

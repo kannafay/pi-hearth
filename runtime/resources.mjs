@@ -5,6 +5,11 @@ import path from 'node:path'
 
 export const resourceKey = (kind, source, name) => JSON.stringify([kind, source, name])
 
+export function resourceEnabled(preferences, kind, source, name, configured = true) {
+  const override = preferences[resourceKey(kind, source, name)]
+  return typeof override === 'boolean' ? override : configured
+}
+
 export async function readResourcePreferences(file) {
   try {
     const value = JSON.parse(await readFile(file, 'utf8'))
@@ -21,6 +26,56 @@ const resolve = (value, base, home) =>
     base,
     value === '~' ? home : /^~[/\\]/.test(value) ? path.join(home, value.slice(2)) : value,
   )
+
+function mcpConfiguration(config) {
+  const hidden = '[已隐藏]'
+  const secrets = [...Object.values(config.env ?? {}), ...Object.values(config.headers ?? {})]
+    .filter((value) => typeof value === 'string' && value)
+    .flatMap((value) => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')])
+    .filter(Boolean)
+  const redact = (value) => secrets.reduce((text, secret) => text.split(secret).join(hidden), value)
+  const address = (value) => {
+    try {
+      const url = new URL(value)
+      return redact(`${url.origin}${url.pathname !== '/' || url.search || url.hash ? '/…' : ''}`)
+    } catch {
+      return hidden
+    }
+  }
+  const preview = { type: config.command ? 'stdio' : 'http' }
+  if (config.command) {
+    preview.command = redact(config.command)
+    let hideNext = false
+    preview.args = (config.args ?? []).map((value) => {
+      if (hideNext) {
+        hideNext = false
+        return hidden
+      }
+      const equals = value.indexOf('=')
+      const option = equals < 0 ? value : value.slice(0, equals)
+      if (
+        ((option.startsWith('-') || equals >= 0) &&
+          /token|secret|password|passwd|api[-_]?key|authorization|credential|header|cookie|auth/i.test(
+            option,
+          )) ||
+        ['-H', '-e', '--eval', '-c', '--command'].includes(option)
+      ) {
+        hideNext = equals < 0
+        return equals < 0 ? option : `${option}=${hidden}`
+      }
+      if (/^https?:\/\//i.test(value)) return address(value)
+      if (equals >= 0 && /^https?:\/\//i.test(value.slice(equals + 1)))
+        return `${option}=${address(value.slice(equals + 1))}`
+      return redact(value)
+    })
+  }
+  if (config.url) preview.url = address(config.url)
+  for (const field of ['env', 'headers']) {
+    if (config[field] && Object.keys(config[field]).length)
+      preview[field] = Object.fromEntries(Object.keys(config[field]).map((key) => [key, hidden]))
+  }
+  return JSON.stringify(preview, null, 2)
+}
 
 async function skillPaths(base, warnings, label, home) {
   try {
@@ -92,6 +147,7 @@ export async function resourceCatalog(request, sdk, agentDir, home = homedir()) 
         })?.scope ?? 'custom',
       status: 'unloaded',
       manualOnly: skill.disableModelInvocation,
+      enabled: true,
     }))
     if (loaded.diagnostics.length)
       warnings.push(`发现 ${loaded.diagnostics.length} 个技能格式或重名问题，部分条目可能未显示。`)
@@ -111,6 +167,8 @@ export async function resourceCatalog(request, sdk, agentDir, home = homedir()) 
       scope: entry.override ? 'project' : entry.scope === 'project' ? 'project' : 'global',
       status: entry.config.enabled === false ? 'disabled' : 'unloaded',
       manualOnly: false,
+      enabled: entry.config.enabled !== false,
+      configuration: mcpConfiguration(entry.config),
     }))
     // Parser errors can contain credentials from malformed JSON. Return counts only.
     if (loaded.errors.length)

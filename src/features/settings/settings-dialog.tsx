@@ -246,11 +246,15 @@ export function SettingsDialog({
             <SettingsPanel
               value="skills"
               title="技能"
-              description="查看本机和当前项目的技能及加载状态。"
+              description="默认沿用 Pi 配置，开关仅在 Pi Hearth 内生效。"
             >
               <ResourceSettings kind="skills" state={resources} />
             </SettingsPanel>
-            <SettingsPanel value="mcp" title="MCP" description="查看 MCP 服务配置及加载状态。">
+            <SettingsPanel
+              value="mcp"
+              title="MCP"
+              description="默认沿用 Pi 配置，开关仅在 Pi Hearth 内生效。"
+            >
               <ResourceSettings kind="mcp" state={resources} />
             </SettingsPanel>
             <SettingsPanel

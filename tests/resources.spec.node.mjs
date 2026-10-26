@@ -59,6 +59,7 @@ test('skills include Pi, shared agents, project ancestors and extra paths withou
   })
   assert.equal(result.skills.find((s) => s.name === 'shared').manualOnly, true)
   assert.ok(result.skills.every((s) => s.status === 'unloaded'))
+  assert.ok(result.skills.every((s) => s.enabled === true))
   assert.equal(await readFile(global, 'utf8'), before)
   assert.deepEqual((await f.read()).skills.map((s) => s.name).sort(), [
     'ancestor',
@@ -108,6 +109,10 @@ test('MCP applies project overrides, keeps disabled status and never starts comm
     ],
   )
   assert.equal(result.mcp[0].source, projectConfig)
+  assert.deepEqual(
+    result.mcp.map((s) => s.enabled),
+    [false, true, true],
+  )
   assert.equal(JSON.stringify(result).includes('secret-sentinel'), false)
   await assert.rejects(access(marker))
   assert.equal(await readFile(config, 'utf8'), before)
@@ -130,6 +135,49 @@ test('invalid MCP data is sanitized while skills remain available', async () => 
   assert.deepEqual(result.mcp, [])
   assert.match(result.warnings.join(''), /MCP 配置问题/)
   assert.equal(JSON.stringify(result).includes('secret-sentinel'), false)
+})
+
+test('MCP details expose connection structure without credentials or private URL data', async () => {
+  const f = await fixture()
+  const source = path.join(f.agent, 'mcp.json')
+  const document = JSON.stringify({
+    mcpServers: {
+      local: {
+        command: 'npx',
+        args: [
+          '-y',
+          '@example/mcp',
+          '--api-key=argument-secret',
+          '--password',
+          'password-secret',
+          '--endpoint=https://user:uri-secret@example.invalid/private-path?token=query-secret',
+        ],
+        env: { TOKEN: 'environment-secret' },
+      },
+      remote: {
+        url: 'https://user:uri-secret@example.invalid/private-path?token=query-secret',
+        headers: { Authorization: 'Bearer header-secret' },
+      },
+    },
+  })
+  await writeFile(source, document)
+  const catalog = await f.read()
+  const local = JSON.parse(catalog.mcp[0].configuration)
+  assert.equal(local.command, 'npx')
+  assert.deepEqual(local.args.slice(0, 2), ['-y', '@example/mcp'])
+  assert.equal(local.env.TOKEN, '[已隐藏]')
+  assert.equal(JSON.parse(catalog.mcp[1].configuration).url, 'https://example.invalid/…')
+  for (const secret of [
+    'argument-secret',
+    'password-secret',
+    'environment-secret',
+    'uri-secret',
+    'private-path',
+    'query-secret',
+    'header-secret',
+  ])
+    assert.equal(JSON.stringify(catalog).includes(secret), false)
+  assert.equal(await readFile(source, 'utf8'), document)
 })
 
 test('empty directories are quiet and unsupported skill packages or filters are explicit', async () => {
@@ -162,7 +210,7 @@ test('the native helper resources action resolves SDK modules and returns a JSON
   assert.equal(JSON.parse(child.stdout).skills[0].name, 'cli')
 })
 
-test('resource enablement is explicit per entry and persisted independently of Pi configuration', async () => {
+test('resource enablement inherits Pi defaults with independent desktop overrides', async () => {
   const f = await fixture()
   const file = path.join(f.home, 'resources.json')
   assert.deepEqual(await readResourcePreferences(file), {})
@@ -174,7 +222,10 @@ test('resource enablement is explicit per entry and persisted independently of P
     ],
     errors: [],
   }
-  assert.deepEqual(selectedMcpConfig(loaded, {}).servers, [])
+  assert.deepEqual(
+    selectedMcpConfig(loaded, {}).servers.map((s) => s.name),
+    ['two'],
+  )
   const preferences = {
     [resourceKey('mcp', source, 'one')]: true,
     [resourceKey('mcp', source, 'two')]: false,
@@ -186,6 +237,13 @@ test('resource enablement is explicit per entry and persisted independently of P
   assert.equal(selected.servers[0].config.enabled, true)
   assert.equal(selected.servers[0].config.exposure, 'direct')
   assert.equal(loaded.servers[0].config.enabled, false)
+  assert.equal(loaded.servers[1].config.enabled, undefined)
+  assert.deepEqual(
+    selectedMcpConfig(loaded, { [resourceKey('mcp', source, 'one')]: true }).servers.map(
+      (s) => s.name,
+    ),
+    ['one', 'two'],
+  )
   await writeFile(file, 'bad json')
   await assert.rejects(readResourcePreferences(file), /无法读取资源启停设置/)
 })

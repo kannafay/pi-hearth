@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
@@ -37,6 +37,7 @@ const catalog: ResourceCatalog = {
       status: 'disabled',
       manualOnly: false,
       enabled: false,
+      configuration: '{\n  "type": "http",\n  "url": "https://example.invalid/…"\n}',
     },
   ],
   warnings: [],
@@ -51,61 +52,117 @@ beforeEach(() => {
   vi.mocked(openResource).mockResolvedValue(undefined)
 })
 
-test('one flat name-only list opens files, reveals paths on hover and provides real switches', async () => {
+test('skill cards expand independently and open their directory without toggling enablement', async () => {
   const user = userEvent.setup()
   const refresh = vi.fn()
   const open = vi.fn().mockResolvedValue(undefined)
   const setEnabled = vi.fn().mockResolvedValue(undefined)
   const actions = { pending: null, open, setEnabled }
-  const view = render(
+  const items = {
+    ...catalog,
+    skills: [
+      ...catalog.skills,
+      { ...catalog.skills[0], name: 'other', source: 'D:/other/SKILL.md' },
+    ],
+  }
+  render(
     <ResourceSettings
       kind="skills"
-      state={{ catalog, loading: false, error: null, refresh, ...actions }}
+      state={{ catalog: items, loading: false, error: null, refresh, ...actions }}
     />,
   )
-  expect(screen.getByText('已启用 0 / 1 项')).toBeVisible()
-  expect(screen.getByText('review')).toBeVisible()
-  expect(screen.queryByText('当前项目')).not.toBeInTheDocument()
+  expect(screen.getByText('已启用 0 / 2 项')).toBeVisible()
+  const first = screen.getByRole('button', { name: 'review' })
+  const second = screen.getByRole('button', { name: 'other' })
+  expect(first).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByText('检查项目代码')).not.toBeInTheDocument()
   expect(screen.queryByText(catalog.skills[0].source)).not.toBeInTheDocument()
-  await user.hover(screen.getByRole('button', { name: 'review' }))
-  expect(await screen.findByText(catalog.skills[0].source)).toBeVisible()
-  await user.click(screen.getByRole('button', { name: 'review' }))
-  expect(open).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0])
-  await user.click(screen.getByRole('switch', { name: '技能 review' }))
+  const toggle = screen.getByRole('switch', { name: '技能 review' })
+  await user.click(toggle.parentElement!)
+  expect(first).toHaveAttribute('aria-expanded', 'false')
+  expect(setEnabled).not.toHaveBeenCalled()
+  await user.click(toggle)
   expect(setEnabled).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0], true)
+  expect(first).toHaveAttribute('aria-expanded', 'false')
+  await user.click(first)
+  const details = within(screen.getByRole('group', { name: 'review' }))
+  expect(details.getByText('检查项目代码')).toBeVisible()
+  expect(details.getByText(catalog.skills[0].source)).toBeVisible()
+  expect(details.getByText('当前项目')).toBeVisible()
+  expect(details.getByText('仅手动调用')).toBeVisible()
+  expect(open).not.toHaveBeenCalled()
+  await user.click(details.getByRole('button', { name: '打开目录' }))
+  expect(open).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0])
+  expect(first).toHaveAttribute('aria-expanded', 'true')
+  await user.click(second)
+  expect(first).toHaveAttribute('aria-expanded', 'true')
+  expect(second).toHaveAttribute('aria-expanded', 'true')
+  await user.click(first)
+  await waitFor(() =>
+    expect(screen.queryByRole('group', { name: 'review' })).not.toBeInTheDocument(),
+  )
+  expect(second).toHaveAttribute('aria-expanded', 'true')
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-  view.rerender(
+})
+
+test('MCP cards show configuration and an edit action that reveals the configuration file', async () => {
+  const user = userEvent.setup()
+  const refresh = vi.fn()
+  const open = vi.fn().mockResolvedValue(undefined)
+  const setEnabled = vi.fn().mockResolvedValue(undefined)
+  render(
     <ResourceSettings
       kind="mcp"
-      state={{ catalog, loading: false, error: null, refresh, ...actions }}
+      state={{ catalog, loading: false, error: null, refresh, pending: null, open, setEnabled }}
     />,
   )
-  expect(screen.getByRole('button', { name: 'docs' })).toBeVisible()
+  const header = screen.getByRole('button', { name: 'docs' })
+  expect(screen.queryByText(catalog.mcp[0].source)).not.toBeInTheDocument()
   expect(screen.getByRole('switch', { name: 'MCP docs' })).not.toBeChecked()
+  await user.click(header)
+  const details = within(screen.getByRole('group', { name: 'docs' }))
+  expect(details.getByText(catalog.mcp[0].source)).toBeVisible()
+  expect(details.getByText('远程 HTTP 服务')).toBeVisible()
+  expect(details.getByText('连接配置')).toBeVisible()
+  expect(details.getByText(/https:\/\/example\.invalid/)).toHaveTextContent('"type": "http"')
+  expect(screen.queryByRole('button', { name: '打开目录' })).not.toBeInTheDocument()
+  expect(open).not.toHaveBeenCalled()
+  await user.click(details.getByRole('button', { name: '编辑配置' }))
+  expect(open).toHaveBeenCalledExactlyOnceWith('mcp', catalog.mcp[0])
+  expect(header).toHaveAttribute('aria-expanded', 'true')
+  expect(setEnabled).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('switch', { name: 'MCP docs' }))
+  expect(setEnabled).toHaveBeenCalledExactlyOnceWith('mcp', catalog.mcp[0], true)
+  expect(header).toHaveAttribute('aria-expanded', 'true')
+  expect(open).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('button', { name: '刷新MCP列表' }))
   expect(refresh).toHaveBeenCalledOnce()
 })
 
-test('a pending read never flashes an empty-state message', () => {
-  render(
-    <ResourceSettings
-      kind="skills"
-      state={{
-        catalog: null,
-        loading: true,
-        error: null,
-        refresh: vi.fn(),
-        pending: null,
-        open: vi.fn(),
-        setEnabled: vi.fn(),
-      }}
-    />,
-  )
-  expect(screen.getByRole('status')).toHaveTextContent('正在读取技能列表')
-  expect(screen.queryByText('未发现技能。')).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '刷新技能列表' })).toBeDisabled()
-})
+test.each(['skills', 'mcp'] as const)(
+  '%s pending reads use the refresh button without extra loading or empty-state messages',
+  (kind) => {
+    const label = kind === 'skills' ? '技能' : 'MCP'
+    render(
+      <ResourceSettings
+        kind={kind}
+        state={{
+          catalog: null,
+          loading: true,
+          error: null,
+          refresh: vi.fn(),
+          pending: null,
+          open: vi.fn(),
+          setEnabled: vi.fn(),
+        }}
+      />,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^正在读取/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^未发现/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `刷新${label}列表` })).toBeDisabled()
+  },
+)
 
 test('switch writes wait for backend confirmation, retain old state on failure and support retry', async () => {
   const { result } = renderHook(() => useResourceCatalog(true, true))
