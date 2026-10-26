@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, FolderPlus, LoaderCircle, X } from 'lucide-react'
+import { Folder, FolderInput, LoaderCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -53,6 +53,7 @@ export function ProjectDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const sourceName = source?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
+  const FolderIcon = source ? Folder : FolderInput
   const createDirectory = projectsDirectory || defaultDirectory || '文档\\Pi Hearth\\Projects'
   const desktop = isDesktop()
   const canSubmit = Boolean(
@@ -67,7 +68,7 @@ export function ProjectDialog({
       setSelecting(true)
       setError('')
       try {
-        const value = path ?? (await selectProjectDirectory('添加源文件夹'))
+        const value = path ?? (await selectProjectDirectory('选择项目文件夹'))
         if (value) {
           const directory = await resolveProjectDirectory(value)
           const instructions = await readInstructions(directory)
@@ -130,7 +131,7 @@ export function ProjectDialog({
       setDragging(event.type !== 'drop' && inside)
       if (event.type === 'drop' && inside) {
         if (event.paths.length !== 1) {
-          setError('每个项目请选择一个源文件夹。')
+          setError('每个项目请选择一个文件夹。')
           return
         }
         void chooseDirectory(event.paths[0])
@@ -222,8 +223,8 @@ export function ProjectDialog({
           <DialogTitle>{project ? '编辑项目' : '新建项目'}</DialogTitle>
           <DialogDescription>
             {project
-              ? '修改项目名称和指令，源文件夹保持原有位置。'
-              : '填写项目名称，或添加源文件夹。未添加文件夹时，在设置的保存位置创建项目。'}
+              ? '修改项目名称和指令，文件夹位置保持不变。'
+              : '填写项目名称，或选择已有文件夹。'}
           </DialogDescription>
         </DialogHeader>
         <DialogForm
@@ -252,10 +253,11 @@ export function ProjectDialog({
                   </FieldDescription>
                 )}
               </Field>
-              <Field role="region" aria-label="源文件夹">
+              <Field role="region" aria-label="项目文件夹">
                 <div className="flex items-center justify-between">
                   <FieldTitle role="heading" aria-level={3}>
-                    源文件夹
+                    项目文件夹
+                    {!project && <span className="text-xs text-muted-foreground">（可选）</span>}
                   </FieldTitle>
                   {selecting && (
                     <span
@@ -269,8 +271,19 @@ export function ProjectDialog({
                 </div>
                 <div
                   ref={sourceArea}
-                  aria-label={project ? '项目源文件夹' : '源文件夹拖放区'}
-                  className={`overflow-hidden rounded-lg border border-solid transition-colors ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                  role="group"
+                  aria-label={project ? '项目文件夹位置' : '项目文件夹拖放区'}
+                  aria-describedby="project-location-hint"
+                  className={`flex min-h-18 min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-input px-3.5 py-3 text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 has-disabled:bg-input/50 has-disabled:opacity-50 ${source ? 'border-solid bg-transparent' : 'border-dashed bg-muted/20'} ${dragging ? 'border-ring bg-muted/40' : ''}`}
+                  onClick={(event) => {
+                    if (
+                      project ||
+                      (event.target instanceof Element && event.target.closest('button'))
+                    )
+                      return
+                    event.currentTarget.querySelector('button')?.focus()
+                    void chooseDirectory()
+                  }}
                   onDragOver={(event) => {
                     if (
                       !project &&
@@ -295,71 +308,66 @@ export function ProjectDialog({
                     if (!desktop) setError('拖拽文件夹需要在桌面应用中使用。')
                   }}
                 >
-                  {source ? (
-                    <>
-                      <div className="flex items-start gap-3 p-3.5">
-                        <FolderOpen
-                          aria-hidden
-                          className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-muted-foreground"
-                        />
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="break-all">{sourceName}</p>
-                          <p className="text-xs leading-5 text-muted-foreground break-all">
-                            {source}
-                          </p>
-                        </div>
-                        {!project && (
-                          <Button
-                            aria-label="移除文件夹"
-                            variant="ghost"
-                            size="icon-xs"
-                            className="text-muted-foreground hover:text-foreground"
-                            disabled={saving || selecting}
-                            onClick={() => {
-                              setSource(null)
-                              setOriginal('')
-                              setError('')
-                            }}
-                          >
-                            <X className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      {!project && (
-                        <div className="flex flex-wrap items-center justify-between gap-1 border-t px-2 py-1.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={saving || selecting}
-                            onClick={() => void chooseDirectory()}
-                          >
-                            <FolderOpen className="stroke-[1.5]" />
-                            更换文件夹
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 py-5">
-                      <p className="mb-1 text-xs text-muted-foreground">
-                        {dragging ? '松开以添加文件夹' : '拖拽文件夹到此处'}
+                  <FolderIcon
+                    aria-hidden
+                    className="size-4 shrink-0 stroke-[1.5] text-muted-foreground"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`truncate ${source ? '' : 'text-muted-foreground'}`}
+                      title={sourceName || undefined}
+                    >
+                      {dragging
+                        ? source
+                          ? '松开以替换文件夹'
+                          : '松开以选择文件夹'
+                        : sourceName || '拖入文件夹'}
+                    </p>
+                    {source && (
+                      <p
+                        id="project-location-hint"
+                        className="mt-0.5 text-xs leading-5 text-muted-foreground break-all"
+                      >
+                        {source}
                       </p>
+                    )}
+                  </div>
+                  {!project && (
+                    <>
                       <Button
-                        variant="outline"
+                        aria-label={source ? '更换文件夹' : '选择文件夹'}
+                        aria-describedby="project-location-hint"
+                        variant={source ? 'ghost' : 'outline'}
+                        size="sm"
+                        className={`font-normal ${source ? 'text-muted-foreground' : ''}`}
                         disabled={saving || selecting}
                         onClick={() => void chooseDirectory()}
                       >
-                        <FolderPlus className="stroke-[1.5]" />
-                        添加文件夹
+                        {source ? '更换' : '选择文件夹'}
                       </Button>
-                    </div>
+                      {source && (
+                        <Button
+                          aria-label="移除文件夹"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-muted-foreground hover:text-foreground"
+                          disabled={saving || selecting}
+                          onClick={() => {
+                            setSource(null)
+                            setOriginal('')
+                            setError('')
+                          }}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
                 {!source && (
-                  <div className="space-y-1 text-xs leading-5 text-muted-foreground">
-                    <p>未添加源文件夹时，将在以下位置新建项目，可在设置中修改</p>
-                    <p className="break-all">{createDirectory}</p>
-                  </div>
+                  <FieldDescription id="project-location-hint" className="break-all">
+                    未选择时，新建于 <span>{createDirectory}</span>
+                  </FieldDescription>
                 )}
               </Field>
               <Field>

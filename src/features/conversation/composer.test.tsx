@@ -51,6 +51,79 @@ beforeEach(() => {
   vi.mocked(stageFiles).mockResolvedValue([file])
 })
 
+test('clicking composer padding and toolbar gaps focuses the draft without moving the caret', async () => {
+  useWorkspaceStore.setState({ draft: '保留草稿' })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' }) as HTMLTextAreaElement
+  const areas = [
+    screen.getByLabelText('消息输入区'),
+    input.parentElement!,
+    screen.getByRole('button', { name: '发送消息' }).parentElement!,
+  ]
+
+  for (const area of areas) {
+    await user.click(document.body)
+    input.setSelectionRange(2, 2)
+    await user.click(area)
+    expect(input).toHaveFocus()
+    expect(input.selectionStart).toBe(2)
+    expect(input.selectionEnd).toBe(2)
+  }
+
+  await user.keyboard('继续')
+  expect(input).toHaveValue('保留继续草稿')
+})
+
+test('composer attachment controls keep their own actions without focusing the draft', async () => {
+  vi.mocked(chooseAttachments).mockResolvedValue([])
+  useWorkspaceStore.setState({ draftAttachments: [file] })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+
+  await user.click(screen.getByRole('button', { name: '添加附件' }))
+  expect(chooseAttachments).toHaveBeenCalledOnce()
+  expect(input).not.toHaveFocus()
+
+  await user.click(screen.getByText('notes.txt'))
+  expect(useWorkspaceStore.getState().attachmentPreview).toEqual(file)
+  expect(input).not.toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: '移除 notes.txt' }))
+  expect(useWorkspaceStore.getState().draftAttachments).toEqual([])
+  expect(input).not.toHaveFocus()
+})
+
+test('composer dropdown triggers and their portalled options do not focus the draft', async () => {
+  const first = { provider: 'p', id: 'a', name: 'Alpha' }
+  const second = { provider: 'p', id: 'b', name: 'Beta' }
+  const changeModel = vi.fn().mockResolvedValue(undefined)
+  const changeThinkingLevel = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    model: first,
+    models: [first, second],
+    availableThinkingLevels: ['high'],
+    changeModel,
+    changeThinkingLevel,
+  })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+
+  await user.click(screen.getByRole('combobox', { name: '切换模型' }))
+  expect(input).not.toHaveFocus()
+  await user.click(await screen.findByRole('option', { name: 'Beta' }))
+  expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
+  expect(input).not.toHaveFocus()
+
+  await user.click(screen.getByRole('combobox', { name: '思考强度' }))
+  expect(input).not.toHaveFocus()
+  await user.click(await screen.findByRole('option', { name: 'High' }))
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
+  expect(input).not.toHaveFocus()
+})
+
 test.each(['ready', 'connecting', 'running', 'stopping', 'disconnected'] as const)(
   '%s conversations keep all notices above the input area',
   (status) => {

@@ -60,8 +60,8 @@ test('an existing folder can be added without a project name', async () => {
   const user = userEvent.setup()
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('D:\\existing\\project')
   render(<ProjectDialog onClose={vi.fn()} />)
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
-  expect(selectProjectDirectory).toHaveBeenCalledExactlyOnceWith('添加源文件夹')
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
+  expect(selectProjectDirectory).toHaveBeenCalledExactlyOnceWith('选择项目文件夹')
   const name = screen.getByRole('textbox', { name: '项目名称' })
   expect(name).toHaveValue('')
   expect(name).not.toHaveAttribute('readonly')
@@ -73,12 +73,28 @@ test('an existing folder can be added without a project name', async () => {
   })
 })
 
+test('the entire empty folder row opens one picker and remains keyboard accessible', async () => {
+  const user = userEvent.setup()
+  render(<ProjectDialog onClose={vi.fn()} />)
+  expect(screen.getByRole('region', { name: '项目文件夹' })).toBeVisible()
+  expect(screen.getByText('（可选）')).toBeVisible()
+  const choose = screen.getByRole('button', { name: '选择文件夹' })
+
+  expect(choose).toHaveTextContent('选择文件夹')
+  await user.click(screen.getByText('拖入文件夹'))
+  expect(selectProjectDirectory).toHaveBeenCalledExactlyOnceWith('选择项目文件夹')
+  expect(choose).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(selectProjectDirectory).toHaveBeenCalledTimes(2)
+  expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
+})
+
 test('the project name remains independent from the selected folder name', async () => {
   const user = userEvent.setup()
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('D:/existing/folder')
   render(<ProjectDialog onClose={vi.fn()} />)
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'Design')
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
   expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue('Design')
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), ' Notes')
   await user.click(screen.getByRole('button', { name: '新建项目' }))
@@ -112,7 +128,7 @@ test('selecting a source loads its rules and submits an explicit edit without lo
     content: 'Existing rules.\n',
   })
   render(<ProjectDialog onClose={vi.fn()} />)
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
   const instructions = screen.getByRole('textbox', { name: '项目指令' })
   expect(instructions).toHaveValue('Existing rules.\n')
   await user.type(instructions, '使用中文回答。')
@@ -179,11 +195,13 @@ test('canceling a folder change preserves the source and removing it keeps the p
   render(<ProjectDialog onClose={vi.fn()} />)
   const name = screen.getByRole('textbox', { name: '项目名称' })
   await user.type(name, 'Draft')
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
   await user.click(screen.getByRole('button', { name: '更换文件夹' }))
   expect(screen.getByText('D:/existing/project')).toBeVisible()
   expect(name).toHaveValue('Draft')
   await user.click(screen.getByRole('button', { name: '移除文件夹' }))
+  expect(selectProjectDirectory).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('button', { name: '选择文件夹' })).toBeEnabled()
   expect(name).toHaveValue('Draft')
   expect(screen.getByRole('button', { name: '新建项目' })).toBeEnabled()
   await user.clear(name)
@@ -201,16 +219,16 @@ test('folder selection blocks duplicate pickers and dialog dismissal until it fi
     }),
   )
   render(<ProjectDialog onClose={onClose} />)
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
   expect(screen.getByRole('status')).toHaveTextContent('正在选择文件夹')
-  expect(screen.getByRole('button', { name: '添加文件夹' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '选择文件夹' })).toBeDisabled()
   expect(screen.getByRole('button', { name: '取消' })).toBeDisabled()
   await user.keyboard('{Escape}')
   expect(onClose).not.toHaveBeenCalled()
   expect(selectProjectDirectory).toHaveBeenCalledOnce()
   await act(async () => resolve(null))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '添加文件夹' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '选择文件夹' })).toBeEnabled()
 })
 
 test('the creation location comes from settings and has no quick-change action', async () => {
@@ -221,7 +239,7 @@ test('the creation location comes from settings and has no quick-change action',
   expect(screen.queryByRole('button', { name: '更改' })).not.toBeInTheDocument()
   expect(useWorkspaceStore.getState().projectsDirectory).toBe('D:/Projects')
   expect(screen.getByText('D:/Projects')).toBeVisible()
-  expect(screen.getByRole('button', { name: '添加文件夹' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '选择文件夹' })).toBeEnabled()
   await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'New')
   await user.keyboard('{Enter}')
   expect(useWorkspaceStore.getState().addProject).toHaveBeenCalledExactlyOnceWith({
@@ -239,7 +257,7 @@ test('creation errors keep the selected folder available for retry', async () =>
     new Error('无法访问目录'),
   )
   render(<ProjectDialog onClose={onClose} />)
-  await user.click(screen.getByRole('button', { name: '添加文件夹' }))
+  await user.click(screen.getByRole('button', { name: '选择文件夹' }))
   await user.click(screen.getByRole('button', { name: '新建项目' }))
   expect(screen.getByRole('alert')).toHaveTextContent('无法访问目录')
   expect(screen.getByText('D:/existing')).toBeVisible()
@@ -249,31 +267,49 @@ test('creation errors keep the selected folder available for retry', async () =>
 })
 
 function observeDropTarget() {
-  const target = screen.getByLabelText('源文件夹拖放区')
+  const target = screen.getByLabelText('项目文件夹拖放区')
   vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
     left: 100,
     top: 200,
     right: 500,
-    bottom: 360,
+    bottom: 272,
   } as DOMRect)
   return vi.mocked(listenForProjectFolderDrop).mock.calls.at(-1)![0]
 }
 
-test('native folder drops use the drop zone and account for display scaling', async () => {
+test('native folder drops support scaled selection, replacement, and removal', async () => {
   vi.stubGlobal('devicePixelRatio', 2)
+  const user = userEvent.setup()
   render(<ProjectDialog onClose={vi.fn()} />)
   const onDrop = observeDropTarget()
   act(() =>
-    onDrop({ type: 'enter', paths: ['D:/source'], position: new PhysicalPosition(400, 500) }),
+    onDrop({ type: 'enter', paths: ['D:/source'], position: new PhysicalPosition(400, 440) }),
   )
-  expect(screen.getByText('松开以添加文件夹')).toBeVisible()
+  expect(screen.getByText('松开以选择文件夹')).toBeVisible()
   await act(async () =>
-    onDrop({ type: 'drop', paths: ['D:/source'], position: new PhysicalPosition(400, 500) }),
+    onDrop({ type: 'drop', paths: ['D:/source'], position: new PhysicalPosition(400, 440) }),
   )
-  expect(await screen.findByText('D:/source')).toBeVisible()
+  const area = screen.getByRole('group', { name: '项目文件夹拖放区' })
+  expect(area).toContainElement(await screen.findByText('D:/source'))
   expect(resolveProjectDirectory).toHaveBeenCalledWith('D:/source')
-  expect(selectProjectDirectory).not.toHaveBeenCalled()
   expect(screen.getByRole('button', { name: '新建项目' })).toBeEnabled()
+
+  act(() =>
+    onDrop({ type: 'enter', paths: ['D:/replacement'], position: new PhysicalPosition(400, 440) }),
+  )
+  expect(screen.getByText('松开以替换文件夹')).toBeVisible()
+  await act(async () =>
+    onDrop({ type: 'drop', paths: ['D:/replacement'], position: new PhysicalPosition(400, 440) }),
+  )
+  expect(area).toContainElement(screen.getByText('D:/replacement'))
+  expect(screen.queryByText('D:/source')).not.toBeInTheDocument()
+  expect(resolveProjectDirectory).toHaveBeenCalledWith('D:/replacement')
+
+  await user.click(screen.getByRole('button', { name: '移除文件夹' }))
+  expect(screen.getByText('拖入文件夹')).toBeVisible()
+  expect(screen.getByText(defaultDirectory)).toBeVisible()
+  expect(selectProjectDirectory).not.toHaveBeenCalled()
+  expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
 })
 
 test('drops outside the source area are ignored and files or multiple folders are rejected', async () => {
@@ -285,13 +321,13 @@ test('drops outside the source area are ignored and files or multiple folders ar
   expect(resolveProjectDirectory).not.toHaveBeenCalled()
   vi.mocked(resolveProjectDirectory).mockRejectedValueOnce(new Error('请添加文件夹，而不是文件。'))
   await act(async () =>
-    onDrop({ type: 'drop', paths: ['D:/notes.txt'], position: new PhysicalPosition(200, 250) }),
+    onDrop({ type: 'drop', paths: ['D:/notes.txt'], position: new PhysicalPosition(200, 220) }),
   )
   expect(screen.getByRole('alert')).toHaveTextContent('请添加文件夹，而不是文件')
   act(() =>
-    onDrop({ type: 'drop', paths: ['D:/one', 'D:/two'], position: new PhysicalPosition(200, 250) }),
+    onDrop({ type: 'drop', paths: ['D:/one', 'D:/two'], position: new PhysicalPosition(200, 220) }),
   )
-  expect(screen.getByRole('alert')).toHaveTextContent('请选择一个源文件夹')
+  expect(screen.getByRole('alert')).toHaveTextContent('请选择一个文件夹')
   expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled()
   expect(useWorkspaceStore.getState().addProject).not.toHaveBeenCalled()
   await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())

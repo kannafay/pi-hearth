@@ -214,6 +214,20 @@ export function Composer({
         ref={inputArea}
         aria-label="消息输入区"
         className={`relative z-1 overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || event.defaultPrevented || readOnly) return
+          const target = event.target
+          if (
+            !(target instanceof Element) ||
+            !event.currentTarget.contains(target) ||
+            target.closest(
+              'button, a, input, textarea, select, [role="button"], [role="combobox"], [contenteditable], .os-scrollbar',
+            )
+          )
+            return
+          event.preventDefault()
+          event.currentTarget.querySelector('textarea')?.focus({ preventScroll: true })
+        }}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault()

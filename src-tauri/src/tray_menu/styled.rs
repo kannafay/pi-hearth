@@ -56,8 +56,8 @@ impl Item {
     }
     fn height(self) -> i32 {
         match self {
-            Self::Show | Self::Quit => 40,
-            Self::Restart => 34,
+            Self::Show | Self::Quit => 34,
+            Self::Restart => 30,
             Self::Divider => 9,
         }
     }
@@ -415,8 +415,8 @@ unsafe extern "system" fn owner_proc(
             {
                 let frame = unsafe { (*raw).frame.clone() };
                 // Windows adds its native side gutters around owner-drawn
-                // content; together these retain the old 184px card width.
-                measure.itemWidth = frame.style.px(166) as _;
+                // content; together these make the card approximately 160px wide.
+                measure.itemWidth = frame.style.px(142) as _;
                 measure.itemHeight = frame.style.px(item.height()) as _;
                 attach_popup(&frame);
                 return 1;
@@ -741,13 +741,13 @@ fn paint_item_contents(draw: &DRAWITEMSTRUCT, item: Item, frame: &Frame) {
         return;
     }
     let mut button = draw.rcItem;
-    button.left += style.px(6);
-    button.right -= style.px(6);
+    button.left += style.px(4);
+    button.right -= style.px(4);
     if matches!(item, Item::Show) {
-        button.top += style.px(6);
+        button.top += style.px(4);
     }
     if matches!(item, Item::Quit) {
-        button.bottom -= style.px(6);
+        button.bottom -= style.px(4);
     }
     let selected = draw.itemState & ODS_SELECTED != 0;
     let (amount, fading) = frame
