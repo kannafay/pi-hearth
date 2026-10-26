@@ -21,6 +21,9 @@ export function PermissionSettings() {
       save: state.setDefaultPermission,
     })),
   )
+  const SelectedIcon = (
+    permissionOptions.find((item) => item.value === mode) ?? permissionOptions[0]
+  ).icon
   return (
     <SettingsRow
       title="新对话默认权限"
@@ -41,6 +44,7 @@ export function PermissionSettings() {
             className="w-40"
             tone={mode === 'full' ? 'warning' : 'default'}
           >
+            <SelectedIcon aria-hidden strokeWidth={1.6} />
             <SelectValue />
           </SelectTrigger>
           <SelectContent width="content">
