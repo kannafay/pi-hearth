@@ -66,7 +66,7 @@ const ProcessTextRecord = memo(function ProcessTextRecord({
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
     `${kind}:${stateKey ?? ''}:${id}:expanded`,
-    false,
+    active ? 'active' : 'finished',
   )
   return (
     <ExecutionRecord
@@ -104,7 +104,11 @@ const ProcessRecords = memo(function ProcessRecords({
             kind={item.kind}
             text={item.kind === 'thinking' ? item.text : item.message.text}
             stateKey={stateKey}
-            active={active && item === items.at(-1)}
+            active={
+              active &&
+              item === items.at(-1) &&
+              (item.kind === 'thinking' ? item.streaming : item.message.status === 'streaming')
+            }
           />
         ),
       )}

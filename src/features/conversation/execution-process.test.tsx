@@ -66,7 +66,7 @@ test('quick replies with thinking retain the duration and accessible disclosure'
   const user = userEvent.setup()
   render(
     <ExecutionProcess
-      items={[{ kind: 'thinking', id: 'thought', text: '核对信息后给出答复。' }]}
+      items={[{ kind: 'thinking', id: 'thought', text: '核对信息后给出答复。', streaming: false }]}
       active={false}
       startedAt={100_000}
       finishedAt={100_500}
@@ -92,13 +92,16 @@ test('quick replies with thinking retain the duration and accessible disclosure'
 
 test('thinking collapses independently and stays collapsed as more content arrives', async () => {
   const user = userEvent.setup()
-  const thought = { kind: 'thinking' as const, id: 'thought', text: '初始思考内容。' }
+  const thought = {
+    kind: 'thinking' as const,
+    id: 'thought',
+    text: '初始思考内容。',
+    streaming: true,
+  }
   const view = render(<ExecutionProcess stateKey="turn" items={[thought]} active />)
   const process = screen.getByRole('button', { name: '执行过程' })
   const thinking = screen.getByRole('button', { name: '思考' })
-  expect(thinking).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByText(thought.text)).not.toBeInTheDocument()
-  await user.click(thinking)
+  expect(thinking).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText(thought.text)).toBeVisible()
   await user.click(thinking)
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
@@ -119,6 +122,34 @@ test('thinking collapses independently and stays collapsed as more content arriv
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
 })
 
+test('active thinking choices survive virtual remounts and reset when it finishes offscreen', async () => {
+  const user = userEvent.setup()
+  const local = new Map<string, unknown>()
+  const content = (streaming = true) => (
+    <ConversationLocalState initial={local}>
+      <ExecutionProcess
+        stateKey="remounted"
+        active
+        items={[{ kind: 'thinking', id: 'thought', text: '持续思考。', streaming }]}
+      />
+    </ConversationLocalState>
+  )
+  let view = render(content())
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  view.unmount()
+  view = render(content())
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  view.unmount()
+  view = render(content(false))
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  view.unmount()
+  render(content(false))
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText('持续思考。')).toBeVisible()
+})
+
 test('collapsing a pinned thinking header keeps that group in view', async () => {
   const user = userEvent.setup()
   const view = render(
@@ -127,13 +158,13 @@ test('collapsing a pinned thinking header keeps that group in view', async () =>
         stateKey="pinned"
         active
         items={[
-          { kind: 'thinking', id: 'long', text: '第一组的长内容。' },
-          { kind: 'thinking', id: 'next', text: '下一组内容。' },
+          { kind: 'thinking', id: 'long', text: '第一组的长内容。', streaming: false },
+          { kind: 'thinking', id: 'next', text: '下一组内容。', streaming: true },
         ]}
       />
     </div>,
   )
-  for (const thinking of screen.getAllByRole('button', { name: '思考' })) await user.click(thinking)
+  await user.click(screen.getAllByRole('button', { name: '思考' })[0])
   const header = screen.getAllByRole('button', { name: '思考' })[0]
   const group = header.closest('[data-slot="collapsible"]')!
   const viewport = view.container.querySelector<HTMLElement>('[data-scroll-area]')!
@@ -154,8 +185,8 @@ test('each thinking section keeps its own choice across process reopening and vi
   const user = userEvent.setup()
   const local = new Map<string, unknown>()
   const items = [
-    { kind: 'thinking' as const, id: 'first', text: '第一段思考。' },
-    { kind: 'thinking' as const, id: 'second', text: '第二段思考。' },
+    { kind: 'thinking' as const, id: 'first', text: '第一段思考。', streaming: false },
+    { kind: 'thinking' as const, id: 'second', text: '第二段思考。', streaming: false },
   ]
   const content = (stateKey = 'turn') => (
     <ConversationLocalState initial={local}>
@@ -242,7 +273,14 @@ test('folded thinking defers paragraph construction and folding the process does
   render(
     <ExecutionProcess
       active={false}
-      items={[{ kind: 'thinking', id: 'lazy-thought', text: { split } as unknown as string }]}
+      items={[
+        {
+          kind: 'thinking',
+          id: 'lazy-thought',
+          text: { split } as unknown as string,
+          streaming: false,
+        },
+      ]}
     />,
   )
   const process = screen.getByRole('button', { name: '执行过程' })

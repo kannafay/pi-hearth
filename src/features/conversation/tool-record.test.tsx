@@ -39,6 +39,8 @@ test('approval shows parameters and allows exactly one decision before the order
     <ToolRecord tool={{ ...tool, status: 'complete', approvalId: null, output: '成功写入' }} />,
   )
   expect(screen.queryByRole('button', { name: '允许本次' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /写入文件/ })).toHaveAttribute('aria-expanded', 'false')
+  await user.click(screen.getByRole('button', { name: /写入文件/ }))
   expect(screen.getByText('成功写入')).toBeVisible()
 })
 
@@ -65,7 +67,7 @@ test('expanded command output updates live and displays errors as plain text', a
   const view = render(
     <ToolRecord tool={{ ...tool, name: 'powershell', status: 'running', output: 'first' }} />,
   )
-  await user.click(screen.getByRole('button', { expanded: false }))
+  expect(screen.getByRole('button', { expanded: true })).toBeVisible()
   expect(screen.getByText('实时输出')).toBeVisible()
   view.rerender(
     <ToolRecord
@@ -78,10 +80,41 @@ test('expanded command output updates live and displays errors as plain text', a
       }}
     />,
   )
+  expect(screen.getByRole('button', { name: /执行命令/ })).toHaveAttribute('aria-expanded', 'false')
+  await user.click(screen.getByRole('button', { name: /执行命令/ }))
   expect(screen.getByText('<script>failure</script>')).toBeVisible()
   expect(screen.getByText('执行失败')).toBeVisible()
   expect(screen.queryByText('first')).not.toBeInTheDocument()
 })
+
+test.each(['complete', 'failed', 'denied', 'cancelled', 'interrupted'])(
+  'tool details follow the queued and running phases, then collapse on %s',
+  async (terminalStatus) => {
+    const user = userEvent.setup()
+    const queued = { ...tool, status: 'queued', approvalId: null }
+    const view = render(<ToolRecord tool={queued} />)
+    const header = screen.getByRole('button', { name: /写入文件/ })
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    await user.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+
+    const running = { ...queued, status: 'running', output: '正在写入' }
+    view.rerender(<ToolRecord tool={running} />)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    await user.click(header)
+    view.rerender(<ToolRecord tool={{ ...running, output: '持续写入' }} />)
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    await user.click(header)
+    expect(screen.getByText('持续写入')).toBeVisible()
+
+    view.rerender(
+      <ToolRecord tool={{ ...running, status: terminalStatus, output: '操作已结束' }} />,
+    )
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    await user.click(header)
+    expect(screen.getByText('操作已结束')).toBeVisible()
+  },
+)
 
 test('cached tool details load from the fresh runtime tool ID after a session restore', async () => {
   useConversationStore.setState({

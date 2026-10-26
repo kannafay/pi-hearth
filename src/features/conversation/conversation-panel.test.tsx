@@ -474,7 +474,10 @@ test('live tool output and final-answer deltas render immediately, then the proc
   await user.click(trigger)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   const process = screen.getByRole('region', { name: '执行过程详情' })
-  await user.click(within(process).getByRole('button', { name: /读取文件/ }))
+  expect(within(process).getByRole('button', { name: /读取文件/ })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
   receive(1, { type: 'tool_changed', tool: { ...tool, output: '第一段输出\n第二段输出' } })
   expect(within(process).getByText(/第二段输出/)).toBeVisible()
   receive(2, {
@@ -503,6 +506,80 @@ test('live tool output and final-answer deltas render immediately, then the proc
   await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
   expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
   expect(screen.getByText('实时答复继续输出')).toBeVisible()
+})
+
+test('execution expands each active step, closes finished steps, and folds the whole run at the end', async () => {
+  const { user: prompt, progress, answer, tool } = processFixture()
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  receive(1, { type: 'run_started', message: prompt })
+  receive(2, {
+    type: 'message_started',
+    message: { ...progress, text: '', thinking: '', status: 'streaming' },
+  })
+  receive(3, {
+    type: 'message_delta',
+    messageId: progress.id,
+    contentIndex: 0,
+    kind: 'thinking',
+    delta: progress.thinking,
+  })
+  const process = screen.getByRole('button', { name: '执行过程' })
+  const firstThinking = screen.getByRole('button', { name: '思考' })
+  expect(firstThinking).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText(progress.thinking)).toBeVisible()
+
+  receive(4, { type: 'message_completed', message: progress })
+  expect(firstThinking).toHaveAttribute('aria-expanded', 'false')
+  receive(5, { type: 'tool_changed', tool })
+  const read = screen.getByRole('button', { name: /读取文件/ })
+  expect(read).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('button', { name: '执行说明' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByText(tool.output)).toBeVisible()
+
+  receive(6, { type: 'tool_changed', tool: { ...tool, status: 'complete' } })
+  expect(read).toHaveAttribute('aria-expanded', 'false')
+  expect(process).toHaveAttribute('aria-expanded', 'true')
+  receive(7, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  receive(8, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 0,
+    kind: 'thinking',
+    delta: answer.thinking,
+  })
+  const lastThinking = screen.getAllByRole('button', { name: '思考' })[1]
+  expect(lastThinking).toHaveAttribute('aria-expanded', 'true')
+  expect(firstThinking).toHaveAttribute('aria-expanded', 'false')
+  expect(read).toHaveAttribute('aria-expanded', 'false')
+
+  receive(9, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 1,
+    kind: 'text',
+    delta: answer.text,
+  })
+  expect(lastThinking).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByText(answer.text)).toBeVisible()
+  receive(10, { type: 'message_completed', message: answer })
+  receive(11, { type: 'run_finished', status: 'complete', error: null })
+  expect(process).toHaveAttribute('aria-expanded', 'false')
+  await waitFor(() =>
+    expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument(),
+  )
+
+  await user.click(process)
+  for (const step of within(screen.getByRole('region', { name: '执行过程详情' })).getAllByRole(
+    'button',
+  ))
+    expect(step).toHaveAttribute('aria-expanded', 'false')
+  await user.click(screen.getAllByRole('button', { name: '思考' })[0])
+  expect(screen.getByText(progress.thinking)).toBeVisible()
 })
 
 test('approval requests force a manually collapsed process open and cancellation remains visible', async () => {

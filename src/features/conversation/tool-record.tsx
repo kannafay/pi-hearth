@@ -59,7 +59,14 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
   )
   const awaiting = tool.status === 'awaiting_approval'
   const running = tool.status === 'running' || tool.status === 'queued'
-  const [expanded, setExpanded, headerRef] = useExecutionRecord(`tool:${tool.id}:expanded`, false)
+  const [expanded, setExpanded, headerRef] = useExecutionRecord(
+    `tool:${tool.id}:expanded`,
+    awaiting || tool.status === 'running'
+      ? 'active'
+      : tool.status === 'queued'
+        ? 'pending'
+        : 'finished',
+  )
   const open = awaiting || expanded
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')
@@ -76,7 +83,6 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
 
   async function decide(allow: boolean) {
     if (!instanceId || !tool.approvalId || deciding) return
-    setExpanded(true)
     setDeciding(true)
     setError('')
     try {

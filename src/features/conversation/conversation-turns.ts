@@ -2,7 +2,7 @@ import type { ChatMessage, TimelineEntry, ToolCall } from '@/lib/generated/pi'
 import { sessionCacheKey } from './session-cache'
 
 export type ProcessItem =
-  | { kind: 'thinking'; id: string; text: string }
+  | { kind: 'thinking'; id: string; text: string; streaming: boolean }
   | { kind: 'message'; id: string; message: ChatMessage }
   | { kind: 'tool'; id: string; tool: ToolCall }
 
@@ -61,7 +61,12 @@ function buildTurn(group: Group): ConversationTurnData {
     const message = entry.message
     lastAssistant = message
     if (message.thinking.trim()) {
-      process.push({ kind: 'thinking', id: `${message.id}-thinking`, text: message.thinking })
+      process.push({
+        kind: 'thinking',
+        id: `${message.id}-thinking`,
+        text: message.thinking,
+        streaming: message.status === 'streaming' && !message.text.trim(),
+      })
     }
     if (message !== reply && message.text.trim()) {
       process.push({ kind: 'message', id: message.id, message })
@@ -104,7 +109,8 @@ function sameTurn(previous: ConversationTurnData | undefined, next: Conversation
         item.kind === other.kind &&
         item.id === other.id &&
         (item.kind === 'thinking'
-          ? item.text === (other as typeof item).text
+          ? item.text === (other as typeof item).text &&
+            item.streaming === (other as typeof item).streaming
           : item.kind === 'tool'
             ? item.tool === (other as typeof item).tool
             : item.message === (other as typeof item).message)
