@@ -56,24 +56,26 @@ export function ResourceSettings({
               key={`${item.source}:${item.name}`}
               className="flex min-w-0 items-center gap-3 px-3 py-2"
             >
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="min-w-0 flex-1 justify-start px-0 font-normal"
-                      disabled={!isDesktop()}
-                      onClick={() => void state.open(kind, item)}
-                    />
-                  }
-                >
-                  <span className="truncate">{item.name}</span>
-                </TooltipTrigger>
-                <TooltipContent className="wrap-anywhere" showArrow={false}>
-                  {item.source}
-                </TooltipContent>
-              </Tooltip>
+              <div className="min-w-0 flex-1">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="w-fit min-w-0 max-w-full justify-start px-0 font-normal"
+                        disabled={!isDesktop()}
+                        onClick={() => void state.open(kind, item)}
+                      />
+                    }
+                  >
+                    <span className="truncate">{item.name}</span>
+                  </TooltipTrigger>
+                  <TooltipContent align="start" className="wrap-anywhere" showArrow={false}>
+                    {item.source}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Switch
                 aria-label={`${label} ${item.name}`}
                 checked={item.enabled}

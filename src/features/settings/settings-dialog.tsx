@@ -17,7 +17,7 @@ import { useConversationStore } from '@/features/conversation/store'
 import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { WorkspaceDialog } from '@/components/workspace-dialog'
 import { ScrollArea } from '@/components/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -176,17 +176,21 @@ export function SettingsDialog({
                 </SelectContent>
               </Select>
             ) : (
-              <TabsList className="h-auto w-full items-stretch gap-1 rounded-none bg-transparent p-0 shadow-none">
+              <TabsList
+                variant="line"
+                className="relative isolate h-auto w-full items-stretch gap-1 rounded-none bg-transparent p-0 shadow-none"
+              >
                 {sections.map(({ value, label, icon: Icon }) => (
                   <TabsTrigger
                     key={value}
                     value={value}
-                    className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-[13px] font-normal text-muted-foreground shadow-none data-active:bg-accent data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:bg-accent after:hidden"
+                    className="z-10 h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-[13px] font-normal text-muted-foreground shadow-none data-active:text-foreground after:hidden"
                   >
                     <Icon className="size-4 stroke-[1.6]" />
                     {label}
                   </TabsTrigger>
                 ))}
+                <TabsIndicator />
               </TabsList>
             )}
           </div>
