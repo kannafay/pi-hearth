@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useId,
-  useMemo,
-  type ComponentProps,
-  type ReactNode,
-} from 'react'
+import { createContext, useContext, useId, type ComponentProps, type ReactNode } from 'react'
 import { ChevronRight, CodeXml } from 'lucide-react'
 import {
   CodeBlock,
@@ -96,7 +89,6 @@ function FencedCode({
   )
   // A completed reply starts collapsed, even if its code fence closed before the reply finished.
   const open = choice?.streaming === streaming ? choice.open : streaming
-  const expandedContext = useMemo(() => ({ ...context, codeBlockMaxHeight: 0 }), [context])
 
   return (
     <Collapsible
@@ -144,15 +136,13 @@ function FencedCode({
         </div>
       </div>
       <CollapsibleContent className="conversation-code-content">
-        <StreamdownContext.Provider value={expandedContext}>
-          <CodeBlock
-            code={code}
-            language={language || 'text'}
-            isIncomplete={isIncomplete}
-            lineNumbers={context.lineNumbers && !/\bnoLineNumbers\b/.test(meta)}
-            startLine={startLine}
-          />
-        </StreamdownContext.Provider>
+        <CodeBlock
+          code={code}
+          language={language || 'text'}
+          isIncomplete={isIncomplete}
+          lineNumbers={context.lineNumbers && !/\bnoLineNumbers\b/.test(meta)}
+          startLine={startLine}
+        />
       </CollapsibleContent>
     </Collapsible>
   )

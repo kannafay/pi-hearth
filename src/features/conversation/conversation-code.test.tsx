@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Streamdown } from 'streamdown'
 import { ConversationCode, ConversationCodeState } from './conversation-code'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -25,7 +25,16 @@ function view(text = markdown, streaming = false) {
   )
 }
 
-afterEach(() => vi.unstubAllGlobals())
+const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
+beforeEach(() => {
+  // jsdom does not provide the native scrolling used by streaming code auto-follow.
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+  if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo')
+})
 
 test('the themed tooltip preserves copy clicks and copies the exact source without line numbers', async () => {
   const user = userEvent.setup()

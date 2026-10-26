@@ -42,9 +42,11 @@ function ElapsedTime({
 function ProcessTextRecord({
   item,
   stateKey,
+  active,
 }: {
   item: Exclude<ProcessItem, { kind: 'tool' }>
   stateKey?: string
+  active: boolean
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
     `${item.kind}:${stateKey ?? ''}:${item.id}:expanded`,
@@ -57,8 +59,9 @@ function ProcessTextRecord({
       open={open}
       onOpenChange={setOpen}
       headerRef={headerRef}
+      follow={active}
     >
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {(item.kind === 'thinking' ? item.text : item.message.text)
           .split(/\n\s*\n/)
           .map((paragraph, index) => (
@@ -121,12 +124,17 @@ export function ExecutionProcess({
         ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="execution-process-content">
-        <div role="region" aria-label="执行过程详情" className="mt-2 space-y-3">
+        <div role="region" aria-label="执行过程详情" className="mt-1 space-y-1">
           {items.map((item) =>
             item.kind === 'tool' ? (
               <ToolRecord key={item.id} tool={item.tool} />
             ) : (
-              <ProcessTextRecord key={item.id} item={item} stateKey={stateKey} />
+              <ProcessTextRecord
+                key={item.id}
+                item={item}
+                stateKey={stateKey}
+                active={active && item === items.at(-1)}
+              />
             ),
           )}
         </div>

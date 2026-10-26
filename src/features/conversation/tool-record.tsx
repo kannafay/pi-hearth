@@ -96,6 +96,7 @@ export function ToolRecord({ tool }: { tool: ToolCall }) {
       onOpenChange={setExpanded}
       headerRef={headerRef}
       disabled={awaiting}
+      follow={running}
       aria-label={`${toolLabels[tool.name] ?? tool.name}：${statusLabels[tool.status] ?? tool.status}`}
       summary={
         <Tooltip>
