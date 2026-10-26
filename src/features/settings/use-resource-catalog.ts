@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkspaceStore } from '@/app/store'
+import { useConversationStore } from '@/features/conversation/store'
 import { isDesktop } from '@/lib/desktop'
 import {
   loadResourceCatalog,
@@ -48,6 +49,7 @@ export function useResourceCatalog(open: boolean, active: boolean): ResourceCata
       (catalog) => {
         if (disposed) return
         setResult({ projectPath, revision, catalog, error: null })
+        useConversationStore.getState().invalidateCommandCatalogs()
       },
       (reason) => {
         if (!disposed) setResult({ projectPath, revision, catalog: null, error: String(reason) })
@@ -78,6 +80,7 @@ export function useResourceCatalog(open: boolean, active: boolean): ResourceCata
       try {
         const catalog = await setResourceEnabled(kind, item, projectPath, enabled)
         setResult({ projectPath, revision, catalog, error: null })
+        useConversationStore.getState().invalidateCommandCatalogs()
       } catch (error) {
         setActionError({ projectPath, error: String(error) })
       } finally {

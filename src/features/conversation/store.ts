@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   ChatMessage,
+  ComposerCommand,
   ModelInfo,
   PermissionMode,
   PiEvent,
@@ -72,6 +73,9 @@ export interface ConversationData {
 
 interface ConversationState extends ConversationData {
   modelCatalog: ModelInfo[] | null
+  commandCatalogs: ReadonlyMap<string, ComposerCommand[]>
+  commandCatalogRevision: number
+  invalidateCommandCatalogs: () => void
   backgroundSessions: ReadonlyMap<string, { data: ConversationData; projectPath: string | null }>
   sessionCache: SessionCache
   saveSessionView: (key: string, view: ConversationViewState) => void
@@ -491,6 +495,13 @@ export function canReuseNewConversation(state: ConversationState, projectPath: s
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
   modelCatalog: null,
+  commandCatalogs: new Map(),
+  commandCatalogRevision: 0,
+  invalidateCommandCatalogs: () =>
+    set((state) => ({
+      commandCatalogs: new Map(),
+      commandCatalogRevision: state.commandCatalogRevision + 1,
+    })),
   backgroundSessions: new Map(),
   sessionCache: new Map(),
   saveSessionView: (key, view) =>

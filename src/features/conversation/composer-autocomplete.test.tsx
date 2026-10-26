@@ -83,6 +83,100 @@ test('group headings are skipped during keyboard navigation and empty groups dis
   expect(useConversationStore.getState().send).not.toHaveBeenCalled()
 })
 
+test('loaded commands survive local filtering, focus changes and switching through file completion', async () => {
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  expect(await screen.findByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  await user.type(input, 'skill:')
+  expect(screen.getByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  await user.keyboard('{Escape}')
+  await user.click(document.body)
+  await user.click(input)
+  expect(screen.getByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  expect(screen.queryByText('读取已启用技能…')).not.toBeInTheDocument()
+  await user.clear(input)
+  await user.type(input, '@note')
+  expect(await screen.findByRole('option', { name: /notes.ts/ })).toBeVisible()
+  await user.clear(input)
+  await user.type(input, '/')
+  expect(screen.getByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  expect(loadComposerCommands).toHaveBeenCalledExactlyOnceWith('runtime')
+})
+
+test('command caches are isolated by runtime and reused when returning to a resident conversation', async () => {
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  await user.type(screen.getByRole('textbox', { name: '消息草稿' }), '/')
+  await screen.findByRole('option', { name: /\/skill:frontend-design/ })
+  vi.mocked(loadComposerCommands).mockResolvedValueOnce([{ name: 'skill:other', description: '' }])
+  act(() => useConversationStore.setState({ instanceId: 'other-runtime' }))
+  expect(await screen.findByRole('option', { name: /\/skill:other/ })).toBeVisible()
+  expect(screen.queryByRole('option', { name: /\/skill:frontend-design/ })).not.toBeInTheDocument()
+  act(() => useConversationStore.setState({ instanceId: 'runtime' }))
+  expect(screen.getByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  expect(loadComposerCommands).toHaveBeenCalledTimes(2)
+})
+
+test('resource invalidation refreshes commands and obsolete requests cannot repopulate the cache', async () => {
+  const user = userEvent.setup()
+  let finishOld!: (commands: { name: string; description: string }[]) => void
+  vi.mocked(loadComposerCommands).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishOld = resolve
+    }),
+  )
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  await waitFor(() => expect(loadComposerCommands).toHaveBeenCalledTimes(1))
+  await user.type(input, 'skill:')
+  expect(loadComposerCommands).toHaveBeenCalledTimes(1)
+  vi.mocked(loadComposerCommands).mockResolvedValueOnce([
+    { name: 'skill:replacement', description: '' },
+  ])
+  act(() => useConversationStore.getState().invalidateCommandCatalogs())
+  expect(await screen.findByRole('option', { name: /\/skill:replacement/ })).toBeVisible()
+  await act(async () => finishOld([{ name: 'skill:obsolete', description: '' }]))
+  expect(screen.queryByRole('option', { name: /\/skill:obsolete/ })).not.toBeInTheDocument()
+  expect(useConversationStore.getState().commandCatalogs.get('runtime')).toEqual([
+    { name: 'skill:replacement', description: '' },
+  ])
+  expect(loadComposerCommands).toHaveBeenCalledTimes(2)
+})
+
+test('an empty skill list is a reusable successful cache result', async () => {
+  const user = userEvent.setup()
+  vi.mocked(loadComposerCommands).mockResolvedValue([])
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  await waitFor(() =>
+    expect(useConversationStore.getState().commandCatalogs.has('runtime')).toBe(true),
+  )
+  await user.click(document.body)
+  await user.click(input)
+  expect(screen.getByRole('option', { name: /\/new/ })).toBeVisible()
+  expect(screen.queryByText('读取已启用技能…')).not.toBeInTheDocument()
+  expect(loadComposerCommands).toHaveBeenCalledTimes(1)
+})
+
+test('command discovery errors can be retried without treating input edits as new requests', async () => {
+  const user = userEvent.setup()
+  vi.mocked(loadComposerCommands).mockRejectedValueOnce('无法读取命令')
+  render(<Composer onSendStart={() => {}} />)
+  const input = screen.getByRole('textbox', { name: '消息草稿' })
+  await user.type(input, '/')
+  expect(await screen.findByText('无法读取命令')).toBeVisible()
+  await user.type(input, 'skill:')
+  expect(loadComposerCommands).toHaveBeenCalledTimes(1)
+  await user.click(screen.getByRole('button', { name: '重试' }))
+  expect(await screen.findByRole('option', { name: /\/skill:frontend-design/ })).toBeVisible()
+  expect(input).toHaveFocus()
+  expect(loadComposerCommands).toHaveBeenCalledTimes(2)
+})
+
 test('Enter completes first, then invokes app settings without producing a chat message', async () => {
   const user = userEvent.setup()
   const onSettings = vi.fn()

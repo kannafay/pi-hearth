@@ -1,7 +1,8 @@
 import { useEffect, useId, useState, type KeyboardEvent, type RefObject } from 'react'
 import { isDesktop } from '@/lib/desktop'
 import { loadComposerCommands, searchProjectFiles } from '@/lib/composer'
-import type { ComposerCommand } from '@/lib/generated/pi'
+import { useShallow } from 'zustand/react/shallow'
+import { useConversationStore } from './store'
 import {
   commandItems,
   completionQuery,
@@ -26,14 +27,23 @@ export function useComposerCompletion({
   const [selection, setSelection] = useState({ start: 0, end: 0 })
   const [focused, setFocused] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [commandAttempt, setCommandAttempt] = useState(0)
   const [dismissed, setDismissed] = useState('')
   const [highlight, setHighlight] = useState({ key: '', index: 0 })
   const [result, setResult] = useState<{
     key: string
-    skills: ComposerCommand[]
     paths: string[]
     error: string | null
   } | null>(null)
+  const [commandFailure, setCommandFailure] = useState<{ key: string; error: string } | null>(null)
+  const { commands, catalogRevision } = useConversationStore(
+    useShallow((state) => ({
+      commands: instanceId ? state.commandCatalogs.get(instanceId) : undefined,
+      catalogRevision: state.commandCatalogRevision,
+    })),
+  )
+  const commandKey = JSON.stringify([instanceId, catalogRevision, commandAttempt])
+  const commandError = commandFailure?.key === commandKey ? commandFailure.error : null
   const query = enabled && focused ? completionQuery(draft, selection.start, selection.end) : null
   const key = query
     ? JSON.stringify([instanceId, query.kind, query.query, query.start, query.end, revision])
@@ -42,13 +52,17 @@ export function useComposerCompletion({
   const kind = query?.kind
   const term = query?.query
   const current = result?.key === key
-  const loading = open && Boolean(instanceId) && isDesktop() && !current
-  const error = current ? result?.error : null
+  const loading =
+    open &&
+    Boolean(instanceId) &&
+    isDesktop() &&
+    (kind === 'command' ? !commands && !commandError : !current)
+  const error = kind === 'command' ? commandError : current ? result?.error : null
   const items: CompletionItem[] =
     !open || !query
       ? []
       : query.kind === 'command'
-        ? commandItems(current ? result.skills : [], query.query)
+        ? commandItems(commands ?? [], query.query)
         : current
           ? result.paths.map((path) => ({
               value: path,
@@ -61,28 +75,48 @@ export function useComposerCompletion({
     highlight.key === key ? Math.min(highlight.index, Math.max(0, items.length - 1)) : 0
 
   useEffect(() => {
-    if (!open || !kind || term === undefined || !instanceId || !isDesktop()) return
+    if (!open || kind !== 'command' || !instanceId || !isDesktop() || commands || commandError)
+      return
     let disposed = false
-    const timer = setTimeout(
-      () => {
-        const request =
-          kind === 'command'
-            ? loadComposerCommands(instanceId).then((skills) => ({ skills, paths: [] as string[] }))
-            : searchProjectFiles(instanceId, term).then((paths) => ({
-                skills: [] as ComposerCommand[],
-                paths,
-              }))
-        void request.then(
-          (data) => {
-            if (!disposed) setResult({ key, ...data, error: null })
-          },
-          (reason) => {
-            if (!disposed) setResult({ key, skills: [], paths: [], error: String(reason) })
-          },
-        )
-      },
-      kind === 'file' ? 150 : 80,
-    )
+    void Promise.resolve()
+      .then(() => loadComposerCommands(instanceId))
+      .then(
+        (loaded) => {
+          if (disposed) return
+          useConversationStore.setState((state) => {
+            if (state.commandCatalogRevision !== catalogRevision) return state
+            const commandCatalogs = new Map(state.commandCatalogs)
+            commandCatalogs.set(instanceId, loaded)
+            // Keep room for resident runtimes without retaining every past instance.
+            for (const id of commandCatalogs.keys()) {
+              if (commandCatalogs.size <= 8) break
+              commandCatalogs.delete(id)
+            }
+            return { commandCatalogs }
+          })
+        },
+        (reason) => {
+          if (!disposed) setCommandFailure({ key: commandKey, error: String(reason) })
+        },
+      )
+    return () => {
+      disposed = true
+    }
+  }, [open, kind, instanceId, commands, commandError, commandKey, catalogRevision])
+
+  useEffect(() => {
+    if (!open || kind !== 'file' || term === undefined || !instanceId || !isDesktop()) return
+    let disposed = false
+    const timer = setTimeout(() => {
+      void searchProjectFiles(instanceId, term).then(
+        (paths) => {
+          if (!disposed) setResult({ key, paths, error: null })
+        },
+        (reason) => {
+          if (!disposed) setResult({ key, paths: [], error: String(reason) })
+        },
+      )
+    }, 150)
     return () => {
       disposed = true
       clearTimeout(timer)
@@ -117,7 +151,10 @@ export function useComposerCompletion({
     kind: query?.kind,
     setActive: (index: number) => setHighlight({ key, index }),
     select,
-    retry: () => setRevision((value) => value + 1),
+    retry: () => {
+      if (kind === 'command') setCommandAttempt((value) => value + 1)
+      else setRevision((value) => value + 1)
+    },
     close: () => setDismissed(key),
     updateSelection: (target: HTMLTextAreaElement) =>
       setSelection({ start: target.selectionStart, end: target.selectionEnd }),

@@ -167,16 +167,23 @@ test.each(['skills', 'mcp'] as const)(
 test('switch writes wait for backend confirmation, retain old state on failure and support retry', async () => {
   const { result } = renderHook(() => useResourceCatalog(true, true))
   await waitFor(() => expect(result.current.catalog).toEqual(catalog))
+  const cached = new Map([['runtime', [{ name: 'skill:old', description: '' }]]])
+  useConversationStore.setState({ commandCatalogs: cached })
+  const revision = useConversationStore.getState().commandCatalogRevision
   vi.mocked(setResourceEnabled).mockRejectedValueOnce(new Error('无法重载资源'))
   await act(() => result.current.setEnabled('skills', catalog.skills[0], true))
   expect(result.current.catalog?.skills[0].enabled).toBe(false)
   expect(result.current.error).toContain('无法重载资源')
+  expect(useConversationStore.getState().commandCatalogs).toBe(cached)
+  expect(useConversationStore.getState().commandCatalogRevision).toBe(revision)
   const updated = structuredClone(catalog)
   updated.skills[0].enabled = true
   vi.mocked(setResourceEnabled).mockResolvedValueOnce(updated)
   await act(() => result.current.setEnabled('skills', catalog.skills[0], true))
   expect(result.current.catalog?.skills[0].enabled).toBe(true)
   expect(result.current.pending).toBeNull()
+  expect(useConversationStore.getState().commandCatalogs.size).toBe(0)
+  expect(useConversationStore.getState().commandCatalogRevision).toBe(revision + 1)
   expect(setResourceEnabled).toHaveBeenLastCalledWith('skills', catalog.skills[0], null, true)
   await act(() => result.current.open('skills', catalog.skills[0]))
   expect(openResource).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0], null)
@@ -215,6 +222,18 @@ test('late responses cannot show resources from a previously selected project', 
   await act(async () => finish(catalog))
   expect(result.current.catalog).toEqual(next)
   expect(loadResourceCatalog).toHaveBeenLastCalledWith('D:/new')
+})
+
+test('refreshing resources invalidates cached command suggestions after discovery succeeds', async () => {
+  const { result } = renderHook(() => useResourceCatalog(true, true))
+  await waitFor(() => expect(result.current.catalog).toEqual(catalog))
+  const revision = useConversationStore.getState().commandCatalogRevision
+  useConversationStore.setState({ commandCatalogs: new Map([['runtime', []]]) })
+  act(() => result.current.refresh())
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  expect(loadResourceCatalog).toHaveBeenCalledTimes(2)
+  expect(useConversationStore.getState().commandCatalogs.size).toBe(0)
+  expect(useConversationStore.getState().commandCatalogRevision).toBe(revision + 1)
 })
 
 test('errors can be retried and browser previews never invoke native discovery', async () => {
