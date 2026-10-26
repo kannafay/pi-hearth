@@ -521,6 +521,15 @@ select {
   opacity: 0;
 }
 
+@layer components {
+  .execution-record-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+  }
+}
+
 .execution-process-content,
 .tool-record-content,
 .settings-model-content {

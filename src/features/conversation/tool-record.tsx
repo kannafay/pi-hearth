@@ -9,6 +9,7 @@ import { decidePiTool, loadPiToolOutput } from '@/lib/pi'
 import { useConversationStore } from './store'
 import { useShallow } from 'zustand/react/shallow'
 import { useConversationLocalState } from './conversation-local-state'
+import { useExecutionRecord } from './use-execution-record'
 
 const statusLabels: Record<string, string> = {
   awaiting_approval: '等待确认',
@@ -59,7 +60,7 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
   )
   const awaiting = tool.status === 'awaiting_approval'
   const running = tool.status === 'running' || tool.status === 'queued'
-  const [expanded, setExpanded] = useConversationLocalState(`tool:${tool.id}:expanded`, false)
+  const [expanded, setExpanded, headerRef] = useExecutionRecord(`tool:${tool.id}:expanded`, false)
   const open = awaiting || expanded
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')
@@ -94,9 +95,10 @@ export function ToolRecord({ tool, compact = false }: { tool: ToolCall; compact?
       aria-label={`${toolLabels[tool.name] ?? tool.name}：${statusLabels[tool.status] ?? tool.status}`}
     >
       <CollapsibleTrigger
+        ref={headerRef}
         type="button"
         disabled={awaiting}
-        className={`flex w-full min-w-0 items-center gap-2 text-left transition-colors duration-160 ease-out enabled:hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none ${compact ? 'rounded-md py-1.5 pr-1 pl-0' : 'px-3 py-2.5'}`}
+        className={`flex w-full min-w-0 items-center gap-2 text-left transition-colors duration-160 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none ${compact ? 'execution-record-header rounded-md py-1.5 pr-1 pl-0 enabled:hover:bg-[color-mix(in_srgb,var(--muted)_50%,var(--background))]' : 'px-3 py-2.5 enabled:hover:bg-muted/50'}`}
       >
         <ChevronRight
           aria-hidden

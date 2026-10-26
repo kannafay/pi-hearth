@@ -113,6 +113,34 @@ test('thinking collapses independently and stays collapsed as more content arriv
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
 })
 
+test('collapsing a pinned thinking header keeps that group in view', async () => {
+  const user = userEvent.setup()
+  render(
+    <ExecutionProcess
+      stateKey="pinned"
+      active
+      items={[
+        { kind: 'thinking', id: 'long', text: '第一组的长内容。' },
+        { kind: 'thinking', id: 'next', text: '下一组内容。' },
+      ]}
+    />,
+  )
+  const header = screen.getAllByRole('button', { name: '思考' })[0]
+  const group = header.closest('[data-slot="collapsible"]')!
+  const viewport = screen.getByRole('region', { name: '执行过程详情' })
+  header.style.position = 'sticky'
+  vi.spyOn(header, 'getBoundingClientRect').mockReturnValue({ top: 50 } as DOMRect)
+  vi.spyOn(group, 'getBoundingClientRect').mockReturnValue({ top: -450 } as DOMRect)
+  viewport.scrollTop = 500
+  await user.click(header)
+  expect(viewport.scrollTop).toBe(0)
+  expect(header).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getAllByRole('button', { name: '思考' })[1]).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+})
+
 test('each thinking section keeps its own choice across process reopening and virtual row remounts', async () => {
   const user = userEvent.setup()
   const local = new Map<string, unknown>()

@@ -5,6 +5,7 @@ import type { ProcessItem } from './conversation-turns'
 import { ToolRecord } from './tool-record'
 import { ScrollArea } from '@/components/scroll-area'
 import { useConversationLocalState } from './conversation-local-state'
+import { useExecutionRecord } from './use-execution-record'
 
 export function formatElapsed(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -45,13 +46,16 @@ function ThinkingRecord({
   item: Extract<ProcessItem, { kind: 'thinking' }>
   stateKey?: string
 }) {
-  const [open, setOpen] = useConversationLocalState(
+  const [open, setOpen, headerRef] = useExecutionRecord(
     `thinking:${stateKey ?? ''}:${item.id}:expanded`,
     true,
   )
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="pr-1">
-      <CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded-sm text-left text-[14px] font-medium text-foreground/65 transition-colors duration-160 ease-out outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+      <CollapsibleTrigger
+        ref={headerRef}
+        className="execution-record-header flex w-full items-center gap-1.5 rounded-sm text-left text-[14px] font-medium text-foreground/65 transition-colors duration-160 ease-out outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      >
         <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
         思考
         <ChevronRight
