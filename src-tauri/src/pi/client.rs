@@ -3638,15 +3638,18 @@ mod tests {
             project.display()
         );
         let file = project.join("工具测试.txt");
+        // Approval arguments have already been redacted for the UI channel.
+        let secrets = super::super::config::mcp_secrets(&client.source_directory, &project);
         let command = if cfg!(windows) {
             "Write-Output 'HEARTH-COMMAND-OK'"
         } else {
             "printf 'HEARTH-COMMAND-OK\\n'"
         };
+        let expected_command = mask(command, &secrets);
         let shell = if cfg!(windows) { "powershell" } else { "bash" };
         let result = tool_run(&client, &mut events,
             format!("这是隔离目录内的客户端工具联调。请按顺序实际调用工具：1.用 write 创建 工具测试.txt，内容必须为 alpha；2.用 edit 将 alpha 替换为 beta；3.用 read 读取该文件；4.调用 {shell}，command 参数必须逐字为 {command}。不要使用其他路径或命令，不要用命令操作文件。每个工具只调用一次，完成后简短汇报。"),
-            |args| args["path"].as_str().is_some_and(|path| Path::new(path) == file) || args["command"] == command, false).await;
+            |args| args["path"].as_str().is_some_and(|path| path == mask(&file.to_string_lossy(), &secrets)) || args["command"] == expected_command, false).await;
         assert_eq!(result.last().unwrap()["data"]["status"], "complete");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "beta");
         let snapshot = client.snapshot().await.unwrap();
@@ -3707,7 +3710,8 @@ mod tests {
         } else {
             "printf 'HEARTH-FAIL\\n'; exit 7"
         };
-        let failed = tool_run(&client, &mut events, format!("现在只调用一次 {shell} 做预期失败测试。command 参数必须逐字为 {command}。不要修复或重试，结束后汇报失败。"), |args| args["command"] == command, false).await;
+        let expected_command = mask(command, &secrets);
+        let failed = tool_run(&client, &mut events, format!("现在只调用一次 {shell} 做预期失败测试。command 参数必须逐字为 {command}。不要修复或重试，结束后汇报失败。"), |args| args["command"] == expected_command, false).await;
         assert!(failed.iter().any(|event| {
             event["data"]["tool"]["status"] == "failed"
                 && event["data"]["tool"]["output"]
@@ -3721,7 +3725,8 @@ mod tests {
         } else {
             "printf 'HEARTH-WAIT\\n'; sleep 30; printf late > should-not-exist.txt"
         };
-        let cancelled = tool_run(&client, &mut events, format!("只调用一次 {shell}，command 参数必须逐字为 {command}。这是命令中止测试，不要使用其他命令。"), |args| args["command"] == command, true).await;
+        let expected_command = mask(command, &secrets);
+        let cancelled = tool_run(&client, &mut events, format!("只调用一次 {shell}，command 参数必须逐字为 {command}。这是命令中止测试，不要使用其他命令。"), |args| args["command"] == expected_command, true).await;
         assert_eq!(cancelled.last().unwrap()["data"]["status"], "cancelled");
         assert!(
             cancelled
