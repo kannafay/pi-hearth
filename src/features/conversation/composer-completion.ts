@@ -15,40 +15,40 @@ export type CompletionItem = {
 }
 
 export const appCommands: CompletionItem[] = [
-  { value: 'new', label: '/new · 新对话', description: '在当前项目开始新对话', kind: 'command' },
+  { value: 'new', label: '新对话', description: '在当前项目开始新对话', kind: 'command' },
   {
     value: 'resume',
-    label: '/resume · 切换会话',
+    label: '切换会话',
     description: '搜索并打开已有会话',
     kind: 'command',
   },
   {
     value: 'name',
-    label: '/name · 重命名',
+    label: '重命名',
     description: '修改当前会话标题，可在命令后输入新标题',
     kind: 'command',
   },
   {
     value: 'model',
-    label: '/model · 切换模型',
+    label: '切换模型',
     description: '选择模型，或输入 provider/model',
     kind: 'command',
   },
   {
     value: 'thinking',
-    label: '/thinking · 思考强度',
+    label: '思考强度',
     description: '选择强度，或输入 default、off、high 等档位',
     kind: 'command',
   },
   {
     value: 'settings',
-    label: '/settings · 设置',
+    label: '设置',
     description: '打开 Pi Hearth 设置',
     kind: 'command',
   },
   {
     value: 'compact',
-    label: '/compact · 压缩上下文',
+    label: '压缩上下文',
     description: '整理当前上下文，可在命令后补充保留要求',
     kind: 'command',
   },
@@ -89,7 +89,9 @@ export function commandItems(skills: ComposerCommand[], query: string) {
     })),
   ]
   const term = query.toLowerCase()
-  return items.filter((item) => `${item.label} ${item.description}`.toLowerCase().includes(term))
+  return items.filter((item) =>
+    `${item.value} ${item.label} ${item.description}`.toLowerCase().includes(term),
+  )
 }
 
 export function insertCompletion(text: string, query: CompletionQuery, value: string) {

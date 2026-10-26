@@ -35,14 +35,21 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
                 onPointerMove={() => completion.setActive(index)}
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => completion.select(item)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent aria-selected:bg-accent"
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left outline-none transition-colors hover:bg-accent aria-selected:bg-accent ${item.kind === 'file' ? 'py-2' : 'py-1.5'}`}
               >
                 <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] leading-5">{item.label}</span>
-                  <span className="block truncate text-xs leading-5 text-muted-foreground">
-                    {item.description}
+                  <span className="flex min-w-0 items-center gap-2 text-[13px] leading-5">
+                    {item.kind === 'command' && (
+                      <span className="shrink-0 text-muted-foreground">/{item.value}</span>
+                    )}
+                    <span className="truncate">{item.label}</span>
                   </span>
+                  {item.kind === 'file' && (
+                    <span className="block truncate text-xs leading-5 text-muted-foreground">
+                      {item.description}
+                    </span>
+                  )}
                 </span>
               </button>
             )
