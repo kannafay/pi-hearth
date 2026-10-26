@@ -278,8 +278,7 @@ test('attachment failures notify at the top and stale failures do not interrupt 
     </>,
   )
   await user.click(screen.getByRole('button', { name: '添加附件' }))
-  const notice = await screen.findByRole('dialog', { name: '操作失败' })
-  expect(notice).toHaveAccessibleDescription('无法读取附件')
+  const notice = await screen.findByRole('dialog', { name: '无法读取附件' })
   expect(container).not.toContainElement(notice)
   let reject!: (reason: Error) => void
   vi.mocked(stagePaths).mockImplementationOnce(

@@ -316,8 +316,7 @@ test('unknown and disabled skill commands preserve drafts and do not reach the m
   const input = screen.getByRole('textbox', { name: '消息草稿' })
   await user.type(input, '/unknown ')
   await user.keyboard('{Enter}')
-  const notice = await screen.findByRole('dialog', { name: '操作失败' })
-  expect(notice).toHaveAccessibleDescription(/未支持的命令/)
+  const notice = await screen.findByRole('dialog', { name: /未支持的命令/ })
   expect(container).not.toContainElement(notice)
   expect(input).toHaveFocus()
   expect(input).toHaveValue('/unknown ')
@@ -326,9 +325,7 @@ test('unknown and disabled skill commands preserve drafts and do not reach the m
   await user.clear(input)
   await user.type(input, '/skill:disabled ')
   await user.click(screen.getByRole('button', { name: '发送消息' }))
-  expect(await screen.findByRole('dialog', { name: '操作失败' })).toHaveAccessibleDescription(
-    /未启用/,
-  )
+  expect(await screen.findByRole('dialog', { name: /未启用/ })).toBeVisible()
   expect(useConversationStore.getState().send).not.toHaveBeenCalled()
 })
 
