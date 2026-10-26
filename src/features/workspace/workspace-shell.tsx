@@ -123,13 +123,13 @@ function WorkspaceLayout() {
   )
   const contentDialogOpen =
     settingsOpen ||
-    searchOpen ||
     projectDialog !== null ||
     attachmentPreview !== null ||
     navigationState.deleteProject !== null ||
     navigationState.renameSession !== null
   const dialogOpen =
     contentDialogOpen ||
+    searchOpen ||
     (floatingSidebarOpen && narrow) ||
     (inspectorOpen && compact) ||
     Boolean(dialogLayers?.layers.length)

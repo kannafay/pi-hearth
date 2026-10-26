@@ -328,6 +328,65 @@ test.each(['left', 'right'])('search remains usable over the %s floating panel',
   expect(panel).toBeVisible()
 })
 
+test.each([false, true])(
+  'header panels remain toggleable while search is open (narrow: %s)',
+  async (narrow) => {
+    vi.mocked(useMediaQuery).mockReturnValue(narrow)
+    useWorkspaceStore.setState({ sidebarOpen: false })
+    const user = userEvent.setup()
+    render(<WorkspaceShell />)
+    await user.click(screen.getByRole('button', { name: '搜索会话' }))
+    const search = await screen.findByRole('dialog', { name: '搜索会话' })
+    const input = within(search).getByRole('combobox')
+    await user.type(input, '保留搜索内容')
+
+    for (const [side, show, hide] of [
+      ['left', '展开侧栏', '收起侧栏'],
+      ['right', '打开查看面板', '收起查看面板'],
+    ] as const) {
+      const toggle = screen.getByRole('button', { name: show })
+      expect(toggle).toBeEnabled()
+      await user.click(toggle)
+      expect(screen.getByRole('button', { name: hide })).toHaveAttribute('aria-expanded', 'true')
+      expect(search).toBeVisible()
+      expect(search).not.toHaveAttribute('inert')
+      expect(input).toHaveValue('保留搜索内容')
+      if (narrow)
+        expect(
+          document.querySelector('.workspace-floating-panel[data-side="' + side + '"]'),
+        ).toHaveAttribute('inert')
+      await user.click(screen.getByRole('button', { name: hide }))
+      expect(screen.getByRole('button', { name: show })).toHaveAttribute('aria-expanded', 'false')
+    }
+
+    expect(screen.getByRole('main').closest('.workspace-body')).toHaveAttribute('inert')
+    await user.click(screen.getByRole('button', { name: '搜索会话' }))
+    expect(input).toHaveFocus()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('main').closest('.workspace-body')).not.toHaveAttribute('inert')
+  },
+)
+
+test('search preserves the narrow sidebar guard for an underlying unfinished form', async () => {
+  vi.mocked(useMediaQuery).mockReturnValue(true)
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '展开侧栏' }))
+  await user.click(screen.getByRole('button', { name: '设置' }))
+  const settings = await screen.findByRole('dialog', { name: '设置' })
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  expect(await screen.findByRole('dialog', { name: '搜索会话' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toBeDisabled()
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
+  )
+  expect(settings).not.toHaveAttribute('inert')
+  expect(screen.getByRole('button', { name: '展开侧栏' })).toBeDisabled()
+})
+
 test('ordinary modal forms leave header search available and retain their draft', async () => {
   useWorkspaceStore.setState({
     sessions: [
