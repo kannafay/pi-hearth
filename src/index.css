@@ -289,7 +289,7 @@ select {
 
 :is(.sidebar-session-row, .sidebar-project-row) {
   --sidebar-row-surface: var(--sidebar-row-hover);
-  --sidebar-row-actions-width: 3.625rem;
+  --sidebar-row-actions-width: 5.25rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
   isolation: isolate;
@@ -428,10 +428,6 @@ select {
   transition: opacity 160ms ease-out;
 }
 
-.sidebar-session-row {
-  --sidebar-row-actions-width: 5.25rem;
-}
-
 .sidebar-session-row[data-responding='true'] .sidebar-row-title {
   padding-inline-end: 1.5rem;
 }
@@ -486,7 +482,8 @@ select {
   background-color: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
-.workspace-navigation [data-slot='button']:hover {
+.workspace-navigation
+  [data-slot='button']:hover:not(.sidebar-session-action, .sidebar-project-action) {
   background-color: var(--sidebar-accent);
 }
 

@@ -135,18 +135,17 @@ test('dragging conversations reorders only their own project and never opens a c
   expect(useWorkspaceStore.getState().sessionOrder).toBe(changed)
 })
 
-test('project menus pin and archive projects, and removal requires confirmation', async () => {
+test('project rows pin projects directly, and menus archive projects or confirm removal', async () => {
   const user = userEvent.setup()
   const removeProject = vi.fn().mockResolvedValue(undefined)
   useWorkspaceStore.setState({ removeProject })
   view()
+  await user.click(screen.getByRole('button', { name: '置顶 Beta' }))
+  expect(projectNames()).toEqual(['Pinned', 'Beta', 'Alpha'])
   await user.click(screen.getByRole('button', { name: 'Beta 项目菜单' }))
   const menu = await screen.findByRole('menu')
   expect(within(menu).queryByRole('menuitem', { name: '新对话' })).not.toBeInTheDocument()
-  await user.click(await screen.findByRole('menuitem', { name: '置顶项目' }))
-  expect(projectNames()).toEqual(['Pinned', 'Beta', 'Alpha'])
-  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: 'Beta 项目菜单' }))
+  expect(within(menu).queryByRole('menuitem', { name: '置顶项目' })).not.toBeInTheDocument()
   await user.click(await screen.findByRole('menuitem', { name: '归档项目' }))
   expect(screen.queryByRole('button', { name: 'Beta' })).not.toBeInTheDocument()
   await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())

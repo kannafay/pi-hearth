@@ -294,7 +294,7 @@ export function WorkspaceNavigationContent({
               >
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-36">
+              <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-36">
                 <DropdownMenuItem disabled={responding} onClick={() => setRenameSession(session)}>
                   <SquarePen className="size-3.5" />
                   重命名
@@ -473,7 +473,11 @@ export function WorkspaceNavigationContent({
                             </div>
                           </TooltipContent>
                         </Tooltip>
-                        <div className="sidebar-project-actions flex items-center gap-0.5 px-1">
+                        <div
+                          className="sidebar-project-actions flex items-center gap-0.5 px-1"
+                          role="group"
+                          aria-label="项目操作"
+                        >
                           <Button
                             size="icon-xs"
                             variant="ghost"
@@ -487,6 +491,30 @@ export function WorkspaceNavigationContent({
                           >
                             <Plus className="size-3.5" />
                           </Button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className={`sidebar-project-action size-6 ${hasPath(workspace.pinnedProjects, project.path) ? 'text-sidebar-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                  aria-label={`${hasPath(workspace.pinnedProjects, project.path) ? '取消置顶' : '置顶'} ${project.name}`}
+                                  aria-pressed={hasPath(workspace.pinnedProjects, project.path)}
+                                  disabled={!desktop || Boolean(workspace.sessionActionPending)}
+                                  onClick={() => workspace.toggleProjectPinned(project)}
+                                />
+                              }
+                            >
+                              <Pin
+                                className={`size-3.5 stroke-[1.5] ${hasPath(workspace.pinnedProjects, project.path) ? 'fill-current' : ''}`}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent showArrow={false}>
+                              {hasPath(workspace.pinnedProjects, project.path)
+                                ? '取消置顶'
+                                : '置顶'}
+                            </TooltipContent>
+                          </Tooltip>
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={
@@ -500,16 +528,12 @@ export function WorkspaceNavigationContent({
                             >
                               <MoreHorizontal className="size-3.5" />
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="min-w-44">
-                              <DropdownMenuItem
-                                disabled={!desktop}
-                                onClick={() => workspace.toggleProjectPinned(project)}
-                              >
-                                <Pin className="size-3.5" />
-                                {hasPath(workspace.pinnedProjects, project.path)
-                                  ? '取消置顶'
-                                  : '置顶项目'}
-                              </DropdownMenuItem>
+                            <DropdownMenuContent
+                              side="right"
+                              align="start"
+                              sideOffset={8}
+                              className="min-w-44"
+                            >
                               <DropdownMenuItem
                                 disabled={isProjectBusy(project.path, conversation)}
                                 onClick={() => onInstructions(project)}

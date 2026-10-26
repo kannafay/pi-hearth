@@ -197,6 +197,41 @@ test('the project add button opens creation directly without a menu', async () =
   expect(onCreate).toHaveBeenCalledTimes(2)
 })
 
+test('project row actions are add, pin and more, and pinning never expands the project', async () => {
+  const newConversation = vi.fn().mockResolvedValue(undefined)
+  useWorkspaceStore.setState({ projects: [project], newConversation })
+  const user = userEvent.setup()
+  render(
+    <WorkspaceNavigation
+      desktop
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  const trigger = screen.getByRole('button', { name: 'Hearth' })
+  const actions = screen.getByRole('group', { name: '项目操作' })
+  expect(
+    within(actions)
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label')),
+  ).toEqual(['在 Hearth 中新建对话', '置顶 Hearth', 'Hearth 项目菜单'])
+  await user.click(within(actions).getByRole('button', { name: '置顶 Hearth' }))
+  const unpin = within(actions).getByRole('button', { name: '取消置顶 Hearth' })
+  expect(unpin).toHaveAttribute('aria-pressed', 'true')
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  await user.keyboard(' ')
+  expect(within(actions).getByRole('button', { name: '置顶 Hearth' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  expect(useWorkspaceStore.getState().pinnedProjects).toEqual([])
+  await user.click(within(actions).getByRole('button', { name: '在 Hearth 中新建对话' }))
+  expect(newConversation).toHaveBeenCalledExactlyOnceWith(project.path)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+})
+
 test('projects expand their sessions and their settings menu remains usable', async () => {
   useWorkspaceStore.setState({
     projects: [project],
@@ -227,6 +262,7 @@ test('projects expand their sessions and their settings menu remains usable', as
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByRole('button', { name: '设计讨论' })).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Hearth 项目菜单' }))
+  await waitFor(() => expect(screen.getByRole('menu')).toHaveAttribute('data-side', 'right'))
   await user.click(await screen.findByRole('menuitem', { name: '编辑项目' }))
   expect(onInstructions).toHaveBeenCalledExactlyOnceWith(project)
   await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
