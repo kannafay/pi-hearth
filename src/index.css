@@ -530,10 +530,6 @@ select {
     border-radius: 0;
     background: var(--background);
   }
-
-  .execution-record-header[data-panel-open] {
-    border-bottom-color: var(--border);
-  }
 }
 
 .execution-process-content,
