@@ -294,7 +294,13 @@ export function WorkspaceNavigationContent({
               >
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-36">
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                alignOffset={-6}
+                sideOffset={8}
+                className="min-w-36"
+              >
                 <DropdownMenuItem disabled={responding} onClick={() => setRenameSession(session)}>
                   <SquarePen className="size-3.5" />
                   重命名
@@ -531,6 +537,7 @@ export function WorkspaceNavigationContent({
                             <DropdownMenuContent
                               side="right"
                               align="start"
+                              alignOffset={-6}
                               sideOffset={8}
                               className="min-w-44"
                             >
