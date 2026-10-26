@@ -1,4 +1,4 @@
-import { Shield, ShieldAlert, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, ShieldEllipsis, type LucideIcon } from 'lucide-react'
 import type { PermissionMode } from '@/lib/generated/pi'
 
 export const permissionOptions: {
@@ -17,7 +17,7 @@ export const permissionOptions: {
     value: 'auto',
     label: '自动判断',
     description: '模型评估风险，常规自动，危险或不确定时询问',
-    icon: Shield,
+    icon: ShieldEllipsis,
   },
   {
     value: 'full',

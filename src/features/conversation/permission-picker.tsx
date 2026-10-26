@@ -38,7 +38,7 @@ export function PermissionPicker() {
         data-pending={Boolean(pending) || undefined}
         className="shrink-0"
       >
-        <Icon aria-hidden className="size-3.5 stroke-[1.6]" />
+        <Icon aria-hidden strokeWidth={1.6} />
         <SelectValue />
       </SelectTrigger>
       <SelectContent width="content" align="start" className="max-w-80">
