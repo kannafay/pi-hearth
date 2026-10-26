@@ -36,7 +36,26 @@ export function WorkspaceShell() {
 function WorkspaceLayout() {
   useWindowResizeMotion()
   const dialogLayers = useDialogLayers()
-  const workspace = useWorkspaceStore()
+  const workspace = useWorkspaceStore(
+    useShallow((state) => ({
+      projectPath: state.projectPath,
+      projects: state.projects,
+      sessions: state.sessions,
+      error: state.error,
+      sidebarOpen: state.sidebarOpen,
+      inspectorOpen: state.inspectorOpen,
+      navigationWidth: state.navigationWidth,
+      inspectorWidth: state.inspectorWidth,
+      setNavigationWidth: state.setNavigationWidth,
+      setInspectorWidth: state.setInspectorWidth,
+      toggleSidebar: state.toggleSidebar,
+      setInspectorOpen: state.setInspectorOpen,
+      attachmentPreview: state.attachmentPreview,
+      setAttachmentPreview: state.setAttachmentPreview,
+      theme: state.theme,
+      setTheme: state.setTheme,
+    })),
+  )
   const {
     projectPath,
     sidebarOpen,

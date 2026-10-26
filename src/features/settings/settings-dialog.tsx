@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   Activity,
   Archive,
@@ -88,7 +89,9 @@ export function SettingsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { theme, setTheme } = useWorkspaceStore()
+  const { theme, setTheme } = useWorkspaceStore(
+    useShallow((state) => ({ theme: state.theme, setTheme: state.setTheme })),
+  )
   const { label: themeLabel, icon: ThemeIcon } =
     themeOptions.find((item) => item.value === theme) ?? themeOptions[0]
   const status = useConversationStore((state) => state.status)

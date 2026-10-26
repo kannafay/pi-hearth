@@ -55,6 +55,32 @@ test('new popup and execution containers are initialized and removed instances a
   await waitFor(() => expect(instance.state().destroyed).toBe(true))
 })
 
+test('unrelated styling changes do not rescan the document for scroll containers', async () => {
+  const element = pane()
+  const label = document.createElement('span')
+  element.append(label)
+  root.append(element)
+  stop = installScrollbars(root)
+  const nextFrames = () =>
+    new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  await nextFrames()
+  const scan = vi.spyOn(root, 'querySelectorAll')
+  label.className = 'text-muted-foreground'
+  await nextFrames()
+  expect(scan).not.toHaveBeenCalled()
+})
+
+test('a container that becomes scrollable is initialized without scanning unrelated content', async () => {
+  const section = document.createElement('section')
+  const element = document.createElement('div')
+  section.append(element)
+  root.append(section)
+  stop = installScrollbars(root)
+  element.style.overflowY = 'auto'
+  element.className = 'overflow-y-auto'
+  await waitFor(() => expect(OverlayScrollbars(element)).toBeDefined())
+})
+
 test('replacing plain tool output restores scrollbars without losing its new text', async () => {
   const element = pane('pre')
   root.append(element)

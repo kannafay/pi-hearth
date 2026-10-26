@@ -51,6 +51,27 @@ beforeEach(() => {
   }))
 })
 
+test('unchanged catalog refreshes retain navigation data without hiding real changes', async () => {
+  const preferences = { [session.path]: { pinned: true, archived: false } }
+  useWorkspaceStore.setState({ ...catalog, sessionPreferences: preferences, initialized: true })
+  const before = useWorkspaceStore.getState()
+  vi.mocked(loadCatalog).mockResolvedValue(
+    structuredClone({ ...catalog, sessionPreferences: preferences }),
+  )
+  await before.refresh()
+  expect(useWorkspaceStore.getState().projects).toBe(before.projects)
+  expect(useWorkspaceStore.getState().sessions).toBe(before.sessions)
+  expect(useWorkspaceStore.getState().sessionPreferences).toBe(preferences)
+  vi.mocked(loadCatalog).mockResolvedValue({
+    ...catalog,
+    projects: [{ ...catalog.projects[0], name: '更新的项目名' }],
+    sessionPreferences: preferences,
+  })
+  await before.refresh()
+  expect(useWorkspaceStore.getState().projects[0].name).toBe('更新的项目名')
+  expect(useWorkspaceStore.getState().sessions).toBe(before.sessions)
+})
+
 test('opening another session or a new conversation stays available while the current session replies', async () => {
   useWorkspaceStore.setState({ ...catalog, initialized: true })
   useConversationStore.setState({

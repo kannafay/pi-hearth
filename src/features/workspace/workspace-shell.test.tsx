@@ -9,6 +9,7 @@ import { useConversationStore } from '@/features/conversation/store'
 import { controlWindow } from '@/lib/desktop'
 import type { PiEvent } from '@/lib/generated/pi'
 import { WorkspaceShell } from './workspace-shell'
+import { ConversationPanel } from '@/features/conversation/conversation-panel'
 
 const { resizePanel } = vi.hoisted(() => ({ resizePanel: vi.fn() }))
 
@@ -65,7 +66,7 @@ vi.mock('@/components/ui/resizable', () => ({
   ),
 }))
 vi.mock('@/features/conversation/conversation-panel', () => ({
-  ConversationPanel: () => <textarea aria-label="消息" />,
+  ConversationPanel: vi.fn(() => <textarea aria-label="消息" />),
 }))
 
 beforeEach(() => {
@@ -87,6 +88,15 @@ beforeEach(() => {
 })
 
 afterEach(() => vi.unstubAllGlobals())
+
+test('typing drafts does not rerender the workspace layout', () => {
+  render(<WorkspaceShell />)
+  const renders = vi.mocked(ConversationPanel).mock.calls.length
+  act(() => useWorkspaceStore.getState().setDraft('输入时只更新输入区'))
+  expect(ConversationPanel).toHaveBeenCalledTimes(renders)
+  act(() => useWorkspaceStore.getState().setNavigationWidth(320))
+  expect(vi.mocked(ConversationPanel).mock.calls.length).toBeGreaterThan(renders)
+})
 
 test.each([false, true])(
   'local session events update navigation immediately and refresh only at completion (batched: %s)',

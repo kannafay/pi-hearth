@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { shallow } from 'zustand/vanilla/shallow'
 import type {
   AppSettingsPatch,
   AppTheme,
@@ -134,11 +135,22 @@ const busy = () => ['running', 'stopping'].includes(useConversationStore.getStat
 let navigation = 0
 let sessionRevision = 0
 function catalogState(catalog: WorkspaceCatalog) {
+  const previous = useWorkspaceStore.getState()
+  const reuse = <T>(before: T[], next: T[]) =>
+    before.length === next.length && next.every((entry, index) => shallow(entry, before[index]))
+      ? before
+      : next
+  const preferences = catalog.sessionPreferences ?? {}
+  const samePreferences =
+    Object.keys(previous.sessionPreferences).length === Object.keys(preferences).length &&
+    Object.entries(preferences).every(([key, value]) =>
+      shallow(value, previous.sessionPreferences[key]),
+    )
   return {
-    projects: catalog.projects,
-    sessions: catalog.sessions,
+    projects: reuse(previous.projects, catalog.projects),
+    sessions: reuse(previous.sessions, catalog.sessions),
     generalCwd: catalog.generalCwd,
-    sessionPreferences: catalog.sessionPreferences ?? {},
+    sessionPreferences: samePreferences ? previous.sessionPreferences : preferences,
   }
 }
 
@@ -622,29 +634,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const next = catalog.sessions.find((session) => isCurrentSession(session, conversation))
       const connecting = conversation.status === 'connecting'
       const replying = get().sessions.filter((session) => isSessionBusy(session, conversation))
+      // Pi's persisted history can lag behind a foreground or background reply.
+      const sessions = [
+        ...replying.filter(
+          (session) =>
+            !catalog.sessions.some((entry) =>
+              isCurrentSession(entry, { sessionId: session.id, sessionFile: session.path }),
+            ),
+        ),
+        ...catalog.sessions.map((session) => {
+          const local = replying.find((entry) =>
+            isCurrentSession(session, { sessionId: entry.id, sessionFile: entry.path }),
+          )
+          return local
+            ? {
+                ...session,
+                modified: Math.max(session.modified, local.modified),
+                messageCount: Math.max(session.messageCount, local.messageCount),
+              }
+            : session
+        }),
+      ]
       set({
-        ...catalogState(catalog),
-        // Pi's persisted history can lag behind a foreground or background reply.
-        sessions: [
-          ...replying.filter(
-            (session) =>
-              !catalog.sessions.some((entry) =>
-                isCurrentSession(entry, { sessionId: session.id, sessionFile: session.path }),
-              ),
-          ),
-          ...catalog.sessions.map((session) => {
-            const local = replying.find((entry) =>
-              isCurrentSession(session, { sessionId: entry.id, sessionFile: entry.path }),
-            )
-            return local
-              ? {
-                  ...session,
-                  modified: Math.max(session.modified, local.modified),
-                  messageCount: Math.max(session.messageCount, local.messageCount),
-                }
-              : session
-          }),
-        ],
+        ...catalogState({ ...catalog, sessions }),
         ...(connecting ? {} : { selectedSessionPath: next?.path ?? previous?.path ?? path }),
         error: null,
       })

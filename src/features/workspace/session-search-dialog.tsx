@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { ArrowUpRight, LoaderCircle, MessageSquare, Search } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { ScrollArea } from '@/components/scroll-area'
@@ -41,7 +42,15 @@ export function SessionSearchDialog({
   inputRef?: RefObject<HTMLInputElement | null>
   returnFocus?: RefObject<HTMLElement | null>
 }) {
-  const workspace = useWorkspaceStore()
+  const workspace = useWorkspaceStore(
+    useShallow((state) => ({
+      sessions: state.sessions,
+      sessionPreferences: state.sessionPreferences,
+      projects: state.projects,
+      archivedProjects: state.archivedProjects,
+      openSession: state.openSession,
+    })),
+  )
   const [query, setQuery] = useState('')
   const [response, setResponse] = useState<{
     query: string

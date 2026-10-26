@@ -45,18 +45,23 @@ export function installScrollbars(root: HTMLElement) {
         instances.delete(element)
       }
     }
-    for (const element of root.querySelectorAll<HTMLElement>(scrollable)) {
-      if (instances.has(element) || element instanceof HTMLTextAreaElement) continue
-      const style = getComputedStyle(element)
-      const slot = element.hasAttribute('data-scrollbars-external')
-        ? element.parentElement?.querySelector<HTMLElement>(':scope > [data-scrollbars-slot]')
-        : null
+    // Read styles together before the scrollbar constructors change layout.
+    const candidates = [...root.querySelectorAll<HTMLElement>(scrollable)]
+      .filter((element) => !instances.has(element) && !(element instanceof HTMLTextAreaElement))
+      .map((element) => {
+        const { overflowX, overflowY } = getComputedStyle(element)
+        const slot = element.hasAttribute('data-scrollbars-external')
+          ? element.parentElement?.querySelector<HTMLElement>(':scope > [data-scrollbars-slot]')
+          : null
+        return { element, overflowX, overflowY, slot }
+      })
+    for (const { element, overflowX, overflowY, slot } of candidates) {
       const instance = OverlayScrollbars(
         { target: element, elements: { viewport: element }, scrollbars: { slot: slot ?? element } },
         {
           overflow: {
-            x: /auto|scroll/.test(style.overflowX) ? 'scroll' : 'hidden',
-            y: /auto|scroll/.test(style.overflowY) ? 'scroll' : 'hidden',
+            x: /auto|scroll/.test(overflowX) ? 'scroll' : 'hidden',
+            y: /auto|scroll/.test(overflowY) ? 'scroll' : 'hidden',
           },
           update: {
             elementEvents: [
@@ -96,13 +101,28 @@ export function installScrollbars(root: HTMLElement) {
     }
   }
 
+  function containsScrollArea(node: Node) {
+    return (
+      node instanceof Element &&
+      (node.matches(scrollable) ||
+        (node.childElementCount > 0 && node.querySelector(scrollable) !== null))
+    )
+  }
+
   const observer = new MutationObserver((records) => {
-    if (
-      frame === null &&
-      records.some(
-        (record) => record.target instanceof Element && !record.target.closest('.os-scrollbar'),
+    if (frame !== null || disposed) return
+    const changed = records.some((record) => {
+      const target = record.target
+      if (!(target instanceof HTMLElement) || target.closest('.os-scrollbar')) return false
+      if (record.type === 'attributes') return !instances.has(target) && target.matches(scrollable)
+      // Only structural changes to scroll containers need discovery. Highlighted
+      // tokens, clocks and unrelated button classes do not change that inventory.
+      return (
+        instances.has(target) ||
+        [...record.addedNodes, ...record.removedNodes].some(containsScrollArea)
       )
-    ) {
+    })
+    if (changed) {
       frame = requestAnimationFrame(synchronize)
     }
   })

@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useConversationStore } from './store'
 
 export function ConversationWelcome() {
-  const { projectPath } = useWorkspaceStore()
+  const projectPath = useWorkspaceStore((state) => state.projectPath)
   const { status, sessionFile, error } = useConversationStore(
     useShallow((state) => ({
       status: state.status,

@@ -89,7 +89,29 @@ export function WorkspaceNavigationContent({
   onClose,
   navigation,
 }: NavigationProps & { navigation: ReturnType<typeof useWorkspaceNavigation> }) {
-  const workspace = useWorkspaceStore()
+  const workspace = useWorkspaceStore(
+    useShallow((state) => ({
+      projectPath: state.projectPath,
+      projects: state.projects,
+      sessions: state.sessions,
+      generalCwd: state.generalCwd,
+      expandedProjects: state.expandedProjects,
+      projectOrder: state.projectOrder,
+      sessionOrder: state.sessionOrder,
+      pinnedProjects: state.pinnedProjects,
+      archivedProjects: state.archivedProjects,
+      sessionPreferences: state.sessionPreferences,
+      sessionActionPending: state.sessionActionPending,
+      reorderNavigation: state.reorderNavigation,
+      newConversation: state.newConversation,
+      openSession: state.openSession,
+      setProjectArchived: state.setProjectArchived,
+      setProjectExpanded: state.setProjectExpanded,
+      setSessionArchived: state.setSessionArchived,
+      toggleProjectPinned: state.toggleProjectPinned,
+      toggleSessionPinned: state.toggleSessionPinned,
+    })),
+  )
   // Live entries are removed on completion. Token updates in another chat do
   // not change navigation, so subscribe to membership rather than its transcript.
   const backgroundIds = useConversationStore(

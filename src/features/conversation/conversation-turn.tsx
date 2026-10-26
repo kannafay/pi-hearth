@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { Streamdown } from 'streamdown'
-import { code } from '@streamdown/code'
+import { codeHighlighter } from './code-highlighter'
 import { Check, Copy, Download } from 'lucide-react'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
@@ -16,7 +16,7 @@ import { getResponseStatus } from './response-status'
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
 const markdownTranslations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
-const markdownPlugins = { code }
+const markdownPlugins = { code: codeHighlighter }
 
 const ReplyMarkdown = memo(function ReplyMarkdown({
   text,

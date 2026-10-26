@@ -5,10 +5,18 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { WorkspaceShell } from '@/features/workspace/workspace-shell'
 import { installScrollbars } from '@/lib/scrollbars'
 import { isDesktop } from '@/lib/desktop'
+import { useShallow } from 'zustand/react/shallow'
 
 export function App() {
   useTheme()
-  const { settingsReady, settingsLoading, error, hydrateSettings } = useWorkspaceStore()
+  const { settingsReady, settingsLoading, error, hydrateSettings } = useWorkspaceStore(
+    useShallow((state) => ({
+      settingsReady: state.settingsReady,
+      settingsLoading: state.settingsLoading,
+      error: state.error,
+      hydrateSettings: state.hydrateSettings,
+    })),
+  )
   const desktop = isDesktop()
   useEffect(() => installScrollbars(document.body), [])
   useEffect(() => {
