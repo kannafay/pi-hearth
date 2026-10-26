@@ -320,6 +320,7 @@ test('unknown and disabled skill commands preserve drafts and do not reach the m
   expect(container).not.toContainElement(notice)
   expect(input).toHaveFocus()
   expect(input).toHaveValue('/unknown ')
+  await user.hover(notice)
   await user.click(within(notice).getByRole('button', { name: '关闭通知' }))
   await user.clear(input)
   await user.type(input, '/skill:disabled ')

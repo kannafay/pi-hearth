@@ -1,6 +1,6 @@
-import { Toast } from '@base-ui/react/toast'
+import { toast as toastManager } from '@/components/ui/toast'
 
-export const toastManager = Toast.createToastManager()
+export { toastManager }
 
 function notify(type: 'success' | 'error' | 'info', message: string) {
   const title = message.trim()
