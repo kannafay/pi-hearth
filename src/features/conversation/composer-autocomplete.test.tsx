@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { loadComposerCommands, searchProjectFiles } from '@/lib/composer'
 import { Composer } from './composer'
+import { Toaster } from '@/components/ui/toast'
 import { useConversationStore } from './store'
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
@@ -306,16 +307,24 @@ test('failed searches can be retried while keeping input focus', async () => {
 
 test('unknown and disabled skill commands preserve drafts and do not reach the model', async () => {
   const user = userEvent.setup()
-  render(<Composer onSendStart={() => {}} />)
+  const { container } = render(
+    <>
+      <Toaster />
+      <Composer onSendStart={() => {}} />
+    </>,
+  )
   const input = screen.getByRole('textbox', { name: '消息草稿' })
   await user.type(input, '/unknown ')
-  await user.click(screen.getByRole('button', { name: '发送消息' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('未支持的命令')
+  await user.keyboard('{Enter}')
+  const notice = await screen.findByRole('dialog', { name: /未支持的命令/ })
+  expect(container).not.toContainElement(notice)
+  expect(input).toHaveFocus()
   expect(input).toHaveValue('/unknown ')
+  await user.click(within(notice).getByRole('button', { name: '关闭通知' }))
   await user.clear(input)
   await user.type(input, '/skill:disabled ')
   await user.click(screen.getByRole('button', { name: '发送消息' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('未启用')
+  expect(await screen.findByRole('dialog', { name: /未启用/ })).toBeVisible()
   expect(useConversationStore.getState().send).not.toHaveBeenCalled()
 })
 

@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
+import { useOperationNotifications } from '@/app/use-operation-notifications'
 import { themeOptions } from '@/app/theme-options'
 import { ThemeToggleIcon } from '@/app/theme-toggle-icon'
 import { useMediaQuery } from '@/app/use-media-query'
@@ -23,10 +24,12 @@ import { useAnimatedPanel } from './use-animated-panel'
 import { useWorkspaceNavigation } from './use-workspace-navigation'
 import { WorkspaceFloatingPanel } from './workspace-panel'
 import { controlWindow, isDesktop } from '@/lib/desktop'
+import { toast } from '@/lib/toast'
 import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
 
 export function WorkspaceShell() {
+  useOperationNotifications()
   return (
     <DialogLayerProvider>
       <WorkspaceLayout />
@@ -42,7 +45,6 @@ function WorkspaceLayout() {
       projectPath: state.projectPath,
       projects: state.projects,
       sessions: state.sessions,
-      error: state.error,
       sidebarOpen: state.sidebarOpen,
       inspectorOpen: state.inspectorOpen,
       navigationWidth: state.navigationWidth,
@@ -96,7 +98,6 @@ function WorkspaceLayout() {
     setFloatingSidebarOpen(false)
     setProjectDialog('create')
   }, [setFloatingSidebarOpen])
-  const [error, setError] = useState<string | null>(null)
   const projectPresence = useDialogPresence(projectDialog)
   const compact = useMediaQuery('(max-width: 1199px)')
   const narrow = useMediaQuery('(width < 960px)')
@@ -229,7 +230,7 @@ function WorkspaceLayout() {
   }
 
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
-    void controlWindow(action).catch((reason: unknown) => setError(String(reason)))
+    void controlWindow(action).catch((reason: unknown) => toast.error(reason))
   }
 
   function toggleWorkspacePanel(side: 'left' | 'right') {
@@ -331,11 +332,6 @@ function WorkspaceLayout() {
           </div>
         )}
       </header>
-      {(error || workspace.error) && (
-        <p role="alert" className="border-b px-4 py-2 text-sm text-destructive">
-          {error || workspace.error}
-        </p>
-      )}
       <div
         className="workspace-body min-h-0 flex-1"
         data-sidebar-open={dockedSidebarOpen}

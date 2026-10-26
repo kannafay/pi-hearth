@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from './store'
 import { Composer } from './composer'
+import { Toaster } from '@/components/ui/toast'
 import {
   chooseAttachments,
   clipboardAttachments,
@@ -265,6 +266,31 @@ test('a picker result cannot add files to a different conversation', async () =>
   await act(async () => select(['D:/notes.txt']))
   expect(stagePaths).not.toHaveBeenCalled()
   expect(useWorkspaceStore.getState().draftAttachments).toEqual([])
+})
+
+test('attachment failures notify at the top and stale failures do not interrupt another conversation', async () => {
+  vi.mocked(stagePaths).mockRejectedValueOnce(new Error('无法读取附件'))
+  const user = userEvent.setup()
+  const { container } = render(
+    <>
+      <Toaster />
+      <Composer onSendStart={() => {}} />
+    </>,
+  )
+  await user.click(screen.getByRole('button', { name: '添加附件' }))
+  const notice = await screen.findByRole('dialog', { name: '无法读取附件' })
+  expect(container).not.toContainElement(notice)
+  let reject!: (reason: Error) => void
+  vi.mocked(stagePaths).mockImplementationOnce(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail
+      }),
+  )
+  await user.click(screen.getByRole('button', { name: '添加附件' }))
+  act(() => useConversationStore.setState({ instanceId: 'another-runtime' }))
+  await act(async () => reject(new Error('旧会话附件错误')))
+  expect(screen.queryByRole('dialog', { name: '旧会话附件错误' })).not.toBeInTheDocument()
 })
 
 test('drafts stay editable while settings are applied and Enter cannot race the change', async () => {

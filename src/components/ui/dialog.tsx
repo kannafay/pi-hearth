@@ -50,7 +50,7 @@ function Dialog({
               details.reason === 'focus-out' ||
               (details.reason === 'outside-press' &&
                 target instanceof Element &&
-                target.closest('[data-window-header]')))
+                target.closest('[data-window-header], [data-slot="toast-viewport"]')))
           ) {
             details.cancel()
             return

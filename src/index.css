@@ -190,6 +190,45 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.toast-viewport {
+  position: fixed;
+  z-index: 100;
+  top: calc(var(--titlebar-height) + 12px);
+  left: 50%;
+  display: flex;
+  width: min(420px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  outline: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+
+.app-toast[data-starting-style],
+.app-toast[data-ending-style] {
+  opacity: 0;
+}
+
+.app-toast[data-ending-style] {
+  pointer-events: none;
+}
+
+.app-toast[data-limited] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast {
+    transition: none;
+  }
+}
+
 .tray-menu-card {
   opacity: 0;
   transform: scale(0.98);

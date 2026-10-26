@@ -30,6 +30,7 @@ import { executeComposerCommand, type ComposerActions } from './composer-command
 import { useComposerCompletion } from './use-composer-completion'
 import { ComposerCompletionMenu } from './composer-completion-menu'
 import { slashCommand } from './composer-completion'
+import { toast } from '@/lib/toast'
 
 export function Composer({
   onSendStart,
@@ -50,7 +51,6 @@ export function Composer({
     sessionFile,
     runStarted,
     hasMessages,
-    error,
     readOnly,
     settingsPending,
     openingSession,
@@ -63,7 +63,6 @@ export function Composer({
       activity: state.activity,
       sessionFile: state.sessionFile,
       hasMessages: state.messages.length > 0,
-      error: state.error,
       readOnly: state.readOnly,
       settingsPending: state.settingsPending,
       openingSession: Boolean(state.connectionTarget?.sessionPath),
@@ -75,12 +74,6 @@ export function Composer({
           state.messages.some((message) => message.id === `${state.activeRunId}-user`)),
       ),
     })),
-  )
-  const [attachmentState, setAttachmentState] = useState({ instanceId, error: '' })
-  const attachmentError = attachmentState.instanceId === instanceId ? attachmentState.error : ''
-  const setAttachmentError = useCallback(
-    (error: string) => setAttachmentState({ instanceId, error }),
-    [instanceId],
   )
   const [pending, setPending] = useState(0)
   const [selecting, setSelecting] = useState(false)
@@ -112,45 +105,40 @@ export function Composer({
       status === 'ready' && !readOnly && !settingsPending && !sessionUpdating && !commandBusy,
   })
 
-  const receive = useCallback(
-    async (request: Promise<Attachment[]>) => {
-      const instanceId = useConversationStore.getState().instanceId
-      setPending((count) => count + 1)
-      setAttachmentError('')
-      try {
-        const files = await request
-        if (useConversationStore.getState().instanceId !== instanceId) {
-          releaseAttachments(files.map((file) => file.id))
-          return []
-        }
-        if (useWorkspaceStore.getState().draftAttachments.length + files.length > MAX_ATTACHMENTS) {
-          releaseAttachments(files.map((file) => file.id))
-          throw new Error('每条消息最多添加 10 个附件。')
-        }
-        useWorkspaceStore.getState().addAttachments(files)
-        return files
-      } catch (reason) {
-        setAttachmentError(String(reason))
+  const receive = useCallback(async (request: Promise<Attachment[]>) => {
+    const instanceId = useConversationStore.getState().instanceId
+    setPending((count) => count + 1)
+    try {
+      const files = await request
+      if (useConversationStore.getState().instanceId !== instanceId) {
+        releaseAttachments(files.map((file) => file.id))
         return []
-      } finally {
-        setPending((count) => count - 1)
       }
-    },
-    [setAttachmentError],
-  )
+      if (useWorkspaceStore.getState().draftAttachments.length + files.length > MAX_ATTACHMENTS) {
+        releaseAttachments(files.map((file) => file.id))
+        throw new Error('每条消息最多添加 10 个附件。')
+      }
+      useWorkspaceStore.getState().addAttachments(files)
+      return files
+    } catch (reason) {
+      if (useConversationStore.getState().instanceId === instanceId) toast.error(reason)
+      return []
+    } finally {
+      setPending((count) => count - 1)
+    }
+  }, [])
 
   async function choose() {
     if (selecting) return
     const instanceId = useConversationStore.getState().instanceId
     setSelecting(true)
-    setAttachmentError('')
     try {
       const paths = await chooseAttachments()
       if (paths.length && useConversationStore.getState().instanceId === instanceId) {
         await receive(stagePaths(paths))
       }
     } catch (reason) {
-      setAttachmentError(String(reason))
+      if (useConversationStore.getState().instanceId === instanceId) toast.error(reason)
     } finally {
       setSelecting(false)
     }
@@ -225,7 +213,6 @@ export function Composer({
         sessionUpdating
       )
         return
-      setAttachmentError('')
       setCommandInstance(submittedInstance)
       const command = slashCommand(text)
         ? await executeComposerCommand(text, ids.length, {
@@ -246,8 +233,7 @@ export function Composer({
         clearAttachments(ids)
       }
     } catch (reason) {
-      if (useConversationStore.getState().instanceId === submittedInstance)
-        setAttachmentError(String(reason))
+      if (useConversationStore.getState().instanceId === submittedInstance) toast.error(reason)
     } finally {
       if (submitting.current?.token === attempt) {
         submitting.current = null
@@ -258,11 +244,6 @@ export function Composer({
 
   return (
     <div className="mx-auto w-full max-w-221 shrink-0 px-6 pt-3 pb-3">
-      {(error || attachmentError) && (
-        <p role="alert" className="mb-3 text-xs leading-6 text-destructive">
-          {attachmentError || error}
-        </p>
-      )}
       {readOnly && (
         <p role="status" className="mb-3 text-xs text-muted-foreground">
           {readOnly}

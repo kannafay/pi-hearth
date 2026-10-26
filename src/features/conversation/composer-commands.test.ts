@@ -2,9 +2,11 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { loadComposerCommands } from '@/lib/composer'
 import { executeComposerCommand } from './composer-commands'
+import { toast } from '@/lib/toast'
 import { useConversationStore } from './store'
 
 vi.mock('@/lib/composer', () => ({ loadComposerCommands: vi.fn(), compactPi: vi.fn() }))
+vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn() } }))
 
 const first = { provider: 'one', id: 'shared', name: 'Old Name' }
 const second = { provider: 'two', id: 'shared', name: 'Other Name' }
@@ -78,6 +80,34 @@ test('thinking arguments respect current capabilities including Off and Default'
     ['default'],
   ])
   await expect(executeComposerCommand('/thinking max', 0, actions)).rejects.toThrow('不支持')
+})
+
+test('result notifications require a successful operation in the current conversation', async () => {
+  await executeComposerCommand('/model two/shared', 0, actions)
+  expect(toast.success).toHaveBeenCalledExactlyOnceWith('模型已切换')
+  vi.mocked(toast.success).mockClear()
+  useConversationStore.setState({
+    changeThinkingLevel: vi.fn(async () => {
+      useConversationStore.setState({ error: '无法切换' })
+    }),
+  })
+  expect(await executeComposerCommand('/thinking high', 0, actions)).toBe(false)
+  expect(toast.success).not.toHaveBeenCalled()
+  useWorkspaceStore.setState({
+    renameSession: vi.fn(async () => {
+      useWorkspaceStore.setState({ error: '无法重命名' })
+    }),
+  })
+  expect(await executeComposerCommand('/name 新标题', 0, actions)).toBe(false)
+  expect(toast.success).not.toHaveBeenCalled()
+  useConversationStore.setState({
+    error: null,
+    changeModel: vi.fn(async () => {
+      useConversationStore.setState({ instanceId: 'another-runtime' })
+    }),
+  })
+  await executeComposerCommand('/model two/shared', 0, actions)
+  expect(toast.success).not.toHaveBeenCalled()
 })
 
 test('only loaded skill commands can continue through the prompt path with attachments', async () => {

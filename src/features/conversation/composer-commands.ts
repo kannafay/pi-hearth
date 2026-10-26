@@ -2,6 +2,7 @@ import { useWorkspaceStore } from '@/app/store'
 import { loadComposerCommands } from '@/lib/composer'
 import { isCurrentSession } from '@/lib/session-preferences'
 import { slashCommand } from './composer-completion'
+import { toast } from '@/lib/toast'
 import { modelKey } from './models'
 import { useConversationStore } from './store'
 
@@ -24,6 +25,11 @@ export async function executeComposerCommand(
   if (!state.instanceId || state.status !== 'ready' || state.readOnly || state.settingsPending)
     return false
   const { name, args } = command
+  function complete(success: boolean, message: string) {
+    if (success && useConversationStore.getState().instanceId === state.instanceId)
+      toast.success(message)
+    return success
+  }
   if (name.startsWith('skill:')) {
     const commands = await loadComposerCommands(state.instanceId)
     if (useConversationStore.getState().instanceId !== state.instanceId) return false
@@ -48,8 +54,10 @@ export async function executeComposerCommand(
     case 'name': {
       const session = workspace.sessions.find((session) => isCurrentSession(session, state))
       if (!session) throw new Error('请先发送一条消息，再为会话命名。')
-      if (args) await workspace.renameSession(session, args)
-      else {
+      if (args) {
+        await workspace.renameSession(session, args)
+        return complete(!useWorkspaceStore.getState().error, '会话已重命名')
+      } else {
         if (!actions.onRename) throw new Error('暂时无法重命名此会话。')
         actions.onRename()
       }
@@ -75,7 +83,7 @@ export async function executeComposerCommand(
             : '未找到此模型，请使用 /model 打开模型列表。',
         )
       await state.changeModel(matches[0])
-      return !useConversationStore.getState().error
+      return complete(!useConversationStore.getState().error, '模型已切换')
     }
     case 'thinking': {
       if (!args) {
@@ -86,11 +94,11 @@ export async function executeComposerCommand(
       if (level !== 'default' && !state.availableThinkingLevels.includes(level))
         throw new Error('当前模型不支持这个思考档位。')
       await state.changeThinkingLevel(level)
-      return !useConversationStore.getState().error
+      return complete(!useConversationStore.getState().error, '思考强度已更新')
     }
     case 'compact':
       if (!state.messages.length) throw new Error('当前对话暂无需要压缩的内容。')
-      return state.compact(args)
+      return complete(await state.compact(args), '上下文已压缩')
     default:
       throw new Error(`未支持的命令 /${name}。输入 / 查看可用命令。`)
   }

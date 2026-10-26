@@ -5,6 +5,8 @@ import { Streamdown } from 'streamdown'
 import { ConversationPanel } from './conversation-panel'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from './store'
+import { Toaster } from '@/components/ui/toast'
+import { useOperationNotifications } from '@/app/use-operation-notifications'
 import type { ChatMessage, PiEvent, RuntimeSnapshot, ToolCall } from '@/lib/generated/pi'
 import * as pi from '@/lib/pi'
 import * as thinkingPreference from './thinking-preference'
@@ -579,14 +581,25 @@ test('cached history stays visible during connection and failures have an inline
     connect,
   })
   const user = userEvent.setup()
-  render(<ConversationPanel />)
+  function Notifications() {
+    useOperationNotifications()
+    return <Toaster />
+  }
+  const { container } = render(
+    <>
+      <Notifications />
+      <ConversationPanel />
+    </>,
+  )
   expect(screen.getByText(answer.text)).toBeVisible()
   expect(screen.queryByLabelText('正在载入会话')).not.toBeInTheDocument()
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
   const input = screen.getByRole('textbox', { name: '消息草稿' })
   act(() => useConversationStore.setState({ status: 'disconnected', error: '助手启动失败' }))
   expect(screen.getByText(answer.text)).toBeVisible()
-  expect(screen.getByRole('alert')).toHaveTextContent('助手启动失败')
+  const error = screen.getByRole('dialog', { name: '助手启动失败' })
+  expect(error).toBeVisible()
+  expect(container).not.toContainElement(error)
   const notice = screen.getByRole('status')
   expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   await user.click(screen.getByRole('button', { name: '重新连接' }))

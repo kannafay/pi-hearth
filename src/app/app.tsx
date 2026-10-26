@@ -2,6 +2,7 @@ import { useTheme } from '@/app/use-theme'
 import { useWorkspaceStore } from '@/app/store'
 import { StartupScreen } from './startup-screen'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { Toaster } from '@/components/ui/toast'
 import { WorkspaceShell } from '@/features/workspace/workspace-shell'
 import { installScrollbars } from '@/lib/scrollbars'
 import { isDesktop } from '@/lib/desktop'
@@ -32,6 +33,7 @@ export function App() {
     )
   return (
     <TooltipProvider delay={300}>
+      <Toaster />
       <WorkspaceShell />
     </TooltipProvider>
   )
