@@ -349,7 +349,7 @@ test('a reply waits for output before showing thinking and generation states', (
   expect(reply.queryByText(/等待回复…|正在思考…|正在生成…/)).not.toBeInTheDocument()
 })
 
-test('streaming keeps one status above the answer until the run finishes', () => {
+test('streaming keeps one stable status and indicator below the answer until the run finishes', () => {
   const { user, answer } = processFixture()
   useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
   render(<ConversationPanel />)
@@ -360,6 +360,7 @@ test('streaming keeps one status above the answer until the run finishes', () =>
   })
   const reply = within(screen.getByRole('article', { name: 'Pi 的回复' }))
   const status = reply.getByRole('status')
+  const indicator = status.querySelector('[aria-hidden="true"]')
   for (let sequence = 3; sequence <= 52; sequence++) {
     receive(sequence, {
       type: 'message_delta',
@@ -369,12 +370,13 @@ test('streaming keeps one status above the answer until the run finishes', () =>
       delta: sequence % 2 ? '答' : '思',
     })
     expect(reply.getByRole('status')).toBe(status)
+    expect(status.querySelector('[aria-hidden="true"]')).toBe(indicator)
     expect(status).toHaveTextContent('正在生成…')
     expect(screen.getAllByRole('status')).toHaveLength(1)
   }
   const text = '答'.repeat(25)
   expect(
-    status.compareDocumentPosition(reply.getByText(text)) & Node.DOCUMENT_POSITION_FOLLOWING,
+    reply.getByText(text).compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy()
   receive(53, { type: 'message_completed', message: { ...answer, text } })
   expect(reply.getByRole('status')).toBe(status)

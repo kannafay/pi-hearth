@@ -100,8 +100,21 @@ test('regenerate targets its own turn and stays unavailable during other runs an
   expect(useConversationStore.getState().rewrite).toHaveBeenCalledWith(prompt.id)
   act(() => useConversationStore.setState({ status: 'running' }))
   expect(screen.getByRole('button', { name: '重新回答' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: '编辑消息' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: '编辑消息' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '复制回复' })).toBeEnabled()
   act(() => useConversationStore.setState({ status: 'ready', readOnly: 'missing directory' }))
   expect(screen.getByRole('button', { name: '重新回答' })).toBeDisabled()
 })
+
+test.each(['running', 'stopping'] as const)(
+  'message editing hides during %s while copying stays available, then returns after the reply ends',
+  (status) => {
+    view()
+    expect(screen.getByRole('button', { name: '编辑消息' })).toBeEnabled()
+    act(() => useConversationStore.setState({ status }))
+    expect(screen.queryByRole('button', { name: '编辑消息' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '复制消息' })).toBeEnabled()
+    act(() => useConversationStore.setState({ status: 'ready' }))
+    expect(screen.getByRole('button', { name: '编辑消息' })).toBeEnabled()
+  },
+)

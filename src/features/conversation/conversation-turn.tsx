@@ -68,6 +68,7 @@ export const ConversationTurn = memo(function ConversationTurn({
     (state) =>
       state.status === 'ready' && !!state.instanceId && !state.readOnly && !state.settingsPending,
   )
+  const replying = useConversationStore((state) => ['running', 'stopping'].includes(state.status))
   const [editing, setEditing] = useConversationLocalState(`editing:${turn.id}`, false)
   const [draft, setDraft] = useConversationLocalState(`draft:${turn.id}`, '')
   const [submitting, setSubmitting] = useState(false)
@@ -158,10 +159,14 @@ export const ConversationTurn = memo(function ConversationTurn({
               text={user.text}
               timestamp={user.timestamp ?? user.startedAt}
               disabled={!canRewrite}
-              onEdit={() => {
-                setDraft(user.text)
-                setEditing(true)
-              }}
+              onEdit={
+                replying || active
+                  ? undefined
+                  : () => {
+                      setDraft(user.text)
+                      setEditing(true)
+                    }
+              }
             />
           )}
         </article>
@@ -176,14 +181,27 @@ export const ConversationTurn = memo(function ConversationTurn({
             finishedAt={user?.finishedAt}
           />
           <div className="space-y-2">
-            {active && (
-              <p role="status" aria-atomic="true" className="text-[14px] text-muted-foreground/70">
-                {responseStatus}
-              </p>
-            )}
             {reply ? (
               <ReplyMarkdown text={reply.text} streaming={reply.status === 'streaming'} />
             ) : null}
+            {active && (
+              <div
+                role="status"
+                aria-atomic="true"
+                className="flex min-h-5 items-center gap-2 text-[14px] text-muted-foreground/70"
+              >
+                <span aria-hidden className="flex h-5 shrink-0 items-center gap-1">
+                  {[0, 160, 320].map((delay) => (
+                    <span
+                      key={delay}
+                      className="size-1 rounded-full bg-current motion-safe:animate-pulse"
+                      style={{ animationDelay: `${delay}ms`, animationDuration: '1.2s' }}
+                    />
+                  ))}
+                </span>
+                <span>{responseStatus}</span>
+              </div>
+            )}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}
             {!active && (reply || cancelled || error) && (
