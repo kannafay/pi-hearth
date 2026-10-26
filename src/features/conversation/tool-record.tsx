@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Check, FilePenLine, FileText, LoaderCircle, Terminal, Wrench, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -53,7 +53,7 @@ function useOutputPage(instanceId: string | null, toolId: string, section: 'argu
   return { page, loading, error, load }
 }
 
-export function ToolRecord({ tool }: { tool: ToolCall }) {
+export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall }) {
   const { instanceId, status } = useConversationStore(
     useShallow((state) => ({ instanceId: state.instanceId, status: state.status })),
   )
@@ -229,4 +229,4 @@ export function ToolRecord({ tool }: { tool: ToolCall }) {
       </div>
     </ExecutionRecord>
   )
-}
+})

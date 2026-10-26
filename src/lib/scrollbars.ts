@@ -14,8 +14,40 @@ const scrollable = [
 export function installScrollbars(root: HTMLElement) {
   const instances = new Map<HTMLElement, OverlayScrollbars>()
   const contentOwners = new Map<Element, OverlayScrollbars>()
+  const waitingForMotion = new Set<Element>()
   let frame: number | null = null
   let disposed = false
+
+  function schedule() {
+    if (frame === null && !disposed) frame = requestAnimationFrame(synchronize)
+  }
+
+  function disclosureIsMoving(element: HTMLElement) {
+    let panel = element.closest('[data-slot="collapsible-content"]')
+    while (panel) {
+      if (typeof panel.getAnimations !== 'function') return false
+      const animations = panel
+        .getAnimations()
+        .filter((animation) => animation.playState === 'running' || animation.pending)
+      if (animations.length) {
+        if (!waitingForMotion.has(panel)) {
+          const movingPanel = panel
+          waitingForMotion.add(movingPanel)
+          void Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+            waitingForMotion.delete(movingPanel)
+            schedule()
+          })
+        }
+        return true
+      }
+      if (panel.hasAttribute('data-starting-style')) {
+        schedule()
+        return true
+      }
+      panel = panel.parentElement?.closest('[data-slot="collapsible-content"]') ?? null
+    }
+    return false
+  }
 
   // A fixed native viewport doesn't resize when its children expand or collapse.
   // Observe its content boxes too, so handle proportions follow each layout frame.
@@ -47,7 +79,12 @@ export function installScrollbars(root: HTMLElement) {
     }
     // Read styles together before the scrollbar constructors change layout.
     const candidates = [...root.querySelectorAll<HTMLElement>(scrollable)]
-      .filter((element) => !instances.has(element) && !(element instanceof HTMLTextAreaElement))
+      .filter(
+        (element) =>
+          !instances.has(element) &&
+          !(element instanceof HTMLTextAreaElement) &&
+          !disclosureIsMoving(element),
+      )
       .map((element) => {
         const { overflowX, overflowY } = getComputedStyle(element)
         const slot = element.hasAttribute('data-scrollbars-external')
@@ -125,7 +162,7 @@ export function installScrollbars(root: HTMLElement) {
       )
     })
     if (changed) {
-      frame = requestAnimationFrame(synchronize)
+      schedule()
     }
   })
   observer.observe(root, {
@@ -141,6 +178,7 @@ export function installScrollbars(root: HTMLElement) {
     observer.disconnect()
     contentObserver?.disconnect()
     contentOwners.clear()
+    waitingForMotion.clear()
     if (frame !== null) cancelAnimationFrame(frame)
     for (const instance of instances.values()) instance.destroy()
     instances.clear()

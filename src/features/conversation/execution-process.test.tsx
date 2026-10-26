@@ -236,6 +236,27 @@ test('quick replies with tools retain the duration and accessible tool records',
   ).toBeVisible()
 })
 
+test('folded thinking defers paragraph construction and folding the process does not rebuild it', async () => {
+  const user = userEvent.setup()
+  const split = vi.fn(() => ['较长的思考内容。'])
+  render(
+    <ExecutionProcess
+      active={false}
+      items={[{ kind: 'thinking', id: 'lazy-thought', text: { split } as unknown as string }]}
+    />,
+  )
+  const process = screen.getByRole('button', { name: '执行过程' })
+  expect(split).not.toHaveBeenCalled()
+  await user.click(process)
+  expect(split).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  expect(screen.getByText('较长的思考内容。')).toBeVisible()
+  expect(split).toHaveBeenCalledOnce()
+  await user.click(process)
+  await waitFor(() => expect(screen.queryByText('较长的思考内容。')).not.toBeInTheDocument())
+  expect(split).toHaveBeenCalledOnce()
+})
+
 test.each([
   [0, '0秒'],
   [21_999, '21秒'],

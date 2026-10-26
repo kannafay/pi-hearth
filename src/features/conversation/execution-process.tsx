@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Brain, ChevronRight, MessageSquareText } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ProcessItem } from './conversation-turns'
@@ -39,40 +39,77 @@ function ElapsedTime({
   )
 }
 
-function ProcessTextRecord({
-  item,
+function ProcessTextContent({ text }: { text: string }) {
+  return (
+    <div className="space-y-1.5">
+      {text.split(/\n\s*\n/).map((paragraph, index) => (
+        <p key={index} className="whitespace-pre-wrap">
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+const ProcessTextRecord = memo(function ProcessTextRecord({
+  kind,
+  id,
+  text,
   stateKey,
   active,
 }: {
-  item: Exclude<ProcessItem, { kind: 'tool' }>
+  kind: 'thinking' | 'message'
+  id: string
+  text: string
   stateKey?: string
   active: boolean
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
-    `${item.kind}:${stateKey ?? ''}:${item.id}:expanded`,
+    `${kind}:${stateKey ?? ''}:${id}:expanded`,
     false,
   )
   return (
     <ExecutionRecord
-      icon={item.kind === 'thinking' ? Brain : MessageSquareText}
-      title={item.kind === 'thinking' ? '思考' : '执行说明'}
+      icon={kind === 'thinking' ? Brain : MessageSquareText}
+      title={kind === 'thinking' ? '思考' : '执行说明'}
       open={open}
       onOpenChange={setOpen}
       headerRef={headerRef}
       follow={active}
     >
-      <div className="space-y-1.5">
-        {(item.kind === 'thinking' ? item.text : item.message.text)
-          .split(/\n\s*\n/)
-          .map((paragraph, index) => (
-            <p key={index} className="whitespace-pre-wrap">
-              {paragraph}
-            </p>
-          ))}
-      </div>
+      <ProcessTextContent text={text} />
     </ExecutionRecord>
   )
-}
+})
+
+const ProcessRecords = memo(function ProcessRecords({
+  items,
+  stateKey,
+  active,
+}: {
+  items: ProcessItem[]
+  stateKey?: string
+  active: boolean
+}) {
+  return (
+    <div role="region" aria-label="执行过程详情" className="mt-1 space-y-1">
+      {items.map((item) =>
+        item.kind === 'tool' ? (
+          <ToolRecord key={item.id} tool={item.tool} />
+        ) : (
+          <ProcessTextRecord
+            key={item.id}
+            id={item.id}
+            kind={item.kind}
+            text={item.kind === 'thinking' ? item.text : item.message.text}
+            stateKey={stateKey}
+            active={active && item === items.at(-1)}
+          />
+        ),
+      )}
+    </div>
+  )
+})
 
 export function ExecutionProcess({
   stateKey,
@@ -124,20 +161,7 @@ export function ExecutionProcess({
         ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="execution-process-content">
-        <div role="region" aria-label="执行过程详情" className="mt-1 space-y-1">
-          {items.map((item) =>
-            item.kind === 'tool' ? (
-              <ToolRecord key={item.id} tool={item.tool} />
-            ) : (
-              <ProcessTextRecord
-                key={item.id}
-                item={item}
-                stateKey={stateKey}
-                active={active && item === items.at(-1)}
-              />
-            ),
-          )}
-        </div>
+        <ProcessRecords items={items} stateKey={stateKey} active={active} />
       </CollapsibleContent>
     </Collapsible>
   )

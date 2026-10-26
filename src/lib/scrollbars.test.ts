@@ -155,6 +155,61 @@ test('syntax token updates skip scroll-container discovery while code sizing sti
   expect(update).toHaveBeenCalledWith(true)
 })
 
+test('new scrollbars wait for disclosure motion while native scrolling and existing bars stay available', async () => {
+  const existing = pane()
+  root.append(existing)
+  stop = installScrollbars(root)
+  const current = OverlayScrollbars(existing)
+  const panel = document.createElement('div')
+  panel.setAttribute('data-slot', 'collapsible-content')
+  const child = pane()
+  panel.append(child)
+  let finish!: () => void
+  const animation = {
+    playState: 'running',
+    finished: new Promise<void>((resolve) => {
+      finish = resolve
+    }),
+  }
+  Object.defineProperty(panel, 'getAnimations', { value: () => [animation] })
+  root.append(panel)
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  expect(OverlayScrollbars(child)).toBeUndefined()
+  expect(OverlayScrollbars(existing)).toBe(current)
+  child.scrollTop = 80
+  expect(child.scrollTop).toBe(80)
+  animation.playState = 'finished'
+  finish()
+  await waitFor(() => expect(OverlayScrollbars(child)).toBeDefined())
+  expect(OverlayScrollbars(child)!.elements().viewport).toBe(child)
+})
+
+test('cancelled disclosure motion does not initialize a detached viewport after cleanup', async () => {
+  const panel = document.createElement('div')
+  panel.setAttribute('data-slot', 'collapsible-content')
+  const child = pane()
+  panel.append(child)
+  let cancel!: (reason: Error) => void
+  Object.defineProperty(panel, 'getAnimations', {
+    value: () => [
+      {
+        playState: 'running',
+        finished: new Promise((_, reject) => {
+          cancel = reject
+        }),
+      },
+    ],
+  })
+  root.append(panel)
+  stop = installScrollbars(root)
+  expect(OverlayScrollbars(child)).toBeUndefined()
+  panel.remove()
+  stop()
+  cancel(new Error('animation cancelled'))
+  await new Promise((resolve) => requestAnimationFrame(resolve))
+  expect(OverlayScrollbars(child)).toBeUndefined()
+})
+
 test('content resizing updates its owning scrollbar on every frame and batches sibling boxes', () => {
   const observer = contentResizeObserver()
   const element = pane()

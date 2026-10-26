@@ -664,6 +664,18 @@ select {
   border-color: color-mix(in oklch, var(--border) 70%, var(--background));
 }
 
+[data-scroll-area],
+[data-streamdown='code-block-body'] {
+  /* Keep native scrolling and stable content width while custom bars initialize after motion. */
+  scrollbar-width: none;
+}
+
+.tool-record-code {
+  /* Long JSON string values otherwise make repeated intrinsic wrap measurement expensive. */
+  overflow-wrap: normal;
+  word-break: break-all;
+}
+
 .conversation-code {
   overflow: hidden;
   border-radius: 10px;

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { ToolCall } from '@/lib/generated/pi'
@@ -111,4 +111,34 @@ test('cached tool details load from the fresh runtime tool ID after a session re
   await user.click(screen.getByRole('button', { name: '加载完整输出' }))
   expect(await screen.findByText('完整历史输出')).toBeVisible()
   expect(loadPiToolOutput).toHaveBeenCalledExactlyOnceWith('new-runtime', 'new-tool', 'output', 0)
+})
+
+test('an unchanged tool record still follows a runtime reconnect before loading details', async () => {
+  const user = userEvent.setup()
+  vi.mocked(loadPiToolOutput).mockResolvedValue({
+    content: '重连后加载的完整输出',
+    nextOffset: null,
+    totalBytes: 30,
+  })
+  render(
+    <ToolRecord
+      tool={{
+        ...tool,
+        status: 'complete',
+        approvalId: null,
+        output: '末尾',
+        outputTruncated: true,
+      }}
+    />,
+  )
+  act(() => useConversationStore.setState({ instanceId: 'reconnected-runtime' }))
+  await user.click(screen.getByRole('button', { expanded: false }))
+  await user.click(screen.getByRole('button', { name: '加载完整输出' }))
+  expect(await screen.findByText('重连后加载的完整输出')).toBeVisible()
+  expect(loadPiToolOutput).toHaveBeenCalledExactlyOnceWith(
+    'reconnected-runtime',
+    tool.id,
+    'output',
+    0,
+  )
 })
