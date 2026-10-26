@@ -397,7 +397,7 @@ select {
   transition: opacity 160ms ease-out;
 }
 
-:is(.sidebar-session-actions, .sidebar-project-actions, .sidebar-session-progress)::before {
+:is(.sidebar-session-actions, .sidebar-project-actions)::before {
   content: '';
   position: absolute;
   inset: 0 0 0 -1.5rem;
@@ -417,6 +417,10 @@ select {
 
 .sidebar-session-row {
   --sidebar-row-actions-width: 5.25rem;
+}
+
+.sidebar-session-row[data-responding='true'] .sidebar-row-title {
+  padding-inline-end: 1.5rem;
 }
 
 .sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-progress {
