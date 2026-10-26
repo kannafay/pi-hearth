@@ -438,6 +438,14 @@ test('completed history shows one final reply and keeps all process details in a
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await user.click(trigger)
   const process = await screen.findByRole('region', { name: '执行过程详情' })
+  expect(within(process).getByRole('button', { name: '执行说明' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  expect(within(process).queryByText(progress.text)).not.toBeInTheDocument()
+  await user.click(within(process).getByRole('button', { name: '执行说明' }))
+  for (const thinking of within(process).getAllByRole('button', { name: '思考' }))
+    await user.click(thinking)
   expect(within(process).getByText(progress.text)).toBeVisible()
   expect(within(process).getByText(answer.thinking)).toBeVisible()
   expect(within(process).queryByText(answer.text)).not.toBeInTheDocument()

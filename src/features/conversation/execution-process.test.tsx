@@ -77,6 +77,10 @@ test('quick replies with thinking retain the duration and accessible disclosure'
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await user.click(trigger)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  const thinking = screen.getByRole('button', { name: '思考' })
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('核对信息后给出答复。')).not.toBeInTheDocument()
+  await user.click(thinking)
   expect(
     within(screen.getByRole('region', { name: '执行过程详情' })).getByText('核对信息后给出答复。'),
   ).toBeVisible()
@@ -92,7 +96,9 @@ test('thinking collapses independently and stays collapsed as more content arriv
   const view = render(<ExecutionProcess stateKey="turn" items={[thought]} active />)
   const process = screen.getByRole('button', { name: '执行过程' })
   const thinking = screen.getByRole('button', { name: '思考' })
-  expect(thinking).toHaveAttribute('aria-expanded', 'true')
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText(thought.text)).not.toBeInTheDocument()
+  await user.click(thinking)
   expect(screen.getByText(thought.text)).toBeVisible()
   await user.click(thinking)
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
@@ -127,6 +133,7 @@ test('collapsing a pinned thinking header keeps that group in view', async () =>
       />
     </div>,
   )
+  for (const thinking of screen.getAllByRole('button', { name: '思考' })) await user.click(thinking)
   const header = screen.getAllByRole('button', { name: '思考' })[0]
   const group = header.closest('[data-slot="collapsible"]')!
   const viewport = view.container.querySelector<HTMLElement>('[data-scroll-area]')!
@@ -156,7 +163,11 @@ test('each thinking section keeps its own choice across process reopening and vi
     </ConversationLocalState>
   )
   let view = render(content())
-  await user.click(screen.getAllByRole('button', { name: '思考' })[0])
+  expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  await user.click(screen.getAllByRole('button', { name: '思考' })[1])
   expect(screen.getAllByRole('button', { name: '思考' })[1]).toHaveAttribute(
     'aria-expanded',
     'true',
@@ -185,7 +196,7 @@ test('each thinking section keeps its own choice across process reopening and vi
   render(content('another-turn'))
   expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
     'aria-expanded',
-    'true',
+    'false',
   )
 })
 

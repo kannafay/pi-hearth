@@ -50,7 +50,7 @@ function ProcessTextRecord({
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
     `${item.kind}:${stateKey ?? ''}:${item.id}:expanded`,
-    true,
+    false,
   )
   return (
     <ExecutionRecord

@@ -537,8 +537,9 @@ select {
   }
 
   .conversation-disclosure-chevron {
-    transition: transform var(--conversation-disclosure-duration)
-      var(--conversation-disclosure-ease);
+    transition:
+      transform var(--conversation-disclosure-duration) var(--conversation-disclosure-ease),
+      rotate var(--conversation-disclosure-duration) var(--conversation-disclosure-ease);
   }
 }
 
@@ -692,6 +693,10 @@ select {
 
 .conversation-code [data-streamdown='code-block-actions'] button {
   transition-property: color, background-color, box-shadow;
+}
+
+.conversation-code [data-streamdown='code-block-actions'] button:hover {
+  background-color: color-mix(in oklch, var(--muted) 97%, var(--foreground));
 }
 
 .conversation-code [data-streamdown='code-block-actions'] svg {
