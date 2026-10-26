@@ -5,11 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/pi.svg" />
+    <link rel="stylesheet" href="/startup.css" />
     <title>Pi Hearth</title>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="workspace-shell startup-screen">
+        <div class="startup-center">
+          <img src="/pi.svg" alt="Pi Hearth" class="startup-logo" width="64" height="64" />
+          <div role="status" aria-label="正在打开工作台" class="startup-progress">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="/startup.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

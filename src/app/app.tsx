@@ -1,6 +1,6 @@
 import { useTheme } from '@/app/use-theme'
 import { useWorkspaceStore } from '@/app/store'
-import { Button } from '@/components/ui/button'
+import { StartupScreen } from './startup-screen'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { WorkspaceShell } from '@/features/workspace/workspace-shell'
 import { installScrollbars } from '@/lib/scrollbars'
@@ -24,22 +24,11 @@ export function App() {
   }, [desktop, hydrateSettings])
   if (desktop && !settingsReady)
     return (
-      <div className="workspace-shell flex h-dvh items-center justify-center text-sm text-muted-foreground">
-        {error ? (
-          <div className="flex max-w-lg flex-col items-center gap-3 px-6">
-            <p role="alert">{error}</p>
-            <Button
-              variant="outline"
-              disabled={settingsLoading}
-              onClick={() => void hydrateSettings()}
-            >
-              重试
-            </Button>
-          </div>
-        ) : (
-          <p role="status">正在打开工作台…</p>
-        )}
-      </div>
+      <StartupScreen
+        error={error}
+        loading={settingsLoading}
+        onRetry={() => void hydrateSettings()}
+      />
     )
   return (
     <TooltipProvider delay={300}>

@@ -89,6 +89,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            window_state::window_startup_ready,
             set_window_theme,
             developer::developer_console_open,
             #[cfg(windows)]

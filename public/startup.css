@@ -1,0 +1,92 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.startup-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.startup-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
+  transform: translate(-50%, -50%);
+}
+
+.startup-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.startup-progress {
+  position: absolute;
+  top: calc(100% + 24px);
+  left: 50%;
+  display: flex;
+  gap: 5px;
+  transform: translateX(-50%);
+}
+
+.startup-progress span {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: #f09082;
+  animation: startup-pulse 1200ms ease-in-out infinite;
+}
+
+.startup-progress span:nth-child(2) {
+  background: #4d9abf;
+  animation-delay: 160ms;
+}
+
+.startup-progress span:nth-child(3) {
+  background: #f1be58;
+  animation-delay: 320ms;
+}
+
+@keyframes startup-pulse {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.startup-feedback {
+  position: absolute;
+  top: calc(100% + 24px);
+  left: 50%;
+  display: flex;
+  width: min(360px, calc(100vw - 48px));
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-progress span {
+    opacity: 0.7;
+    animation: none;
+  }
+}
