@@ -16,7 +16,7 @@
         "label": "main",
         "title": "Pi Hearth",
         "width": 1280,
-        "height": 900,
+        "height": 850,
         "minWidth": 480,
         "minHeight": 640,
         "center": true,
