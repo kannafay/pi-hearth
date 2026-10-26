@@ -456,7 +456,7 @@ impl PiClient {
                                         }
                                     } else if record["type"] == "extension_ui_request" {
                                         if let Some((id, mut approval_record)) = approval_record(&record) {
-                                            mask_json(&mut approval_record, &config.secrets);
+                                            mask_tool_record(&mut approval_record, &config.secrets);
                                             if conversation.snapshot.active_run_id.is_none() || conversation.is_cancelling() {
                                                 if !write_wire(&mut stdin, &json!({"type":"extension_ui_response","id":id,"confirmed":false})).await {
                                                     exit_error = Some("无法拒绝已停止任务的工具确认。".into()); break 'runtime;
@@ -482,7 +482,7 @@ impl PiClient {
                                             exit_error = Some("无法关闭未支持的工具确认。".into()); break 'runtime;
                                         }
                                     } else {
-                                        if record["type"].as_str().is_some_and(|kind| kind.starts_with("tool_execution_")) { mask_json(&mut record, &config.secrets); }
+                                        if record["type"].as_str().is_some_and(|kind| kind.starts_with("tool_execution_")) { mask_tool_record(&mut record, &config.secrets); }
                                         let events = conversation.record(&record);
                                         if persist_tool(&output, &conversation, &record).await.is_err() {
                                             exit_error = Some("无法保存工具输出，执行已中止。".into()); break 'runtime;
@@ -955,6 +955,27 @@ fn approval_record(record: &Value) -> Option<(String, Value)> {
         id.clone(),
         json!({"type":"tool_approval","toolCallId":payload["toolCallId"],"toolName":payload["toolName"],"args":payload["args"],"approvalId":id}),
     ))
+}
+
+fn mask_tool_record(record: &mut Value, secrets: &[String]) {
+    // Routing IDs and protocol discriminators must survive redaction unchanged.
+    if let Some(args) = record.get_mut("args") {
+        mask_json(args, secrets);
+    }
+    for field in ["partialResult", "result"] {
+        if let Some(result) = record.get_mut(field) {
+            if let Some(content) = result.get_mut("content").and_then(Value::as_array_mut) {
+                for block in content {
+                    if let Some(text) = block.get_mut("text") {
+                        mask_json(text, secrets);
+                    }
+                }
+            }
+            if let Some(details) = result.get_mut("details") {
+                mask_json(details, secrets);
+            }
+        }
+    }
 }
 
 fn mask_json(value: &mut Value, secrets: &[String]) {
@@ -1723,6 +1744,190 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    #[test]
+    fn tool_redaction_preserves_fresh_confirmation_ids_and_lifecycle_routing() {
+        let id = "11111111-1111-4111-a111-111111111111";
+        let request = json!({"type":"extension_ui_request","method":"confirm","id":id,"message":json!({
+            "kind":"pi-hearth-tool-approval-v1", "toolCallId":"call-1", "toolName":"powershell",
+            "args":{"command":"Write-Output private-token"}
+        }).to_string()});
+        let (pending_id, mut approval) = approval_record(&request).unwrap();
+        let secrets = vec![
+            "1".into(),
+            "private-token".into(),
+            "text".into(),
+            "tool_execution_end".into(),
+        ];
+        mask_tool_record(&mut approval, &secrets);
+        assert_eq!(
+            approval["approvalId"], pending_id,
+            "fresh approval IDs must match the pending request map"
+        );
+        assert_eq!(approval["toolCallId"], "call-1");
+        assert_eq!(approval["toolName"], "powershell");
+        assert_eq!(approval["args"]["command"], "Write-Output [REDACTED]");
+
+        let mut conversation = Conversation::new("instance".into(), "cwd".into());
+        conversation
+            .begin("run".into(), "Test approval".into())
+            .unwrap();
+        conversation.record(&approval);
+        assert_eq!(
+            conversation.snapshot.tools[0].approval_id.as_deref(),
+            Some(id)
+        );
+        conversation.approval_decided("call-1", true);
+        let mut end = json!({"type":"tool_execution_end", "toolCallId":"call-1", "toolName":"powershell", "result":{"content":[{"type":"text","text":"private-token"}]}, "isError":false});
+        mask_tool_record(&mut end, &secrets);
+        conversation.record(&end);
+        assert_eq!(conversation.snapshot.tools.len(), 1);
+        assert_eq!(conversation.snapshot.tools[0].status, "complete");
+        assert_eq!(conversation.snapshot.tools[0].output, "[REDACTED]");
+        assert!(conversation.snapshot.tools[0].approval_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn fresh_tool_approvals_survive_redaction_for_allow_deny_and_stop() {
+        use std::io::Read;
+        for allow in [Some(true), Some(false), None] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 4096];
+                loop {
+                    let length = socket.read(&mut buffer).unwrap();
+                    assert!(length > 0);
+                    request.extend_from_slice(&buffer[..length]);
+                    if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                        let header = String::from_utf8_lossy(&request[..end]);
+                        let length = header
+                            .lines()
+                            .find_map(|line| {
+                                line.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|value| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if request.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").unwrap();
+                let chunk = json!({"id":"fixture", "object":"chat.completion.chunk", "model":"model",
+                    "choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{
+                        "index":0,"id":"approval-call-1","type":"function","function":{
+                            "name":"write","arguments":json!({"path":"approval.txt","content":"fixture"}).to_string()
+                        }}]},"finish_reason":null}]});
+                socket
+                    .write_all(format!("data: {chunk}\n\n").as_bytes())
+                    .unwrap();
+                socket.write_all(b"data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n").unwrap();
+            });
+            // A one-character test credential deterministically overlaps every UUID.
+            let fixture = ResidentFixture::with_endpoint_and_key(&endpoint, "-").await;
+            let client = fixture
+                .manager
+                .client(&fixture.initial.instance_id)
+                .await
+                .unwrap();
+            client.set_permission(PermissionMode::Ask).await.unwrap();
+            let (events, mut received) = mpsc::unbounded_channel::<Value>();
+            client
+                .subscribe(Channel::new(move |body| {
+                    let _ = events.send(body.deserialize().unwrap());
+                    Ok(())
+                }))
+                .await
+                .unwrap();
+            let run = Uuid::new_v4().to_string();
+            client
+                .request(
+                    json!({"type":"prompt","message":"Run the isolated test tool."}),
+                    Some(run.clone()),
+                )
+                .await
+                .unwrap();
+            let approval = timeout(Duration::from_secs(10), async {
+                while let Some(event) = received.recv().await {
+                    if event["data"]["tool"]["status"] == "awaiting_approval" {
+                        return event["data"]["tool"].clone();
+                    }
+                }
+                panic!("runtime ended without requesting approval");
+            })
+            .await
+            .unwrap();
+            let id = approval["approvalId"].as_str().unwrap();
+            assert!(
+                Uuid::parse_str(id).is_ok(),
+                "the UI must receive the original approval UUID"
+            );
+            assert_eq!(approval["toolCallId"], "approval-call-1");
+            assert!(
+                !Path::new(&fixture.projects[0])
+                    .join("approval.txt")
+                    .exists()
+            );
+            if let Some(allow) = allow {
+                client.decide(id.into(), allow).await.unwrap();
+                timeout(Duration::from_secs(10), async {
+                    while let Some(event) = received.recv().await {
+                        let tool = &event["data"]["tool"];
+                        if tool["runId"] == run
+                            && tool["output"]
+                                .as_str()
+                                .is_some_and(|output| !output.is_empty())
+                        {
+                            assert_eq!(tool["status"], if allow { "complete" } else { "denied" });
+                            return;
+                        }
+                    }
+                    panic!("approval did not reach the Pi tool guard");
+                })
+                .await
+                .unwrap();
+            }
+            client
+                .request(json!({"type":"clear_queue"}), None)
+                .await
+                .unwrap();
+            client.request(json!({"type":"abort"}), None).await.unwrap();
+            let snapshot = client.snapshot().await.unwrap();
+            assert!(
+                snapshot.active_run_id.is_none(),
+                "finishing approval must release the input controls"
+            );
+            let tools: Vec<_> = snapshot
+                .tools
+                .iter()
+                .filter(|tool| tool.run_id == run)
+                .collect();
+            assert_eq!(
+                tools.len(),
+                1,
+                "redaction must not create a second tool identity"
+            );
+            assert!(tools[0].approval_id.is_none());
+            if allow.is_none() {
+                assert_eq!(tools[0].status, "cancelled");
+            }
+            let file = Path::new(&fixture.projects[0]).join("approval.txt");
+            if allow == Some(true) {
+                assert_eq!(std::fs::read_to_string(file).unwrap(), "fixture");
+            } else {
+                assert!(!file.exists());
+            }
+            fixture.manager.disconnect().await;
+            server.join().unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn rejected_native_compaction_finishes_the_operation_without_a_fake_prompt() {
         let fixture = ResidentFixture::new().await;
@@ -1949,6 +2154,10 @@ mod tests {
         }
 
         async fn with_endpoint(endpoint: &str) -> Self {
+            Self::with_endpoint_and_key(endpoint, "offline-test-key").await
+        }
+
+        async fn with_endpoint_and_key(endpoint: &str, api_key: &str) -> Self {
             let root = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../work/resident-session-test")
                 .join(Uuid::new_v4().to_string());
@@ -1957,7 +2166,7 @@ mod tests {
             std::fs::create_dir_all(&source).unwrap();
             std::fs::create_dir_all(&directory).unwrap();
             std::fs::write(source.join("models.json"), json!({"providers":{"resident-test":{
-                "api":"openai-completions", "baseUrl":endpoint, "apiKey":"offline-test-key",
+                "api":"openai-completions", "baseUrl":endpoint, "apiKey":api_key,
                 "models":[{"id":"model","name":"Offline","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}]
             }}}).to_string()).unwrap();
             let mut projects = Vec::new();
