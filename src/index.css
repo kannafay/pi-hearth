@@ -384,11 +384,11 @@ select {
 .sidebar-sort-preview {
   position: fixed;
   z-index: 80;
-  height: 30px;
+  height: 32px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);

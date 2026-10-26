@@ -175,7 +175,7 @@ export function WorkspaceNavigationContent({
           data-sort-pinned={pinned}
           data-selected={selected}
           data-responding={responding ? true : undefined}
-          className="sidebar-sort-item sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
+          className="sidebar-sort-item sidebar-session-row group/session flex h-8 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
           <Tooltip disabled={sorting}>
             <TooltipTrigger
@@ -297,7 +297,7 @@ export function WorkspaceNavigationContent({
               <DropdownMenuContent
                 side="right"
                 align="start"
-                alignOffset={-6}
+                alignOffset={-4}
                 sideOffset={8}
                 className="min-w-36"
               >
@@ -430,7 +430,7 @@ export function WorkspaceNavigationContent({
                       onOpenChange={(open) => workspace.setProjectExpanded(project.path, open)}
                       className="sidebar-sort-item flex flex-col"
                     >
-                      <div className="sidebar-project-row flex h-7.5 min-w-0 items-center rounded-md">
+                      <div className="sidebar-project-row flex h-8 min-w-0 items-center rounded-md">
                         <Tooltip disabled={sorting}>
                           <TooltipTrigger
                             render={
@@ -537,7 +537,7 @@ export function WorkspaceNavigationContent({
                             <DropdownMenuContent
                               side="right"
                               align="start"
-                              alignOffset={-6}
+                              alignOffset={-4}
                               sideOffset={8}
                               className="min-w-44"
                             >
