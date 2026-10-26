@@ -1,46 +1,42 @@
-import { LoaderCircle, RefreshCw } from 'lucide-react'
+import { useConversationStore } from '@/features/conversation/store'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FieldDescription, FieldError } from '@/components/ui/field'
 import { isDesktop } from '@/lib/desktop'
-import { SettingsRow } from './settings-row'
-import { SettingsListGroup } from './settings-list-group'
+import { SettingsRefreshButton } from './settings-refresh-button'
 import type { ResourceCatalogState } from './use-resource-catalog'
-
-const scopes = [
-  { value: 'global', label: '全局' },
-  { value: 'project', label: '当前项目' },
-  { value: 'custom', label: '额外路径' },
-] as const
+import type { ResourceKind } from '@/lib/resources'
 
 export function ResourceSettings({
   kind,
   state,
 }: {
-  kind: 'skills' | 'mcp'
+  kind: ResourceKind
   state: ResourceCatalogState
 }) {
+  const status = useConversationStore((store) => store.status)
   const label = kind === 'skills' ? '技能' : 'MCP'
   const entries = state.catalog?.[kind]
-  // Keep this status aligned with the runtime's --no-skills / --no-mcp flags.
+  const disabled =
+    !isDesktop() ||
+    state.loading ||
+    state.pending ||
+    ['running', 'stopping', 'connecting'].includes(status)
   return (
-    <div aria-busy={state.loading} className="space-y-5">
-      <SettingsRow
-        title="当前已启用"
-        value="0 项"
-        description={`当前客户端尚未加载${label}，以下为本机和当前项目可发现的配置。`}
-      />
+    <div aria-busy={state.loading || Boolean(state.pending)} className="space-y-5 pt-5">
       <div className="flex items-center justify-between gap-3">
-        <FieldDescription>{entries ? `已发现 ${entries.length} 项` : '本机配置'}</FieldDescription>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!isDesktop() || state.loading}
-          aria-label={`刷新${label}列表`}
+        <FieldDescription>
+          {entries
+            ? `已启用 ${entries.filter((item) => item.enabled).length} / ${entries.length} 项`
+            : '本机配置'}
+        </FieldDescription>
+        <SettingsRefreshButton
+          label={`刷新${label}列表`}
+          loading={state.loading}
+          disabled={!isDesktop() || Boolean(state.pending)}
           onClick={state.refresh}
-        >
-          {state.loading ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}
-          刷新
-        </Button>
+        />
       </div>
       {state.loading && (
         <p role="status" className="text-xs text-muted-foreground">
@@ -48,42 +44,46 @@ export function ResourceSettings({
         </p>
       )}
       {state.error && <FieldError>{state.error}</FieldError>}
-      {!state.loading && entries && entries.length === 0 && (
+      {!state.loading && entries?.length === 0 && (
         <p className="text-xs leading-6 text-muted-foreground">
-          未发现{label === '技能' ? '技能' : ' MCP 服务配置'}。
+          未发现{kind === 'skills' ? '技能' : ' MCP 服务配置'}。
         </p>
       )}
-      {entries &&
-        scopes.map((scope) => {
-          const items = entries.filter((item) => item.scope === scope.value)
-          return items.length ? (
-            <SettingsListGroup key={scope.value} title={scope.label} count={items.length}>
-              <ul className="divide-y">
-                {items.map((item) => (
-                  <li key={`${item.source}:${item.name}`} className="space-y-1 px-2 py-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 text-[13px] leading-5 wrap-anywhere">
-                        {item.name}
-                      </span>
-                      <span className="shrink-0 text-xs leading-5 text-muted-foreground">
-                        {item.status === 'disabled' ? '配置已禁用' : '未加载'}
-                      </span>
-                    </div>
-                    <p className="text-xs leading-5 wrap-anywhere text-muted-foreground">
-                      {item.description}
-                    </p>
-                    {item.manualOnly && (
-                      <p className="text-xs text-muted-foreground">调用方式：仅手动调用</p>
-                    )}
-                    <p className="text-xs leading-5 wrap-anywhere text-muted-foreground">
-                      {item.source}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </SettingsListGroup>
-          ) : null
-        })}
+      {Boolean(entries?.length) && (
+        <ul className="divide-y overflow-hidden rounded-md border">
+          {entries?.map((item) => (
+            <li
+              key={`${item.source}:${item.name}`}
+              className="flex min-w-0 items-center gap-3 px-3 py-2"
+            >
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="min-w-0 flex-1 justify-start px-0 font-normal"
+                      disabled={!isDesktop()}
+                      onClick={() => void state.open(kind, item)}
+                    />
+                  }
+                >
+                  <span className="truncate">{item.name}</span>
+                </TooltipTrigger>
+                <TooltipContent className="wrap-anywhere" showArrow={false}>
+                  {item.source}
+                </TooltipContent>
+              </Tooltip>
+              <Switch
+                aria-label={`${label} ${item.name}`}
+                checked={item.enabled}
+                disabled={Boolean(disabled)}
+                onCheckedChange={(enabled) => void state.setEnabled(kind, item, enabled)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
       {state.catalog?.warnings.map((warning) => (
         <p key={warning} className="text-xs leading-5 text-muted-foreground">
           {warning}

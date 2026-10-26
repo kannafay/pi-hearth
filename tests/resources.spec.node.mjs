@@ -5,6 +5,8 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { resourceCatalog } from '../runtime/resources.mjs'
+import { resourceKey, readResourcePreferences } from '../runtime/resources.mjs'
+import { selectedMcpConfig } from '../runtime/resource-extension.mjs'
 
 const sdkRoot = path.resolve('node_modules/@earendil-works/pi-coding-agent/dist')
 const sdk = {
@@ -158,4 +160,89 @@ test('the native helper resources action resolves SDK modules and returns a JSON
   )
   assert.equal(child.status, 0, child.stderr)
   assert.equal(JSON.parse(child.stdout).skills[0].name, 'cli')
+})
+
+test('resource enablement is explicit per entry and persisted independently of Pi configuration', async () => {
+  const f = await fixture()
+  const file = path.join(f.home, 'resources.json')
+  assert.deepEqual(await readResourcePreferences(file), {})
+  const source = path.join(f.agent, 'mcp.json')
+  const loaded = {
+    servers: [
+      { name: 'one', source, config: { command: 'never-run', enabled: false } },
+      { name: 'two', source, config: { command: 'never-run' } },
+    ],
+    errors: [],
+  }
+  assert.deepEqual(selectedMcpConfig(loaded, {}).servers, [])
+  const preferences = {
+    [resourceKey('mcp', source, 'one')]: true,
+    [resourceKey('mcp', source, 'two')]: false,
+  }
+  await writeFile(file, JSON.stringify(preferences))
+  const selected = selectedMcpConfig(loaded, await readResourcePreferences(file))
+  assert.equal(selected.servers.length, 1)
+  assert.equal(selected.servers[0].name, 'one')
+  assert.equal(selected.servers[0].config.enabled, true)
+  assert.equal(selected.servers[0].config.exposure, 'direct')
+  assert.equal(loaded.servers[0].config.enabled, false)
+  await writeFile(file, 'bad json')
+  await assert.rejects(readResourcePreferences(file), /无法读取资源启停设置/)
+})
+
+test('model refresh uses the pinned offline registry and returns no credentials', async () => {
+  const f = await fixture()
+  const file = path.join(f.agent, 'models.json')
+  const models = {
+    providers: {
+      'catalog-test': {
+        api: 'openai-completions',
+        baseUrl: 'http://127.0.0.1:9/v1',
+        apiKey: 'secret-sentinel',
+        models: [
+          { id: 'first', name: 'First', input: ['text'], contextWindow: 128000, maxTokens: 4096 },
+        ],
+      },
+    },
+  }
+  await writeFile(file, JSON.stringify(models))
+  await writeFile(path.join(f.agent, 'auth.json'), '{}')
+  const read = () =>
+    spawnSync(
+      process.execPath,
+      ['runtime/session-catalog.mjs', path.join(sdkRoot, 'core/session-manager.js')],
+      {
+        input: JSON.stringify({ action: 'models', directory: f.agent }),
+        encoding: 'utf8',
+        timeout: 10000,
+        env: {
+          ...process.env,
+          PI_CODING_AGENT_DIR: f.agent,
+          USERPROFILE: f.home,
+          HOME: f.home,
+          PI_OFFLINE: '1',
+        },
+      },
+    )
+  const first = read()
+  assert.equal(first.status, 0, first.stderr)
+  assert.ok(
+    JSON.parse(first.stdout).some(
+      (item) => item.provider === 'catalog-test' && item.id === 'first',
+    ),
+  )
+  assert.equal(first.stdout.includes('secret-sentinel'), false)
+  models.providers['catalog-test'].models.push({
+    ...models.providers['catalog-test'].models[0],
+    id: 'second',
+    name: 'Second',
+  })
+  await writeFile(file, JSON.stringify(models))
+  const second = read()
+  assert.equal(second.status, 0, second.stderr)
+  assert.ok(
+    JSON.parse(second.stdout).some(
+      (item) => item.provider === 'catalog-test' && item.id === 'second',
+    ),
+  )
 })

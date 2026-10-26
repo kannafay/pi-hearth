@@ -3,13 +3,18 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { isDesktop } from '@/lib/desktop'
-import { loadResourceCatalog } from '@/lib/resources'
+import { loadResourceCatalog, setResourceEnabled, openResource } from '@/lib/resources'
+import { useConversationStore } from '@/features/conversation/store'
 import type { ResourceCatalog } from '@/lib/generated/pi'
 import { ResourceSettings } from './resource-settings'
 import { useResourceCatalog } from './use-resource-catalog'
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: vi.fn(() => true) }))
-vi.mock('@/lib/resources', () => ({ loadResourceCatalog: vi.fn() }))
+vi.mock('@/lib/resources', () => ({
+  loadResourceCatalog: vi.fn(),
+  setResourceEnabled: vi.fn(),
+  openResource: vi.fn(),
+}))
 
 const catalog: ResourceCatalog = {
   skills: [
@@ -20,6 +25,7 @@ const catalog: ResourceCatalog = {
       scope: 'project',
       status: 'unloaded',
       manualOnly: true,
+      enabled: false,
     },
   ],
   mcp: [
@@ -30,6 +36,7 @@ const catalog: ResourceCatalog = {
       scope: 'global',
       status: 'disabled',
       manualOnly: false,
+      enabled: false,
     },
   ],
   warnings: [],
@@ -40,27 +47,42 @@ beforeEach(() => {
   vi.mocked(isDesktop).mockReturnValue(true)
   vi.mocked(loadResourceCatalog).mockResolvedValue(catalog)
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
+  useConversationStore.setState(useConversationStore.getInitialState(), true)
+  vi.mocked(openResource).mockResolvedValue(undefined)
 })
 
-test('read-only groups show scope, source and actual loading status', async () => {
+test('one flat name-only list opens files, reveals paths on hover and provides real switches', async () => {
   const user = userEvent.setup()
   const refresh = vi.fn()
+  const open = vi.fn().mockResolvedValue(undefined)
+  const setEnabled = vi.fn().mockResolvedValue(undefined)
+  const actions = { pending: null, open, setEnabled }
   const view = render(
-    <ResourceSettings kind="skills" state={{ catalog, loading: false, error: null, refresh }} />,
+    <ResourceSettings
+      kind="skills"
+      state={{ catalog, loading: false, error: null, refresh, ...actions }}
+    />,
   )
-  expect(screen.getByText('0 项')).toBeVisible()
-  await user.click(screen.getByRole('button', { name: '当前项目' }))
+  expect(screen.getByText('已启用 0 / 1 项')).toBeVisible()
   expect(screen.getByText('review')).toBeVisible()
-  expect(screen.getByText('未加载')).toBeVisible()
-  expect(screen.getByText(catalog.skills[0].source)).toBeVisible()
-  expect(screen.getByText('调用方式：仅手动调用')).toBeVisible()
-  expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+  expect(screen.queryByText('当前项目')).not.toBeInTheDocument()
+  expect(screen.queryByText('检查项目代码')).not.toBeInTheDocument()
+  expect(screen.queryByText(catalog.skills[0].source)).not.toBeInTheDocument()
+  await user.hover(screen.getByRole('button', { name: 'review' }))
+  expect(await screen.findByText(catalog.skills[0].source)).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'review' }))
+  expect(open).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0])
+  await user.click(screen.getByRole('switch', { name: '技能 review' }))
+  expect(setEnabled).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0], true)
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   view.rerender(
-    <ResourceSettings kind="mcp" state={{ catalog, loading: false, error: null, refresh }} />,
+    <ResourceSettings
+      kind="mcp"
+      state={{ catalog, loading: false, error: null, refresh, ...actions }}
+    />,
   )
-  await user.click(screen.getByRole('button', { name: '全局' }))
-  expect(screen.getByText('配置已禁用')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'docs' })).toBeVisible()
+  expect(screen.getByRole('switch', { name: 'MCP docs' })).not.toBeChecked()
   await user.click(screen.getByRole('button', { name: '刷新MCP列表' }))
   expect(refresh).toHaveBeenCalledOnce()
 })
@@ -69,12 +91,38 @@ test('a pending read never flashes an empty-state message', () => {
   render(
     <ResourceSettings
       kind="skills"
-      state={{ catalog: null, loading: true, error: null, refresh: vi.fn() }}
+      state={{
+        catalog: null,
+        loading: true,
+        error: null,
+        refresh: vi.fn(),
+        pending: null,
+        open: vi.fn(),
+        setEnabled: vi.fn(),
+      }}
     />,
   )
   expect(screen.getByRole('status')).toHaveTextContent('正在读取技能列表')
   expect(screen.queryByText('未发现技能。')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '刷新技能列表' })).toBeDisabled()
+})
+
+test('switch writes wait for backend confirmation, retain old state on failure and support retry', async () => {
+  const { result } = renderHook(() => useResourceCatalog(true, true))
+  await waitFor(() => expect(result.current.catalog).toEqual(catalog))
+  vi.mocked(setResourceEnabled).mockRejectedValueOnce(new Error('无法重载资源'))
+  await act(() => result.current.setEnabled('skills', catalog.skills[0], true))
+  expect(result.current.catalog?.skills[0].enabled).toBe(false)
+  expect(result.current.error).toContain('无法重载资源')
+  const updated = structuredClone(catalog)
+  updated.skills[0].enabled = true
+  vi.mocked(setResourceEnabled).mockResolvedValueOnce(updated)
+  await act(() => result.current.setEnabled('skills', catalog.skills[0], true))
+  expect(result.current.catalog?.skills[0].enabled).toBe(true)
+  expect(result.current.pending).toBeNull()
+  expect(setResourceEnabled).toHaveBeenLastCalledWith('skills', catalog.skills[0], null, true)
+  await act(() => result.current.open('skills', catalog.skills[0]))
+  expect(openResource).toHaveBeenCalledExactlyOnceWith('skills', catalog.skills[0], null)
 })
 
 test('resource tabs share one bounded result and refresh reads new configuration', async () => {

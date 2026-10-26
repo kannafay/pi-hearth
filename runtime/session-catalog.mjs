@@ -159,6 +159,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         new URL('../extensions/mcp/config.js', pathToFileURL(process.argv[2]))
       )
       result = await resourceCatalog(request, { ...skills, ...mcp }, agentDir)
+    } else if (request.action === 'models') {
+      process.env.PI_OFFLINE = '1'
+      const { ModelRuntime } = await import(
+        new URL('./model-runtime.js', pathToFileURL(process.argv[2]))
+      )
+      const runtime = await ModelRuntime.create({
+        authPath: path.join(request.directory, 'auth.json'),
+        modelsPath: path.join(request.directory, 'models.json'),
+        allowModelNetwork: false,
+      })
+      if (runtime.getError()) throw new Error('模型配置格式有误，请检查本机 Pi 配置。')
+      result = runtime
+        .getAvailableSnapshot()
+        .map(({ provider, id, name }) => ({ provider, id, name }))
     } else if (request.action === 'history') result = await history(request.path, sdk)
     else if (request.action === 'rename')
       result = await renameSession(request.path, request.name, sdk)

@@ -43,7 +43,7 @@ export type ResourceScope = "global" | "project" | "custom";
 
 export type ResourceStatus = "unloaded" | "disabled";
 
-export type ResourceInfo = { name: string, description: string, source: string, scope: ResourceScope, status: ResourceStatus, manualOnly: boolean, };
+export type ResourceInfo = { name: string, description: string, source: string, scope: ResourceScope, status: ResourceStatus, manualOnly: boolean, enabled: boolean, };
 
 export type ResourceCatalog = { skills: Array<ResourceInfo>, mcp: Array<ResourceInfo>, warnings: Array<string>, };
 

@@ -3,6 +3,19 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
+export const resourceKey = (kind, source, name) => JSON.stringify([kind, source, name])
+
+export async function readResourcePreferences(file) {
+  try {
+    const value = JSON.parse(await readFile(file, 'utf8'))
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid')
+    return value
+  } catch (error) {
+    if (error.code === 'ENOENT') return {}
+    throw new Error('无法读取资源启停设置。')
+  }
+}
+
 const resolve = (value, base, home) =>
   path.resolve(
     base,

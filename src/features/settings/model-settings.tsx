@@ -7,9 +7,29 @@ import { isDesktop } from '@/lib/desktop'
 import { SettingsRow } from './settings-row'
 import { FieldLabel } from '@/components/ui/field'
 import { SettingsListGroup } from './settings-list-group'
+import { useState } from 'react'
+import { FieldError } from '@/components/ui/field'
+import { loadModelCatalog } from '@/lib/resources'
+import type { ModelInfo } from '@/lib/generated/pi'
+import { SettingsRefreshButton } from './settings-refresh-button'
 
 export function ModelSettings() {
-  const models = useConversationStore((state) => state.models)
+  const currentModels = useConversationStore((state) => state.models)
+  const [refreshedModels, setRefreshedModels] = useState<ModelInfo[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const models = refreshedModels ?? currentModels
+  async function refresh() {
+    setLoading(true)
+    setError(null)
+    try {
+      setRefreshedModels(await loadModelCatalog())
+    } catch (error) {
+      setError(String(error))
+    } finally {
+      setLoading(false)
+    }
+  }
   const { defaultModel, defaultModelPending, settingsReady, setDefaultModel } = useWorkspaceStore(
     useShallow((state) => ({
       defaultModel: state.defaultModel,
@@ -27,12 +47,21 @@ export function ModelSettings() {
     <div>
       <SettingsRow
         title="新对话默认模型"
+        control={
+          <SettingsRefreshButton
+            label="刷新模型列表"
+            loading={loading}
+            disabled={!isDesktop()}
+            onClick={() => void refresh()}
+          />
+        }
         description={
           defaultModel
             ? `${defaultModel.name} · ${defaultModel.provider}`
             : '尚未设置，新对话将自动选择可用模型。'
         }
       />
+      {error && <FieldError>{error}</FieldError>}
       <RadioGroup
         aria-label="新对话默认模型"
         value={defaultModel ? modelKey(defaultModel) : null}
@@ -82,7 +111,7 @@ export function ModelSettings() {
         默认模型仅对之后新建的对话生效，已有会话保持各自的模型，也可以在消息输入区单独切换。
       </p>
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
-        在 Pi 或 CC Switch 中管理模型和密钥，更新后新建聊天即可读取。
+        在 Pi 或 CC Switch 中管理模型和密钥，更新后点击刷新即可读取。
       </p>
     </div>
   )

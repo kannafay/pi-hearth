@@ -167,8 +167,23 @@ impl PiClient {
             include_str!("../../../runtime/permissions.mjs"),
         )
         .map_err(|_| "无法安装权限模块。")?;
+        std::fs::write(
+            data_dir.join("runtime/resources.mjs"),
+            include_str!("../../../runtime/resources.mjs"),
+        )
+        .map_err(|_| "无法安装资源模块。")?;
+        let resources_extension = data_dir.join("runtime/resource-extension.mjs");
+        std::fs::write(
+            &resources_extension,
+            include_str!("../../../runtime/resource-extension.mjs"),
+        )
+        .map_err(|_| "无法安装资源模块。")?;
         let agent_dir = data_dir.join("pi");
-        let config = prepare_config(source_agent_dir, &agent_dir)?;
+        let mut config = prepare_config(source_agent_dir, &agent_dir)?;
+        config.secrets.extend(super::config::mcp_secrets(
+            source_agent_dir,
+            Path::new(&project_path),
+        ));
         let global_instructions = ["AGENTS.md", "CLAUDE.md"]
             .iter()
             .map(|name| source_agent_dir.join(name))
@@ -185,7 +200,7 @@ impl PiClient {
         std::fs::create_dir_all(&sessions).map_err(|_| "无法创建 Pi 会话目录。")?;
         let mut command = Command::new("node");
         command
-            .arg(cli)
+            .arg(&cli)
             .args([
                 "--mode",
                 "rpc",
@@ -205,11 +220,25 @@ impl PiClient {
             ])
             .arg("--extension")
             .arg(&guard)
+            .arg("--extension")
+            .arg(&resources_extension)
             .arg("--session-dir")
             .arg(&sessions)
             .env("PI_CODING_AGENT_DIR", &agent_dir)
             .env("PI_TELEMETRY", "0")
             .env("HEARTH_MESSAGE_ACTION_TOKEN", &action_token)
+            .env("HEARTH_RESOURCES_CONFIG", data_dir.join("resources.json"))
+            .env(
+                "HEARTH_RESOURCES_ACK",
+                data_dir.join("runtime/resources-reloaded"),
+            )
+            .env("HEARTH_SOURCE_AGENT_DIR", source_agent_dir)
+            .env(
+                "HEARTH_PI_MODULES",
+                cli.parent()
+                    .and_then(Path::parent)
+                    .ok_or("缺少 Pi 模块目录。")?,
+            )
             .env(
                 "HEARTH_FILE_STORAGE_CONFIG",
                 data_dir.join("runtime/file-storage.json"),
@@ -593,6 +622,19 @@ impl PiClient {
         Ok(snapshot)
     }
 
+    async fn reload_resources(&self, data: &Path) -> Result<(), String> {
+        self.check_guard().await?;
+        let revision = Uuid::new_v4().to_string();
+        self.request(json!({"type":"prompt", "message":format!("/hearth-resources-reload {} {}", self.action_token, revision)}), None).await?;
+        let acknowledged = tokio::fs::read_to_string(data.join("runtime/resources-reloaded"))
+            .await
+            .unwrap_or_default();
+        if acknowledged != revision {
+            return Err("Pi 未确认资源重载完成。".into());
+        }
+        self.check_guard().await
+    }
+
     async fn new_session(
         &self,
         channel: Channel<PiEvent>,
@@ -704,11 +746,15 @@ impl PiClient {
     async fn check_guard(&self) -> Result<(), String> {
         let commands = self.request(json!({"type":"get_commands"}), None).await?;
         if !commands["commands"].as_array().is_some_and(|commands| {
-            commands.iter().any(|command| {
-                command["name"] == "hearth-guard-ready" && command["source"] == "extension"
-            })
+            ["hearth-guard-ready", "hearth-resources-reload"]
+                .iter()
+                .all(|name| {
+                    commands
+                        .iter()
+                        .any(|command| command["name"] == *name && command["source"] == "extension")
+                })
         }) {
-            return Err("工具审批模块未加载，已关闭 Pi 连接。请重新构建客户端。".into());
+            return Err("工具审批或资源模块未加载，已关闭 Pi 连接。请重新构建客户端。".into());
         }
         Ok(())
     }
@@ -984,13 +1030,16 @@ fn configuration_revision(source: &Path, project: &Path) -> Result<u64, String> 
         "models.json",
         "auth.json",
         "settings.json",
+        "mcp.json",
         "AGENTS.md",
         "CLAUDE.md",
     ]
     .map(|name| source.join(name))
     .into_iter()
-    .chain([project.join(".pi/settings.json")])
-    {
+    .chain([
+        project.join(".pi/settings.json"),
+        project.join(".pi/mcp.json"),
+    ]) {
         let content = match std::fs::read(&file) {
             Ok(content) => Some(content),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -1018,6 +1067,48 @@ impl Drop for PiManager {
 }
 
 impl PiManager {
+    pub(super) async fn configure_resources(
+        &self,
+        data: &Path,
+        settings: &HashMap<String, bool>,
+    ) -> Result<(), String> {
+        let mut runtime = self.runtime.lock().await;
+        let client = runtime.clone();
+        let _actions = if let Some(client) = &client {
+            Some(
+                client
+                    .actions
+                    .try_lock()
+                    .map_err(|_| "请等待当前操作完成。")?,
+            )
+        } else {
+            None
+        };
+        if let Some(client) = &client {
+            if client.snapshot().await?.active_run_id.is_some() {
+                return Err("请等待当前回复结束后修改资源。".into());
+            }
+        }
+        let previous = super::resources::preferences(data).await?;
+        super::resources::save_preferences(data, settings).await?;
+        if let Some(client) = &client {
+            if let Err(error) = client.reload_resources(data).await {
+                super::resources::save_preferences(data, &previous).await?;
+                if client.reload_resources(data).await.is_err() {
+                    client.shutdown().await;
+                    *runtime = None;
+                }
+                return Err(format!("资源未能重载，已恢复原设置：{error}"));
+            }
+        }
+        // Cached runtimes must not keep tools from a server the user just disabled.
+        let retained = std::mem::take(&mut *self.retained.lock().await);
+        for entry in retained {
+            entry.client.shutdown().await;
+        }
+        Ok(())
+    }
+
     // Rebind a loaded native session without parsing its history or spawning Pi.
     pub async fn resume_existing(
         &self,
@@ -1504,6 +1595,126 @@ impl PiManager {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[tokio::test]
+    async fn failed_resource_reload_rolls_back_preferences_and_drops_the_broken_runtime() {
+        let fixture = ResidentFixture::new().await;
+        let data = fixture.root.join("data");
+        let before = std::fs::read_to_string(&fixture.files[0]).unwrap();
+        // Simulate a reload that Pi reports as handled but cannot acknowledge.
+        std::fs::create_dir_all(data.join("runtime/resources-reloaded")).unwrap();
+        let result = fixture
+            .manager
+            .configure_resources(&data, &HashMap::from([("fixture".into(), true)]))
+            .await;
+        assert!(result.is_err());
+        assert!(
+            super::super::resources::preferences(&data)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            fixture
+                .manager
+                .client(&fixture.initial.instance_id)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&fixture.files[0]).unwrap(), before);
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn resource_switches_reload_skills_and_mcp_without_replacing_the_session() {
+        let fixture = ResidentFixture::new().await;
+        let data = fixture.root.join("data");
+        let skill = fixture.source.join("skills/test/SKILL.md");
+        std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        std::fs::write(
+            &skill,
+            "---\nname: switch-test\ndescription: test skill\n---\nTest instructions.\n",
+        )
+        .unwrap();
+        let skill = dunce::canonicalize(skill)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mcp = fixture.source.join("mcp.json");
+        let marker = fixture.root.join("mcp-started");
+        let server = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/mcp-server.mjs");
+        std::fs::write(
+            &mcp,
+            json!({"mcpServers":{"fixture":{"command":"node","args":[server,marker]}}}).to_string(),
+        )
+        .unwrap();
+        let mcp = dunce::canonicalize(mcp)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let skill_key = serde_json::to_string(&("skills", &skill, "switch-test")).unwrap();
+        let mcp_key = serde_json::to_string(&("mcp", &mcp, "fixture")).unwrap();
+        let settings = HashMap::from([(skill_key.clone(), true), (mcp_key.clone(), true)]);
+        let client = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        fixture
+            .manager
+            .configure_resources(&data, &settings)
+            .await
+            .unwrap();
+        let commands = client
+            .request(json!({"type":"get_commands"}), None)
+            .await
+            .unwrap();
+        assert!(
+            commands["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["name"] == "skill:switch-test")
+        );
+        timeout(Duration::from_secs(10), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let snapshot = client.snapshot().await.unwrap();
+        assert_eq!(snapshot.session_id, fixture.initial.session_id);
+        assert_eq!(
+            snapshot.model.as_ref().map(|m| (&m.provider, &m.id)),
+            fixture.initial.model.as_ref().map(|m| (&m.provider, &m.id))
+        );
+        assert_eq!(snapshot.messages.len(), fixture.initial.messages.len());
+        assert_eq!(
+            super::super::resources::preferences(&data).await.unwrap(),
+            settings
+        );
+        fixture
+            .manager
+            .configure_resources(
+                &data,
+                &HashMap::from([(skill_key, false), (mcp_key, false)]),
+            )
+            .await
+            .unwrap();
+        let commands = client
+            .request(json!({"type":"get_commands"}), None)
+            .await
+            .unwrap();
+        assert!(
+            !commands["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["name"] == "skill:switch-test")
+        );
+        fixture.manager.disconnect().await;
+    }
 
     struct ResidentFixture {
         root: PathBuf,

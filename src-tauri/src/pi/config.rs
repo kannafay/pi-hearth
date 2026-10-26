@@ -9,6 +9,59 @@ pub struct RuntimeConfig {
     pub secrets: Vec<String>,
 }
 
+pub(super) fn mcp_secrets(source: &Path, project: &Path) -> Vec<String> {
+    fn collect(value: &Value, sensitive: bool, secrets: &mut Vec<String>) {
+        match value {
+            Value::Object(fields) => {
+                for (key, value) in fields {
+                    collect(
+                        value,
+                        sensitive
+                            || matches!(
+                                key.as_str(),
+                                "headers"
+                                    | "env"
+                                    | "apiKey"
+                                    | "token"
+                                    | "password"
+                                    | "secret"
+                                    | "url"
+                            ),
+                        secrets,
+                    );
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    collect(value, sensitive, secrets);
+                }
+            }
+            Value::String(value) if sensitive && !value.is_empty() => {
+                secrets.push(value.clone());
+                for part in value.split("${").skip(1) {
+                    if let Some((name, _)) = part.split_once('}') {
+                        if let Ok(resolved) = std::env::var(name) {
+                            if !resolved.is_empty() {
+                                secrets.push(resolved);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut secrets = Vec::new();
+    for file in [source.join("mcp.json"), project.join(".pi/mcp.json")] {
+        if let Ok(bytes) = std::fs::read(file) {
+            if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+                collect(&value, false, &mut secrets);
+            }
+        }
+    }
+    secrets
+}
+
 pub fn local_agent_directory() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("PI_CODING_AGENT_DIR") {
         return Ok(path.into());
@@ -179,6 +232,26 @@ pub fn redact(mut text: String, secrets: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_credentials_are_redacted_without_changing_source_files() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/mcp-secrets-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root).unwrap();
+        let text = json!({"mcpServers":{"fixture":{"url":"https://example.invalid/?key=private-key","headers":{"Authorization":"Bearer private-token"},"env":{"TOKEN":"private-env"}}}}).to_string();
+        std::fs::write(root.join("mcp.json"), &text).unwrap();
+        let secrets = mcp_secrets(&root, &root);
+        let redacted = redact(
+            "https://example.invalid/?key=private-key Bearer private-token private-env".into(),
+            &secrets,
+        );
+        assert!(!redacted.contains("private-"));
+        assert_eq!(
+            std::fs::read_to_string(root.join("mcp.json")).unwrap(),
+            text
+        );
+    }
 
     #[test]
     fn default_effort_uses_model_override_then_global_then_pi_default() {

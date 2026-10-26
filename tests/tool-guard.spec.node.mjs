@@ -127,6 +127,40 @@ function permissionContext(mode, confirm = async () => false) {
   }
 }
 
+test('only registered enabled MCP tools enter the existing permission pipeline', async () => {
+  const event = { toolName: 'mcp__fixture__echo', input: { text: 'hello' }, toolCallId: 'mcp-test' }
+  const enabled = new Set([event.toolName])
+  assert.equal((await guardTool(event, permissionContext('full'))).block, true)
+  let confirmations = 0
+  const ask = permissionContext('ask', async () => {
+    confirmations++
+    return true
+  })
+  assert.equal(await guardTool(event, ask, undefined, enabled), undefined)
+  assert.equal(confirmations, 1)
+  assert.equal((await guardTool(event, permissionContext('ask'), undefined, enabled)).block, true)
+  assert.equal(
+    await guardTool(event, permissionContext('auto'), async () => true, enabled),
+    undefined,
+  )
+  assert.equal(
+    (await guardTool(event, permissionContext('auto'), async () => false, enabled)).block,
+    true,
+  )
+  assert.equal(await guardTool(event, permissionContext('full'), undefined, enabled), undefined)
+  assert.equal(
+    (
+      await guardTool(
+        event,
+        { ...permissionContext('full'), signal: AbortSignal.abort() },
+        undefined,
+        enabled,
+      )
+    ).block,
+    true,
+  )
+})
+
 test('permissions default to ask and the latest session entry survives a branch rewind', () => {
   assert.equal(sessionPermission({}), 'ask')
   const ctx = permissionContext('full')

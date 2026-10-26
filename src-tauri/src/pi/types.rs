@@ -385,6 +385,8 @@ pub struct ResourceInfo {
     pub scope: ResourceScope,
     pub status: ResourceStatus,
     pub manual_only: bool,
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]

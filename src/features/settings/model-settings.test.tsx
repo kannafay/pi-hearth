@@ -6,9 +6,11 @@ import { useWorkspaceStore } from '@/app/store'
 import { updateAppSettings } from '@/lib/app-settings'
 import type { AppSettings } from '@/lib/generated/pi'
 import { ModelSettings } from './model-settings'
+import { loadModelCatalog } from '@/lib/resources'
 
 vi.mock('@/lib/app-settings', () => ({ loadAppSettings: vi.fn(), updateAppSettings: vi.fn() }))
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
+vi.mock('@/lib/resources', () => ({ loadModelCatalog: vi.fn() }))
 
 const first = { provider: 'first', id: 'shared', name: 'Alpha' }
 const second = { provider: 'second', id: 'shared', name: 'Alpha' }
@@ -28,6 +30,21 @@ beforeEach(() => {
     models: [first, second, third],
     changeModel: vi.fn().mockResolvedValue(undefined),
   })
+})
+
+test('refresh reads new models without changing saved defaults or the active conversation', async () => {
+  vi.mocked(loadModelCatalog).mockResolvedValueOnce([
+    { provider: 'new', id: 'latest', name: 'Latest' },
+  ])
+  const user = userEvent.setup()
+  render(<ModelSettings />)
+  await user.click(screen.getByRole('button', { name: '刷新模型列表' }))
+  await user.click(await screen.findByRole('button', { name: 'new' }))
+  expect(screen.getByRole('radio', { name: 'Latest · new' })).toBeVisible()
+  expect(useWorkspaceStore.getState().defaultModel).toEqual(first)
+  expect(useConversationStore.getState().model).toEqual(third)
+  expect(useConversationStore.getState().models).toEqual([first, second, third])
+  expect(updateAppSettings).not.toHaveBeenCalled()
 })
 
 test('provider groups save the exact default provider/model without changing the current conversation', async () => {

@@ -68,6 +68,14 @@ async fn save(data: &Path, preferences: &Preferences) -> Result<(), String> {
 }
 
 pub async fn helper(data: &Path, request: Value) -> Result<Value, String> {
+    helper_with_environment(data, request, HashMap::new()).await
+}
+
+pub(super) async fn helper_with_environment(
+    data: &Path,
+    request: Value,
+    environment: HashMap<String, String>,
+) -> Result<Value, String> {
     let runtime = data.join("runtime");
     tokio::fs::create_dir_all(&runtime)
         .await
@@ -106,6 +114,7 @@ pub async fn helper(data: &Path, request: Value) -> Result<Value, String> {
         .arg(helper_path)
         .arg(sdk)
         .env("PI_CODING_AGENT_DIR", local_agent_directory()?)
+        .envs(environment)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -553,6 +562,10 @@ fn existing_project_directory(path: &Path) -> Result<PathBuf, String> {
 #[tauri::command]
 pub fn workspace_open_project_folder(path: String) -> Result<(), String> {
     let directory = existing_project_directory(Path::new(&path))?;
+    open_path(&directory)
+}
+
+pub(super) fn open_path(directory: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
@@ -569,7 +582,7 @@ pub fn workspace_open_project_folder(path: String) -> Result<(), String> {
             )
         } as isize;
         if result <= 32 {
-            return Err("无法在资源管理器中打开项目文件夹。".into());
+            return Err("无法打开本机文件或文件夹。".into());
         }
     }
     #[cfg(not(windows))]

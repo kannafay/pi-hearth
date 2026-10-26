@@ -72,14 +72,15 @@ async function isProjectTarget(input, cwd) {
   }
 }
 
-export async function guardTool(event, ctx, assessRisk) {
-  if (!['read', 'write', 'edit', 'bash', 'powershell'].includes(event.toolName)) {
+export async function guardTool(event, ctx, assessRisk, enabledMcpTools = new Set()) {
+  const mcp = enabledMcpTools.has(event.toolName)
+  if (!mcp && !['read', 'write', 'edit', 'bash', 'powershell'].includes(event.toolName)) {
     return { block: true, reason: '此工具尚未在 pi-hearth 中启用。' }
   }
   try {
     if (ctx.signal?.aborted) return { block: true, reason: '任务已停止。' }
     const permission = sessionPermission(ctx)
-    if (typeof event.input.path === 'string') {
+    if (!mcp && typeof event.input.path === 'string') {
       event.input.path = resolveToolPath(event.input.path, ctx.cwd)
       if (event.toolName === 'read') {
         const target = await realpath(event.input.path).catch(() => null)
@@ -92,7 +93,8 @@ export async function guardTool(event, ctx, assessRisk) {
     if (permission === 'full') return
     const canAssess =
       permission === 'auto' &&
-      (['bash', 'powershell'].includes(event.toolName) ||
+      (mcp ||
+        ['bash', 'powershell'].includes(event.toolName) ||
         (typeof event.input.path === 'string' &&
           (await isProjectTarget(event.input.path, ctx.cwd))))
     if (canAssess && assessRisk) {
@@ -126,7 +128,24 @@ export async function guardTool(event, ctx, assessRisk) {
 }
 
 export default function registerGuard(pi) {
-  pi.on('tool_call', (event, ctx) => guardTool(event, ctx, evaluateToolRisk))
+  pi.on('tool_call', (event, ctx) =>
+    guardTool(
+      event,
+      ctx,
+      evaluateToolRisk,
+      new Set(
+        (pi.getAllTools?.() ?? [])
+          .filter(
+            (tool) =>
+              tool.name.startsWith('mcp__') ||
+              ['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(
+                tool.name,
+              ),
+          )
+          .map((tool) => tool.name),
+      ),
+    ),
+  )
   pi.on('before_agent_start', (event, ctx) =>
     prepareFileStorage(event, ctx, pi, process.env.HEARTH_FILE_STORAGE_CONFIG),
   )
