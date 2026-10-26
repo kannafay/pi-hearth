@@ -27,7 +27,7 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        'pointer-events-none fixed inset-x-4 top-[calc(var(--titlebar-height)+0.75rem)] z-100 mx-auto w-auto max-w-sm outline-none sm:w-full',
+        'pointer-events-none fixed inset-x-4 top-[calc(var(--titlebar-height)+0.75rem)] z-100 mx-auto w-auto max-w-sm font-toast outline-none [--radius:0.625rem] sm:w-full',
         className,
       )}
       {...props}
@@ -89,7 +89,10 @@ function ToastDescription({ className, ...props }: ToastPrimitive.Description.Pr
   return (
     <ToastPrimitive.Description
       data-slot="toast-description"
-      className={cn('text-sm text-muted-foreground', className)}
+      className={cn(
+        'max-h-24 overflow-y-auto text-sm whitespace-pre-wrap wrap-anywhere text-muted-foreground',
+        className,
+      )}
       {...props}
     />
   )
