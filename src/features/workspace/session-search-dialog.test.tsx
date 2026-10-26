@@ -48,6 +48,19 @@ test('body search highlights the snippet and Enter opens its exact native sessio
   expect(onClose).toHaveBeenCalledOnce()
 })
 
+test('replying does not lock recent search results or keyboard navigation', async () => {
+  const openSession = vi.fn()
+  useWorkspaceStore.setState({ sessions: [result.session], openSession })
+  useConversationStore.setState({ status: 'running' })
+  const user = userEvent.setup()
+  render(<SessionSearchDialog onClose={vi.fn()} />)
+  expect(screen.getByRole('option', { name: /设计讨论/ })).toBeEnabled()
+  expect(screen.queryByText('当前任务结束后可以切换会话')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('combobox')).toHaveFocus())
+  await user.keyboard('{Enter}')
+  expect(openSession).toHaveBeenCalledExactlyOnceWith(result.session)
+})
+
 test('archived conversations are absent from recents and stale search responses', async () => {
   useWorkspaceStore.setState({
     sessions: [result.session],

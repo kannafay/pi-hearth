@@ -131,6 +131,9 @@ function WorkspaceLayout() {
         state.status === 'ready' &&
         (state.lastLocalActivityAt !== previous.lastLocalActivityAt ||
           (previous.activeRunId !== null && state.activeRunId === null))
+      const backgroundFinished = [...previous.backgroundSessions.keys()].some(
+        (id) => !state.backgroundSessions.has(id) && state.instanceId !== id,
+      )
       if (
         state.instanceId !== previous.instanceId ||
         state.sessionId !== previous.sessionId ||
@@ -139,7 +142,7 @@ function WorkspaceLayout() {
         finished
       )
         useWorkspaceStore.getState().syncActiveSession()
-      if (finished) void useWorkspaceStore.getState().refresh()
+      if (finished || backgroundFinished) void useWorkspaceStore.getState().refresh()
     })
     useWorkspaceStore.getState().syncActiveSession()
     void useWorkspaceStore.getState().initialize()

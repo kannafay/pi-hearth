@@ -135,3 +135,42 @@ test('a late snapshot and stream from an older connection cannot replace the cur
   expect(hydrated.mock.calls[0][0].instanceId).toBe('new')
   expect(received).not.toHaveBeenCalled()
 })
+
+test('accepted busy streams survive navigation and a superseded re-subscription without stealing the visible snapshot', async () => {
+  const opened: Channel<PiEvent>[] = []
+  let finishResume!: (value: RuntimeSnapshot) => void
+  vi.mocked(invoke).mockImplementation(async (_command, args) => {
+    opened.push((args as { onEvent: Channel<PiEvent> }).onEvent)
+    if (opened.length === 3)
+      return new Promise<RuntimeSnapshot>((resolve) => {
+        finishResume = resolve
+      })
+    return opened.length === 1
+      ? { ...snapshot, activeRunId: 'run-1' }
+      : { ...snapshot, instanceId: `pi-${opened.length}` }
+  })
+  const visible = vi.fn()
+  const received = vi.fn()
+  await connectPi('project', visible, received, 'A')
+  await connectPi('project', visible, received, 'B')
+  callbacks.get(opened[0].id)?.({ index: 0, message: event })
+  expect(received).toHaveBeenLastCalledWith(event)
+  const resuming = connectPi('project', visible, received, 'A')
+  await connectPi('project', visible, received, 'C')
+  // Rust may already have replaced A's channel before the stale IPC reply arrives.
+  const next = { ...event, sequence: 2 }
+  callbacks.get(opened[2].id)?.({ index: 0, message: next })
+  expect(received).toHaveBeenLastCalledWith(next)
+  finishResume({ ...snapshot, activeRunId: 'run-1', sequence: 1 })
+  await resuming
+  expect(visible).toHaveBeenCalledTimes(3)
+  expect(visible.mock.lastCall?.[0].instanceId).toBe('pi-4')
+  callbacks.get(opened[0].id)?.({ index: 1, message: { ...event, sequence: 3 } })
+  expect(received).toHaveBeenCalledTimes(2)
+  callbacks.get(opened[2].id)?.({ index: 1, message: { ...event, sequence: 3 } })
+  expect(received).toHaveBeenCalledTimes(3)
+  vi.mocked(invoke).mockResolvedValueOnce(undefined)
+  await disconnectPi()
+  callbacks.get(opened[2].id)?.({ index: 2, message: { ...event, sequence: 4 } })
+  expect(received).toHaveBeenCalledTimes(3)
+})

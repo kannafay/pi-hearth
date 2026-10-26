@@ -31,6 +31,7 @@ import {
   type ConversationViewState,
 } from './session-cache'
 import { reconcileTranscript } from './reconcile-transcript'
+import { isCurrentSession } from '@/lib/session-preferences'
 
 type Status = 'disconnected' | 'connecting' | 'ready' | 'running' | 'stopping'
 type Block = { kind: string; text: string }
@@ -63,11 +64,13 @@ export interface ConversationData {
   connectionStartedAt: number | null
   lastLocalActivityAt: number | null
   blocks: Record<string, Record<number, Block>>
+  streamingBase: Record<string, { text: string; thinking: string }>
   runtimeMessageIds: Record<string, string>
   runtimeToolIds: Record<string, string>
 }
 
 interface ConversationState extends ConversationData {
+  backgroundSessions: ReadonlyMap<string, { data: ConversationData; projectPath: string | null }>
   sessionCache: SessionCache
   saveSessionView: (key: string, view: ConversationViewState) => void
   connectionTarget: { projectPath: string | null; sessionPath: string | null } | null
@@ -115,6 +118,7 @@ export const emptyConversation: ConversationData = {
   connectionStartedAt: null,
   lastLocalActivityAt: null,
   blocks: {},
+  streamingBase: {},
   runtimeMessageIds: {},
   runtimeToolIds: {},
 }
@@ -129,6 +133,11 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
     sequence: snapshot.sequence,
     activeRunId: snapshot.activeRunId,
     messages: snapshot.messages,
+    streamingBase: Object.fromEntries(
+      snapshot.messages
+        .filter((message) => message.status === 'streaming')
+        .map((message) => [message.id, { text: message.text, thinking: message.thinking }]),
+    ),
     tools: snapshot.tools ?? [],
     timeline:
       snapshot.timeline ??
@@ -173,6 +182,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.tools = data.tools
       next.timeline = data.timeline
       next.blocks = {}
+      next.streamingBase = {}
       next.runtimeMessageIds = {}
       next.runtimeToolIds = {}
       next.lastLocalActivityAt = Date.now()
@@ -205,14 +215,18 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
         message.id === data.messageId
           ? {
               ...message,
-              text: ordered
-                .filter(([, block]) => block.kind === 'text')
-                .map(([, b]) => b.text)
-                .join(''),
-              thinking: ordered
-                .filter(([, block]) => block.kind === 'thinking')
-                .map(([, b]) => b.text)
-                .join(''),
+              text:
+                (state.streamingBase[data.messageId]?.text ?? '') +
+                ordered
+                  .filter(([, block]) => block.kind === 'text')
+                  .map(([, b]) => b.text)
+                  .join(''),
+              thinking:
+                (state.streamingBase[data.messageId]?.thinking ?? '') +
+                ordered
+                  .filter(([, block]) => block.kind === 'thinking')
+                  .map(([, b]) => b.text)
+                  .join(''),
             }
           : message,
       )
@@ -222,6 +236,8 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       next.messages = state.messages.map((m) => (m.id === data.message.id ? data.message : m))
       next.blocks = { ...state.blocks }
       delete next.blocks[data.message.id]
+      next.streamingBase = { ...state.streamingBase }
+      delete next.streamingBase[data.message.id]
       break
     case 'tool_changed': {
       const exists = state.tools.some((tool) => tool.id === data.tool.id)
@@ -233,6 +249,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
     }
     case 'run_finished':
       next.blocks = {}
+      next.streamingBase = {}
       next.status = 'ready'
       next.activeRunId = null
       next.activity = data.status === 'cancelled' ? '已停止生成' : ''
@@ -264,6 +281,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
       break
     case 'disconnected':
       next.blocks = {}
+      next.streamingBase = {}
       next.status = 'disconnected'
       next.instanceId = null
       next.activeRunId = null
@@ -387,6 +405,67 @@ function enqueue(event: PiEvent) {
   }, 16)
 }
 
+function flushEvents() {
+  if (flushTimer) clearTimeout(flushTimer)
+  flushTimer = null
+  const events = queued
+  queued = []
+  if (events.length) useConversationStore.getState().receive(events)
+}
+
+const running = (state: Pick<ConversationData, 'status'>) =>
+  ['running', 'stopping'].includes(state.status)
+
+export function isSessionBusy(
+  session: { id: string; path: string },
+  state: Pick<
+    ConversationState,
+    'status' | 'sessionId' | 'sessionFile' | 'backgroundSessions'
+  > = useConversationStore.getState(),
+) {
+  return (
+    (running(state) && isCurrentSession(session, state)) ||
+    [...state.backgroundSessions.values()].some(
+      ({ data }) => running(data) && isCurrentSession(session, data),
+    )
+  )
+}
+
+export function isProjectBusy(
+  path: string,
+  state: Pick<
+    ConversationState,
+    'status' | 'connectionTarget' | 'backgroundSessions'
+  > = useConversationStore.getState(),
+) {
+  return (
+    (running(state) && sessionKey(state.connectionTarget?.projectPath) === sessionKey(path)) ||
+    [...state.backgroundSessions.values()].some(
+      ({ data, projectPath }) => running(data) && sessionKey(projectPath) === sessionKey(path),
+    )
+  )
+}
+
+function conversationData(state: ConversationData): ConversationData {
+  // Do not retain store methods or maps of previous sessions inside a live entry.
+  return Object.fromEntries(
+    Object.keys(emptyConversation).map((key) => [key, state[key as keyof ConversationData]]),
+  ) as unknown as ConversationData
+}
+
+function updateInstance(instanceId: string, update: (state: ConversationData) => ConversationData) {
+  useConversationStore.setState((state) => {
+    if (state.instanceId === instanceId) return update(state)
+    const entry = state.backgroundSessions.get(instanceId)
+    if (!entry) return state
+    const data = update(entry.data)
+    const backgroundSessions = new Map(state.backgroundSessions)
+    if (running(data)) backgroundSessions.set(instanceId, { ...entry, data })
+    else backgroundSessions.delete(instanceId)
+    return { backgroundSessions, sessionCache: rememberSession(state.sessionCache, data) }
+  })
+}
+
 export function canReuseNewConversation(state: ConversationState, projectPath: string | null) {
   return Boolean(
     state.connectionTarget &&
@@ -403,6 +482,7 @@ export function canReuseNewConversation(state: ConversationState, projectPath: s
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
   ...emptyConversation,
+  backgroundSessions: new Map(),
   sessionCache: new Map(),
   saveSessionView: (key, view) =>
     set((state) => {
@@ -413,10 +493,33 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       return { sessionCache }
     }),
   connectionTarget: null,
-  receive: (events) => set((state) => events.reduce(reducePiEvent, state)),
+  receive: (events) => {
+    set((state) => {
+      let next = state
+      for (const event of events) {
+        if (event.instanceId === next.instanceId)
+          next = reducePiEvent(next, event) as ConversationState
+        else {
+          const entry = next.backgroundSessions.get(event.instanceId)
+          if (!entry) continue
+          const data = reducePiEvent(entry.data, event)
+          if (data === entry.data) continue
+          const backgroundSessions = new Map(next.backgroundSessions)
+          if (running(data)) backgroundSessions.set(event.instanceId, { ...entry, data })
+          else backgroundSessions.delete(event.instanceId)
+          next = {
+            ...next,
+            backgroundSessions,
+            sessionCache: rememberSession(next.sessionCache, data),
+          }
+        }
+      }
+      return next
+    })
+  },
   connect: async (projectPath, sessionPath, options) => {
+    flushEvents()
     const current = get()
-    if (['running', 'stopping'].includes(current.status)) return
     const key = sessionKey(sessionPath)
     const sameSession = Boolean(
       key &&
@@ -425,7 +528,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         : key === sessionKey(current.sessionFile)),
     )
     if (!options?.force && !key && canReuseNewConversation(current, projectPath)) return
-    if (!options?.force && sameSession && ['ready', 'connecting'].includes(current.status)) return
+    if (
+      !options?.force &&
+      sameSession &&
+      ['ready', 'connecting', 'running', 'stopping'].includes(current.status)
+    )
+      return
     const request = ++connection
     const requestedThinkingLevel = current.requestedThinkingLevel ?? loadThinkingPreference()
     // Only restore display data. A cached transcript never revives a runtime or approval.
@@ -437,8 +545,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ? (findCachedSession(sessionCache, options?.sessionId, sessionPath) ?? previousCache)
       : undefined
     const cached = found?.[1]
+    const live = [...current.backgroundSessions.values()].find(({ data }) =>
+      isCurrentSession({ id: options?.sessionId ?? '', path: sessionPath ?? '' }, data),
+    )?.data
     const display =
-      sameSession && current.messages.length ? sessionDisplay(current) : cached?.display
+      live ?? (sameSession && current.messages.length ? sessionDisplay(current) : cached?.display)
     const settings =
       !key && current.model && ['ready', 'connecting'].includes(current.status) && !current.readOnly
         ? {
@@ -451,15 +562,23 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         : undefined
     if (found) sessionCache = touchSession(sessionCache, found[0], found[1])
     let restorePreference: Promise<void> | undefined
-    queued = []
+    const backgroundSessions = new Map(current.backgroundSessions)
+    if (current.instanceId && running(current))
+      backgroundSessions.set(current.instanceId, {
+        data: conversationData(current),
+        projectPath: current.connectionTarget?.projectPath ?? null,
+      })
     set({
       ...emptyConversation,
       ...display,
+      // Displaying a retained stream does not authorize actions before subscribe.
+      instanceId: null,
       ...settings,
       ...(!key ? { permissionMode: options?.defaultPermission ?? 'ask' } : {}),
       // The configured catalog remains usable even before an uncached session opens.
       models: current.models.length ? current.models : (display?.models ?? []),
       sessionCache,
+      backgroundSessions,
       requestedThinkingLevel,
       connectionTarget: { projectPath, sessionPath: sessionPath ?? null },
       sessionFile: sessionPath ?? null,
@@ -473,6 +592,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         projectPath,
         (snapshot) => {
           if (request !== connection) return
+          flushEvents()
           const pendingSettings =
             snapshot.readOnly || snapshot.activeRunId
               ? null
@@ -497,12 +617,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               : null,
             lastLocalActivityAt: get().lastLocalActivityAt,
           }
-          set({ ...data, sessionCache: rememberSession(get().sessionCache, data) })
+          const backgroundSessions = new Map(get().backgroundSessions)
+          backgroundSessions.delete(snapshot.instanceId)
+          set({
+            ...data,
+            backgroundSessions,
+            sessionCache: rememberSession(get().sessionCache, data),
+          })
           restorePreference = applyPendingSettings()
         },
-        (event) => {
-          if (request === connection) enqueue(event)
-        },
+        enqueue,
         sessionPath,
       )
       await restorePreference
@@ -523,6 +647,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const request = ++connection
     queued = []
     set({
+      backgroundSessions: new Map(),
       ...sessionDisplay(get()),
       instanceId: null,
       status: 'disconnected',
@@ -559,15 +684,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await sendPiMessage(instanceId, runId, message, attachmentIds)
       return true
     } catch (reason) {
-      if (get().instanceId === instanceId && get().activeRunId === runId) {
-        set({
-          status: 'ready',
-          activeRunId: null,
-          error: String(reason),
-          activity: '',
-          lastLocalActivityAt: Date.now(),
-        })
-      }
+      updateInstance(instanceId, (state) =>
+        state.activeRunId === runId
+          ? {
+              ...state,
+              status: 'ready',
+              activeRunId: null,
+              error: String(reason),
+              activity: '',
+              lastLocalActivityAt: Date.now(),
+            }
+          : state,
+      )
       return false
     }
   },
@@ -578,7 +706,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     try {
       await stopPi(instanceId)
     } catch (reason) {
-      set({ error: String(reason) })
+      updateInstance(instanceId, (state) => ({ ...state, error: String(reason) }))
     }
   },
   rewrite: async (messageId, message) => {
@@ -609,8 +737,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       )
       return true
     } catch (reason) {
-      if (get().instanceId === instanceId && get().activeRunId === runId)
-        set({ status: 'ready', activeRunId: null, error: String(reason), activity: '' })
+      updateInstance(instanceId, (state) =>
+        state.activeRunId === runId
+          ? { ...state, status: 'ready', activeRunId: null, error: String(reason), activity: '' }
+          : state,
+      )
       return false
     }
   },

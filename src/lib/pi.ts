@@ -2,6 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import type { PermissionMode, PiEvent, RuntimeSnapshot, ToolLogPage } from '@/lib/generated/pi'
 
 let activeChannel: Channel<PiEvent> | null = null
+const channels = new Map<string, { channel: Channel<PiEvent>; running: boolean }>()
 let connection = 0
 
 export async function connectPi(
@@ -15,9 +16,24 @@ export async function connectPi(
   const channel = new Channel<PiEvent>()
   const pending: PiEvent[] = []
   let subscribed = false
+  let instanceId: string | null = null
+  const deliver = (event: PiEvent) => {
+    const subscription = instanceId ? channels.get(instanceId) : undefined
+    if (subscription?.channel !== channel || event.instanceId !== instanceId) return
+    if (event.data.type === 'run_started') subscription.running = true
+    if (event.data.type === 'run_finished') subscription.running = false
+    onEvent(event)
+    if (event.data.type === 'disconnected' && instanceId) channels.delete(instanceId)
+  }
   channel.onmessage = (event) => {
-    if (request !== connection) return
-    if (subscribed) onEvent(event)
+    if (!subscribed && request !== connection && channels.has(event.instanceId)) {
+      instanceId = event.instanceId
+      channels.set(instanceId, { channel, running: Boolean(event.runId) })
+      subscribed = true
+      for (const previous of pending.splice(0)) deliver(previous)
+    }
+    if (subscribed) deliver(event)
+    else if (request !== connection) return
     else pending.push(event)
   }
   const snapshot = await invoke<RuntimeSnapshot>('pi_open', {
@@ -25,11 +41,31 @@ export async function connectPi(
     sessionPath: sessionPath ?? null,
     onEvent: channel,
   })
-  if (request !== connection) return
+  if (request !== connection) {
+    // Re-subscribing a busy resident replaces its old native channel even if
+    // navigation was superseded. Keep those events routed to its background state.
+    if (subscribed || !channels.has(snapshot.instanceId)) return
+    instanceId = snapshot.instanceId
+    channels.set(instanceId, { channel, running: Boolean(snapshot.activeRunId) })
+    subscribed = true
+    for (const event of pending) deliver(event)
+    return
+  }
+  instanceId = snapshot.instanceId
+  channels.set(instanceId, { channel, running: Boolean(snapshot.activeRunId) })
+  // The native pool contains at most three runtimes. Never discard a running
+  // channel just because another conversation became the visible one.
+  for (const [id, subscription] of channels) {
+    if (channels.size <= 3) break
+    if (id !== instanceId && !subscription.running) channels.delete(id)
+  }
   activeChannel = channel
   onSnapshot(snapshot)
   subscribed = true
-  for (const event of pending) if (event.sequence > snapshot.sequence) onEvent(event)
+  for (const event of pending) {
+    if (event.sequence <= snapshot.sequence) continue
+    deliver(event)
+  }
 }
 
 export function sendPiMessage(
@@ -84,6 +120,7 @@ export function setPiThinkingLevel(instanceId: string, level: string) {
 export async function disconnectPi() {
   connection++
   activeChannel = null
+  channels.clear()
   await invoke<void>('pi_disconnect')
 }
 

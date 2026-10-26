@@ -170,9 +170,14 @@ export function Composer({
     const latest = useWorkspaceStore.getState()
     const text = latest.draft.trim()
     const ids = latest.draftAttachments.map((file) => file.id)
+    const instanceId = useConversationStore.getState().instanceId
     onSendStart()
     if (await send(text, ids)) {
-      if (useWorkspaceStore.getState().draft.trim() === text) setDraft('')
+      if (
+        useConversationStore.getState().instanceId === instanceId &&
+        useWorkspaceStore.getState().draft.trim() === text
+      )
+        setDraft('')
       clearAttachments(ids)
     }
   }

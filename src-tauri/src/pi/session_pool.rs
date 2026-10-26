@@ -33,7 +33,9 @@ impl FileRevision {
 
 pub(super) struct RetainedSession {
     pub client: Arc<PiClient>,
-    pub file: FileRevision,
+    pub file: Option<FileRevision>,
+    // A running turn keeps its action scope and renderer subscription intact.
+    pub live: bool,
     pub since: Instant,
     pub owned: bool,
 }
@@ -41,7 +43,10 @@ pub(super) struct RetainedSession {
 impl RetainedSession {
     pub fn expired(&self, now: Instant) -> bool {
         now.saturating_duration_since(self.since) >= IDLE_TIMEOUT
-            || !Path::new(&self.file.path).is_file()
+            || self
+                .file
+                .as_ref()
+                .is_some_and(|file| !Path::new(&file.path).is_file())
             || !Path::new(&self.client.project_path).is_dir()
     }
 }

@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { ArrowUpRight, LoaderCircle, MessageSquare, Search } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
-import { useConversationStore } from '@/features/conversation/store'
 import { ScrollArea } from '@/components/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,7 +42,6 @@ export function SessionSearchDialog({
   returnFocus?: RefObject<HTMLElement | null>
 }) {
   const workspace = useWorkspaceStore()
-  const status = useConversationStore((state) => state.status)
   const [query, setQuery] = useState('')
   const [response, setResponse] = useState<{
     query: string
@@ -62,7 +60,6 @@ export function SessionSearchDialog({
   const currentResponse = response.query === term && response.attempt === retry
   const loading = desktop && Boolean(term) && !currentResponse
   const error = currentResponse ? response.error : null
-  const busy = status === 'running' || status === 'stopping'
   const recent: SessionSearchResult[] = visibleSessions(
     workspace.sessions,
     workspace.sessionPreferences,
@@ -112,7 +109,7 @@ export function SessionSearchDialog({
   }, [active])
 
   function openSession(session: SessionInfo) {
-    if (busy || !desktop) return
+    if (!desktop) return
     onClose()
     void workspace.openSession(session)
   }
@@ -211,7 +208,7 @@ export function SessionSearchDialog({
                   id={`${id}-${index}`}
                   role="option"
                   aria-selected={active === index}
-                  disabled={busy || !desktop}
+                  disabled={!desktop}
                   onPointerMove={() => setActive(index)}
                   onClick={() => openSession(result.session)}
                   className="group flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors duration-160 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-muted disabled:opacity-60"
@@ -282,7 +279,7 @@ export function SessionSearchDialog({
           )}
         </ScrollArea>
         <div className="flex shrink-0 justify-between border-t px-4 py-2.5 text-[11px] text-muted-foreground">
-          <span>{busy ? '当前任务结束后可以切换会话' : '↑ ↓ 选择 · Enter 打开'}</span>
+          <span>↑ ↓ 选择 · Enter 打开</span>
           <span>Esc 关闭</span>
         </div>
       </DialogContent>

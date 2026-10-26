@@ -24,7 +24,12 @@ import {
   type CreateProjectOptions,
   type UpdateProjectOptions,
 } from '@/lib/workspace'
-import { canReuseNewConversation, useConversationStore } from '@/features/conversation/store'
+import {
+  canReuseNewConversation,
+  isSessionBusy,
+  isProjectBusy,
+  useConversationStore,
+} from '@/features/conversation/store'
 import {
   sessionKey,
   isCurrentSession,
@@ -183,8 +188,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!name || name.length > 160 || /[\r\n]/.test(name))
       throw new Error('请输入 1–160 个字符的会话标题。')
     if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
-    if (busy() && isCurrentSession(session, useConversationStore.getState()))
-      throw new Error('请等待当前回复结束后再重命名。')
+    if (isSessionBusy(session)) throw new Error('请等待当前回复结束后再重命名。')
     sessionRevision++
     set({ sessionActionPending: session.path, error: null })
     try {
@@ -212,7 +216,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }))
   },
   setProjectArchived: async (project, archived) => {
-    if (archived && busy() && samePath(project.path, get().projectPath)) return
+    if (archived && isProjectBusy(project.path)) return
     const key = sessionKey(project.path)!
     set((state) => ({
       archivedProjects: archived
@@ -222,8 +226,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (archived && samePath(project.path, get().projectPath)) await get().newConversation(null)
   },
   removeProject: async (project) => {
-    if (busy() && samePath(project.path, get().projectPath))
-      throw new Error('请先停止当前项目的任务。')
+    if (isProjectBusy(project.path)) throw new Error('请先停止当前项目的任务。')
     if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
     sessionRevision++
     set({ sessionActionPending: project.path, error: null })
@@ -300,8 +303,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await changeSessionPreference(session, { pinned: !preference.pinned })
   },
   setSessionArchived: async (session, archived) => {
-    if (archived && busy() && isCurrentSession(session, useConversationStore.getState()))
-      return false
+    if (archived && isSessionBusy(session)) return false
     if (!(await changeSessionPreference(session, { archived }))) return false
     if (archived && isCurrentSession(session, useConversationStore.getState())) {
       await get().newConversation(get().projectPath)
@@ -617,7 +619,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({
         ...catalogState(catalog),
         // New native sessions may not be written to disk until the first reply ends.
-        ...(busy() && previous && !next ? { sessions: [previous, ...catalog.sessions] } : {}),
+        sessions: [
+          ...get().sessions.filter(
+            (session) =>
+              isSessionBusy(session, conversation) &&
+              !catalog.sessions.some((entry) =>
+                isCurrentSession(entry, { sessionId: session.id, sessionFile: session.path }),
+              ),
+          ),
+          ...catalog.sessions,
+        ],
         ...(connecting ? {} : { selectedSessionPath: next?.path ?? previous?.path ?? path }),
         error: null,
       })
@@ -649,11 +660,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   openSession: async (session) => {
-    if (busy()) return
     const conversation = useConversationStore.getState()
     if (
       isCurrentSession(session, conversation) &&
-      ['ready', 'connecting'].includes(conversation.status)
+      ['ready', 'connecting', 'running', 'stopping'].includes(conversation.status)
     )
       return
     navigation++
@@ -671,7 +681,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       .connect(projectPath, session.path, { sessionId: session.id })
   },
   newConversation: async (projectPath, options) => {
-    if (busy()) return
     if (canReuseNewConversation(useConversationStore.getState(), projectPath)) return
     const request = ++navigation
     if (!options?.preserveDraft) get().clearAttachments()
@@ -705,8 +714,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await get().newConversation(project.path, { preserveDraft })
   },
   updateProject: async (options) => {
-    if (busy() && samePath(options.path, get().projectPath))
-      throw new Error('请先停止当前项目的任务。')
+    if (isProjectBusy(options.path)) throw new Error('请先停止当前项目的任务。')
     if (get().sessionActionPending) throw new Error('请等待当前操作完成。')
     sessionRevision++
     set({ sessionActionPending: options.path, error: null })

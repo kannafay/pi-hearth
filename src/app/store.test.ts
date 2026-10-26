@@ -51,6 +51,20 @@ beforeEach(() => {
   }))
 })
 
+test('opening another session or a new conversation stays available while the current session replies', async () => {
+  useWorkspaceStore.setState({ ...catalog, initialized: true })
+  useConversationStore.setState({
+    status: 'running',
+    sessionId: 'running',
+    sessionFile: 'running.jsonl',
+  })
+  const connect = useConversationStore.getState().connect
+  await useWorkspaceStore.getState().openSession(session)
+  expect(connect).toHaveBeenCalledWith(session.cwd, session.path, { sessionId: session.id })
+  await useWorkspaceStore.getState().newConversation(null)
+  expect(connect).toHaveBeenCalledTimes(2)
+})
+
 test('renaming persists the native title and preserves transcript, selection and ordering metadata', async () => {
   useWorkspaceStore.setState({ ...catalog, selectedSessionPath: session.path })
   const messages = useConversationStore.getState().messages

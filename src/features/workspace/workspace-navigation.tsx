@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useWorkspaceStore } from '@/app/store'
-import { useConversationStore } from '@/features/conversation/store'
+import { isSessionBusy, isProjectBusy, useConversationStore } from '@/features/conversation/store'
 import { openProjectFolder } from '@/lib/desktop'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import {
@@ -90,14 +90,25 @@ export function WorkspaceNavigationContent({
   navigation,
 }: NavigationProps & { navigation: ReturnType<typeof useWorkspaceNavigation> }) {
   const workspace = useWorkspaceStore()
-  const conversation = useConversationStore(
+  // Live entries are removed on completion. Token updates in another chat do
+  // not change navigation, so subscribe to membership rather than its transcript.
+  const backgroundIds = useConversationStore(
+    useShallow((state) => [...state.backgroundSessions.keys()]),
+  )
+  const selection = useConversationStore(
     useShallow((state) => ({
       status: state.status,
+      connectionTarget: state.connectionTarget,
       sessionId: state.sessionId,
       sessionFile: state.sessionFile,
     })),
   )
-  const { status } = conversation
+  const conversation = {
+    ...selection,
+    backgroundSessions: new Map(
+      backgroundIds.map((id) => [id, useConversationStore.getState().backgroundSessions.get(id)!]),
+    ),
+  }
   const { filter, contentFilter, leaving, viewportRef, rememberScroll, selectFilter } =
     navigation.tabs
   const tooltipId = useId()
@@ -116,7 +127,6 @@ export function WorkspaceNavigationContent({
     desktop && !leaving && !workspace.sessionActionPending,
     workspace.reorderNavigation,
   )
-  const busy = ['running', 'stopping'].includes(status)
   const projectExpanded = (path: string) =>
     workspace.expandedProjects[sessionKey(path)!] ?? samePath(path, workspace.projectPath)
   const projects = orderedProjects(
@@ -132,6 +142,7 @@ export function WorkspaceNavigationContent({
   const rows = (sessions: SessionInfo[]) =>
     sessions.map((session) => {
       const selected = isCurrentSession(session, conversation)
+      const responding = isSessionBusy(session, conversation)
       const pinned = sessionPreference(workspace.sessionPreferences, session.path).pinned
       return (
         <div
@@ -141,7 +152,7 @@ export function WorkspaceNavigationContent({
           data-sort-group={sessionGroup(session, workspace.projects, workspace.generalCwd)}
           data-sort-pinned={pinned}
           data-selected={selected}
-          data-responding={busy && selected ? true : undefined}
+          data-responding={responding ? true : undefined}
           className="sidebar-sort-item sidebar-session-row group/session flex h-7.5 min-w-0 items-center rounded-md text-sidebar-foreground/80"
         >
           <Tooltip disabled={sorting}>
@@ -154,7 +165,7 @@ export function WorkspaceNavigationContent({
                   data-sort-handle
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   aria-describedby={`${tooltipId}-session-${encodeURIComponent(session.path)} ${sortDescriptionId}`}
-                  disabled={!desktop || busy}
+                  disabled={!desktop}
                   onClick={() => {
                     void workspace.openSession(session)
                     onNavigate?.()
@@ -194,7 +205,7 @@ export function WorkspaceNavigationContent({
               </div>
             </TooltipContent>
           </Tooltip>
-          {busy && selected && (
+          {responding && (
             <span
               role="status"
               aria-label="正在回复"
@@ -238,9 +249,7 @@ export function WorkspaceNavigationContent({
                     size="icon-xs"
                     className="sidebar-session-action size-6 text-muted-foreground hover:text-foreground"
                     aria-label={`归档 ${session.title}`}
-                    disabled={
-                      !desktop || Boolean(workspace.sessionActionPending) || (busy && selected)
-                    }
+                    disabled={!desktop || Boolean(workspace.sessionActionPending) || responding}
                     onClick={() => void workspace.setSessionArchived(session, true)}
                   />
                 }
@@ -264,10 +273,7 @@ export function WorkspaceNavigationContent({
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-36">
-                <DropdownMenuItem
-                  disabled={busy && selected}
-                  onClick={() => setRenameSession(session)}
-                >
+                <DropdownMenuItem disabled={responding} onClick={() => setRenameSession(session)}>
                   <SquarePen className="size-3.5" />
                   重命名
                 </DropdownMenuItem>
@@ -284,7 +290,7 @@ export function WorkspaceNavigationContent({
     <Button
       variant="ghost"
       className="h-8 w-full justify-start gap-2.5 px-2 text-[13px]"
-      disabled={!desktop || busy}
+      disabled={!desktop}
       onClick={() => {
         void workspace.newConversation(null)
         onNavigate?.()
@@ -378,7 +384,7 @@ export function WorkspaceNavigationContent({
                     aria-label="创建项目"
                     variant="ghost"
                     size="icon-xs"
-                    disabled={!desktop || busy}
+                    disabled={!desktop}
                     onClick={onCreate}
                   >
                     <Plus className="size-3.5" />
@@ -451,7 +457,7 @@ export function WorkspaceNavigationContent({
                             variant="ghost"
                             className="sidebar-project-action size-6 text-muted-foreground hover:text-foreground"
                             aria-label={`在 ${project.name} 中新建对话`}
-                            disabled={!desktop || busy}
+                            disabled={!desktop}
                             onClick={() => {
                               void workspace.newConversation(project.path)
                               onNavigate?.()
@@ -483,7 +489,7 @@ export function WorkspaceNavigationContent({
                                   : '置顶项目'}
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                disabled={busy}
+                                disabled={isProjectBusy(project.path, conversation)}
                                 onClick={() => onInstructions(project)}
                               >
                                 <SquarePen className="size-3.5" />
@@ -501,10 +507,7 @@ export function WorkspaceNavigationContent({
                                 在资源管理器中打开
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                disabled={
-                                  !desktop ||
-                                  (busy && samePath(project.path, workspace.projectPath))
-                                }
+                                disabled={!desktop || isProjectBusy(project.path, conversation)}
                                 onClick={() => void workspace.setProjectArchived(project, true)}
                               >
                                 <Archive className="size-3.5" />
@@ -512,10 +515,7 @@ export function WorkspaceNavigationContent({
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 variant="destructive"
-                                disabled={
-                                  !desktop ||
-                                  (busy && samePath(project.path, workspace.projectPath))
-                                }
+                                disabled={!desktop || isProjectBusy(project.path, conversation)}
                                 onClick={() => setDeleteProject(project)}
                               >
                                 <Trash2 className="size-3.5" />
@@ -552,7 +552,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     variant="ghost"
                     className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground"
-                    disabled={!desktop || busy}
+                    disabled={!desktop}
                     onClick={onCreate}
                   >
                     <FolderPlus className="size-4 stroke-[1.5]" />
@@ -569,7 +569,7 @@ export function WorkspaceNavigationContent({
                     aria-label="新建普通对话"
                     size="icon-xs"
                     variant="ghost"
-                    disabled={!desktop || busy}
+                    disabled={!desktop}
                     onClick={() => {
                       void workspace.newConversation(null)
                       onNavigate?.()

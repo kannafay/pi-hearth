@@ -1090,6 +1090,13 @@ impl PiManager {
                 return Err("请等待当前回复结束后修改资源。".into());
             }
         }
+        for entry in self.retained.lock().await.iter() {
+            if entry.client.actions.try_lock().is_err()
+                || entry.client.snapshot().await?.active_run_id.is_some()
+            {
+                return Err("请等待后台回复结束后修改资源。".into());
+            }
+        }
         let previous = super::resources::preferences(data).await?;
         super::resources::save_preferences(data, settings).await?;
         if let Some(client) = &client {
@@ -1120,41 +1127,85 @@ impl PiManager {
             return Ok(None);
         };
         let mut runtime = self.runtime.lock().await;
-        if let Some(current) = runtime.as_ref() {
-            let _actions = current.actions.lock().await;
-            if current
-                .snapshot()
-                .await
-                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+        if let Some(current) = runtime.as_ref()
+            && let Ok(snapshot) = current.snapshot().await
+        {
+            if snapshot.session_file.as_deref().is_some_and(|path| {
+                super::catalog::same_path(path, file)
+                    || FileRevision::read(path).is_some_and(|current| current.path == revision.path)
+            }) && (snapshot.active_run_id.is_some() || current.actions.try_lock().is_err())
             {
-                return Err("请先停止当前回复再切换会话。".into());
+                return current.subscribe(channel).await.map(Some);
             }
         }
         let mut retained = self.retained.lock().await;
-        let Some(index) = retained
-            .iter()
-            .position(|entry| entry.file.path == revision.path)
-        else {
+        let mut found = None;
+        for (index, entry) in retained.iter_mut().enumerate() {
+            if entry.file.is_none() {
+                entry.file = entry
+                    .client
+                    .snapshot()
+                    .await
+                    .ok()
+                    .and_then(|snapshot| snapshot.session_file)
+                    .as_deref()
+                    .and_then(FileRevision::read);
+            }
+            if entry
+                .file
+                .as_ref()
+                .is_some_and(|file| file.path == revision.path)
+            {
+                found = Some(index);
+                break;
+            }
+        }
+        let Some(index) = found else {
             return Ok(None);
         };
-        let mut entry = retained.remove(index);
-        drop(retained);
-        if entry.expired(Instant::now())
-            || entry.file != revision
-            || !entry.client.configuration_unchanged()
+        let entry = &retained[index];
+        let snapshot = entry.client.snapshot().await;
+        let busy = entry.client.actions.try_lock().is_err()
+            || snapshot
+                .as_ref()
+                .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
+        if !busy
+            && (entry.expired(Instant::now())
+                || *entry.client.file_revision.lock().unwrap() != Some(revision)
+                || !entry.client.configuration_unchanged())
         {
             crate::developer::record("Pi 会话", || "文件或配置变化，重新加载".into());
+            let entry = retained.remove(index);
+            drop(retained);
             entry.client.shutdown().await;
             return Ok(None);
         }
+        let target = entry.client.clone();
+        let live = entry.live;
+        drop(retained);
         self.retain_current(&mut runtime).await?;
-        let result = entry.client.reattach(channel).await;
+        // Keep the target owned by the pool until subscription succeeds. A rapid
+        // second navigation must not drop (and abort) an in-progress reply.
+        let result = if live {
+            target
+                .subscribe(channel)
+                .await
+                .map(|snapshot| (target.clone(), snapshot))
+        } else {
+            target.reattach(channel).await
+        };
+        let mut retained = self.retained.lock().await;
+        let index = retained
+            .iter()
+            .position(|entry| entry.client.instance_id == target.instance_id)
+            .unwrap();
+        let mut entry = retained.remove(index);
+        drop(retained);
         match result {
             Ok((client, snapshot)) => {
                 entry.owned = false;
                 *runtime = Some(client);
                 *self.read_only.lock().await = None;
-                self.trim_retained().await;
                 crate::developer::record("Pi 会话", || {
                     format!("复用 session={}", snapshot.session_id)
                 });
@@ -1171,13 +1222,27 @@ impl PiManager {
         let Some(current) = runtime.clone() else {
             return Ok(());
         };
-        let _actions = current.actions.lock().await;
+        let actions = current.actions.try_lock();
         let snapshot = current.snapshot().await;
-        if snapshot
-            .as_ref()
-            .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+        if actions.is_err()
+            || snapshot
+                .as_ref()
+                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
         {
-            return Err("请先停止当前回复再切换会话。".into());
+            let file = snapshot
+                .as_ref()
+                .ok()
+                .and_then(|snapshot| snapshot.session_file.as_deref())
+                .and_then(FileRevision::read);
+            self.retained.lock().await.push(RetainedSession {
+                client: current.clone(),
+                file,
+                live: true,
+                since: Instant::now(),
+                owned: true,
+            });
+            *runtime = None;
+            return Ok(());
         }
         let revision = snapshot
             .as_ref()
@@ -1196,7 +1261,8 @@ impl PiManager {
                 Ok((client, snapshot)) => {
                     let entry = RetainedSession {
                         client,
-                        file: revision.unwrap(),
+                        file: revision,
+                        live: false,
                         since: Instant::now(),
                         owned: true,
                     };
@@ -1215,25 +1281,53 @@ impl PiManager {
         Ok(())
     }
 
-    async fn trim_retained(&self) {
+    async fn trim_retained(&self) -> Result<(), String> {
         let mut retained = self.retained.lock().await;
         let mut removed = Vec::new();
         while retained.len() >= MAX_OPEN_SESSIONS {
-            removed.push(retained.remove(0));
+            let mut idle = None;
+            for (index, entry) in retained.iter().enumerate() {
+                if entry.client.actions.try_lock().is_ok()
+                    && entry
+                        .client
+                        .snapshot()
+                        .await
+                        .is_ok_and(|snapshot| snapshot.active_run_id.is_none())
+                {
+                    idle = Some(index);
+                    break;
+                }
+            }
+            let Some(index) = idle else {
+                return Err("已有 3 个会话正在回复，请等待其中一个结束后再打开其他会话。".into());
+            };
+            removed.push(retained.remove(index));
         }
         drop(retained);
         for entry in removed {
             crate::developer::record("Pi 会话", || "达到保留上限，释放空闲实例".into());
             entry.client.shutdown().await;
         }
+        Ok(())
     }
 
     pub async fn release_idle(&self) {
+        let _runtime = self.runtime.lock().await;
         let mut retained = self.retained.lock().await;
         let mut removed = Vec::new();
         let mut index = 0;
         while index < retained.len() {
-            if retained[index].expired(Instant::now()) {
+            let entry = &mut retained[index];
+            let busy = entry.client.actions.try_lock().is_err()
+                || entry
+                    .client
+                    .snapshot()
+                    .await
+                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
+            if busy {
+                entry.since = Instant::now();
+            }
+            if !busy && entry.expired(Instant::now()) {
                 removed.push(retained.remove(index));
             } else {
                 index += 1;
@@ -1307,20 +1401,20 @@ impl PiManager {
         }
         let mut inherit = None;
         if let Some(current) = runtime.clone() {
-            let _actions = current.actions.lock().await;
+            let actions = current.actions.try_lock();
+            let busy = actions.is_err()
+                || current
+                    .snapshot()
+                    .await
+                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
             if current.project_path == project_path && options.is_none() {
                 if let Ok(snapshot) = current.subscribe(channel.clone()).await {
                     return Ok(snapshot);
                 }
             } else {
                 let snapshot = current.snapshot().await;
-                if snapshot
-                    .as_ref()
-                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
-                {
-                    return Err("请先停止当前回复再切换项目。".into());
-                }
-                if current.project_path == project_path
+                if !busy
+                    && current.project_path == project_path
                     && options.as_ref().is_some_and(|options| {
                         options.session_file.is_none()
                             && options.session_directory == current.session_directory
@@ -1345,7 +1439,8 @@ impl PiManager {
                         }
                     }
                 }
-                if current.project_path == project_path
+                if !busy
+                    && current.project_path == project_path
                     && current.configuration_unchanged()
                     && options
                         .as_ref()
@@ -1368,17 +1463,17 @@ impl PiManager {
                                 .is_some_and(|target| target.path == revision.path)
                         })
                 });
-            if reopening_current {
+            if reopening_current && !busy {
                 *runtime = None;
                 let _cleanup = SessionRenewal(Some(current.runtime.clone()));
                 current.shutdown().await;
             } else {
-                drop(_actions);
+                drop(actions);
                 self.retain_current(&mut runtime).await?;
             }
         }
         *runtime = None;
-        self.trim_retained().await;
+        self.trim_retained().await?;
         *self.read_only.lock().await = None;
         let client = if let Some(source) = source_directory {
             PiClient::spawn_with_source(
@@ -1488,8 +1583,17 @@ impl PiManager {
     pub async fn rename_session(&self, data: &Path, path: &str, name: &str) -> Result<(), String> {
         // Keep opening another session serialized with the offline metadata write.
         let runtime = self.runtime.lock().await;
-        if let Some(client) = runtime.as_ref() {
-            let snapshot = client.snapshot().await?;
+        let retained = self.retained.lock().await;
+        let clients: Vec<_> = runtime
+            .iter()
+            .cloned()
+            .chain(retained.iter().map(|entry| entry.client.clone()))
+            .collect();
+        drop(retained);
+        for client in clients {
+            let Ok(snapshot) = client.snapshot().await else {
+                continue;
+            };
             if snapshot.session_file.as_deref().is_some_and(|file| {
                 super::catalog::same_path(file, path)
                     || FileRevision::read(file)
@@ -1515,17 +1619,28 @@ impl PiManager {
     }
 
     pub async fn client(&self, instance_id: &str) -> Result<Arc<PiClient>, String> {
-        self.runtime
+        let active = self
+            .runtime
             .lock()
             .await
             .as_ref()
             .filter(|client| client.instance_id == instance_id)
-            .cloned()
+            .cloned();
+        if let Some(client) = active {
+            return Ok(client);
+        }
+        self.retained
+            .lock()
+            .await
+            .iter()
+            .find(|entry| entry.live && entry.client.instance_id == instance_id)
+            .map(|entry| entry.client.clone())
             .ok_or_else(|| "当前 Pi 连接已失效，请重新连接。".into())
     }
 
     pub async fn disconnect(&self) {
-        if let Some(client) = self.runtime.lock().await.take() {
+        let mut runtime = self.runtime.lock().await;
+        if let Some(client) = runtime.take() {
             let _cleanup = SessionRenewal(Some(client.runtime.clone()));
             client.shutdown().await;
         }
@@ -1546,7 +1661,7 @@ impl PiManager {
     ) -> Result<RuntimeSnapshot, String> {
         let mut runtime = self.runtime.lock().await;
         self.retain_current(&mut runtime).await?;
-        self.trim_retained().await;
+        self.trim_retained().await?;
         let instance = Uuid::new_v4().to_string();
         let output = ToolOutput::new(&data.join("tool-output").join(&instance)).await?;
         let config = prepare_config(&local_agent_directory()?, &data.join("pi"))?;
@@ -1730,6 +1845,10 @@ mod tests {
 
     impl ResidentFixture {
         async fn new() -> Self {
+            Self::with_endpoint("http://127.0.0.1:9/v1").await
+        }
+
+        async fn with_endpoint(endpoint: &str) -> Self {
             let root = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../work/resident-session-test")
                 .join(Uuid::new_v4().to_string());
@@ -1738,7 +1857,7 @@ mod tests {
             std::fs::create_dir_all(&source).unwrap();
             std::fs::create_dir_all(&directory).unwrap();
             std::fs::write(source.join("models.json"), json!({"providers":{"resident-test":{
-                "api":"openai-completions", "baseUrl":"http://127.0.0.1:9/v1", "apiKey":"offline-test-key",
+                "api":"openai-completions", "baseUrl":endpoint, "apiKey":"offline-test-key",
                 "models":[{"id":"model","name":"Offline","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}]
             }}}).to_string()).unwrap();
             let mut projects = Vec::new();
@@ -1751,12 +1870,21 @@ mod tests {
                     .unwrap()
                     .to_string_lossy()
                     .into_owned();
-                let history = vec![
+                let mut history = vec![
                     json!({"role":"user","content":format!("{label} isolated question"),"timestamp":1000}),
                     json!({"role":"assistant","content":[{"type":"toolCall","id":format!("{label}-read"),"name":"read","arguments":{"path":"test.txt"}}],"stopReason":"toolUse","timestamp":1100}),
                     json!({"role":"toolResult","toolCallId":format!("{label}-read"),"toolName":"read","content":[{"type":"text","text":format!("{label} output")}],"isError":false,"timestamp":1200}),
                     json!({"role":"assistant","content":[{"type":"text","text":format!("{label} final reply")}],"stopReason":"stop","timestamp":1300}),
                 ];
+                for message in &mut history {
+                    if message["role"] == "assistant" {
+                        message["api"] = "openai-completions".into();
+                        message["provider"] = "resident-test".into();
+                        message["model"] = "model".into();
+                        message["usage"] = json!({"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,
+                            "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}});
+                    }
+                }
                 let file = directory.join(format!("{label}.jsonl"));
                 let header = json!({"type":"session","version":3,"id":Uuid::new_v4().to_string(),"timestamp":"2026-10-24T00:00:00.000Z","cwd":project});
                 let mut text = format!("{header}\n");
@@ -2025,7 +2153,17 @@ mod tests {
                 .manager
                 .resume_existing(fixture.files[0].to_str().unwrap(), Channel::new(|_| Ok(())))
                 .await
-                .is_err()
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            fixture
+                .manager
+                .client(&current.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            current.process_id
         );
         fixture.manager.release_idle().await;
         assert!(current.snapshot().await.unwrap().active_run_id.is_some());
@@ -2040,6 +2178,288 @@ mod tests {
         timeout(Duration::from_secs(2), second_client.commands.closed())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_closed_foreground_runtime_does_not_block_resuming_another_session() {
+        let fixture = ResidentFixture::new().await;
+        let second = fixture.open(1).await;
+        fixture
+            .manager
+            .client(&second.instance_id)
+            .await
+            .unwrap()
+            .shutdown()
+            .await;
+        let returned = fixture
+            .manager
+            .resume_existing(fixture.files[0].to_str().unwrap(), Channel::new(|_| Ok(())))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            fixture
+                .manager
+                .client(&returned.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            fixture.initial_pid
+        );
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn busy_sessions_are_not_evicted_by_timeout_capacity_or_view_changes() {
+        let fixture = ResidentFixture::new().await;
+        let mut clients = Vec::new();
+        for index in 0..MAX_OPEN_SESSIONS {
+            let snapshot = if index == 0 {
+                fixture.initial.clone()
+            } else {
+                fixture.open(index).await
+            };
+            let client = fixture.manager.client(&snapshot.instance_id).await.unwrap();
+            client
+                .request(
+                    json!({"type":"get_messages"}),
+                    Some(format!("busy-{index}")),
+                )
+                .await
+                .unwrap();
+            clients.push(client);
+        }
+        let result = fixture
+            .manager
+            .open(
+                fixture.projects[3].clone(),
+                &fixture.root.join("data"),
+                Channel::new(|_| Ok(())),
+                OpenOptions {
+                    session_directory: fixture.files[3].parent().unwrap().into(),
+                    session_file: Some(fixture.files[3].to_string_lossy().into()),
+                    history: fixture.histories[3].clone(),
+                },
+            )
+            .await;
+        assert!(result.unwrap_err().contains("3 个会话正在回复"));
+        assert_eq!(
+            fixture.manager.retained.lock().await.len(),
+            MAX_OPEN_SESSIONS
+        );
+        for entry in fixture.manager.retained.lock().await.iter_mut() {
+            entry.since = Instant::now() - super::super::session_pool::IDLE_TIMEOUT;
+        }
+        fixture.manager.release_idle().await;
+        assert_eq!(
+            fixture.manager.retained.lock().await.len(),
+            MAX_OPEN_SESSIONS
+        );
+        // A running session writes its own file; that must not invalidate its Pi.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&fixture.files[0])
+            .unwrap()
+            .write_all(b"\n")
+            .unwrap();
+        let returned = fixture
+            .manager
+            .resume_existing(fixture.files[0].to_str().unwrap(), Channel::new(|_| Ok(())))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(returned.instance_id, clients[0].instance_id);
+        for (index, client) in clients.iter().enumerate() {
+            assert_eq!(
+                client.snapshot().await.unwrap().active_run_id.as_deref(),
+                Some(format!("busy-{index}").as_str())
+            );
+            assert_eq!(
+                fixture
+                    .manager
+                    .client(&client.instance_id)
+                    .await
+                    .unwrap()
+                    .process_id,
+                client.process_id
+            );
+        }
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn native_stream_continues_in_background_and_reopens_without_waiting_for_reply_completion()
+     {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+        let (advance, phase) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let length = socket.read(&mut buffer).unwrap();
+                assert!(length > 0);
+                request.extend_from_slice(&buffer[..length]);
+                if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let header = String::from_utf8_lossy(&request[..end]);
+                    let length = header
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").unwrap();
+            for text in ["FIRST ", "BACKGROUND ", "DONE"] {
+                let chunk = json!({"id":"fixture", "object":"chat.completion.chunk", "created":1, "model":"model",
+                    "choices":[{"index":0,"delta":{"role":"assistant","content":text},"finish_reason":null}]});
+                socket
+                    .write_all(format!("data: {chunk}\n\n").as_bytes())
+                    .unwrap();
+                socket.flush().unwrap();
+                if text != "DONE" {
+                    phase.recv_timeout(Duration::from_secs(20)).unwrap();
+                }
+            }
+            socket.write_all(b"data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
+        });
+        let fixture = ResidentFixture::with_endpoint(&endpoint).await;
+        let client = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        let (events, mut received) = mpsc::unbounded_channel::<Value>();
+        client
+            .subscribe(Channel::new(move |body| {
+                let _ = events.send(body.deserialize().unwrap());
+                Ok(())
+            }))
+            .await
+            .unwrap();
+        // An in-flight action must not serialize view selection behind this turn.
+        let _action = client.actions.lock().await;
+        client
+            .request(
+                json!({"type":"prompt", "message":"Continue the fixture reply."}),
+                Some("stream-fixture".into()),
+            )
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(10), async {
+            while let Some(event) = received.recv().await {
+                if event["data"]["delta"] == "FIRST " {
+                    return;
+                }
+            }
+            panic!("stream ended before the first chunk");
+        })
+        .await
+        .unwrap();
+        let switched = timeout(Duration::from_secs(5), fixture.open(1))
+            .await
+            .unwrap();
+        assert!(client.snapshot().await.unwrap().active_run_id.is_some());
+        assert!(
+            fixture
+                .manager
+                .configure_resources(&fixture.root.join("data"), &HashMap::new())
+                .await
+                .is_err()
+        );
+        advance.send(()).unwrap();
+        timeout(Duration::from_secs(5), async {
+            while let Some(event) = received.recv().await {
+                if event["data"]["delta"] == "BACKGROUND " {
+                    assert_eq!(event["instanceId"], client.instance_id);
+                    return;
+                }
+            }
+            panic!("background subscription ended");
+        })
+        .await
+        .unwrap();
+        let (events, mut returned_events) = mpsc::unbounded_channel::<Value>();
+        let returned = timeout(
+            Duration::from_secs(2),
+            fixture.manager.resume_existing(
+                fixture.files[0].to_str().unwrap(),
+                Channel::new(move |body| {
+                    let _ = events.send(body.deserialize().unwrap());
+                    Ok(())
+                }),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(returned.instance_id, client.instance_id);
+        assert_eq!(returned.active_run_id.as_deref(), Some("stream-fixture"));
+        assert_eq!(returned.messages.last().unwrap().text, "FIRST BACKGROUND ");
+        assert_eq!(
+            fixture
+                .manager
+                .client(&returned.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            client.process_id
+        );
+        advance.send(()).unwrap();
+        timeout(Duration::from_secs(5), async {
+            while let Some(event) = returned_events.recv().await {
+                if event["data"]["type"] == "run_finished" {
+                    return;
+                }
+            }
+            panic!("resumed subscription did not finish");
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            client
+                .snapshot()
+                .await
+                .unwrap()
+                .messages
+                .last()
+                .unwrap()
+                .text,
+            "FIRST BACKGROUND DONE"
+        );
+        let other = fixture
+            .manager
+            .retained
+            .lock()
+            .await
+            .iter()
+            .find(|entry| entry.client.project_path == switched.project_path)
+            .unwrap()
+            .client
+            .clone();
+        assert!(
+            !other
+                .snapshot()
+                .await
+                .unwrap()
+                .messages
+                .iter()
+                .any(|message| message.text.contains("FIRST"))
+        );
+        server.join().unwrap();
+        fixture.manager.disconnect().await;
     }
 
     #[tokio::test]

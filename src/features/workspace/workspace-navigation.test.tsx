@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
-import { useConversationStore } from '@/features/conversation/store'
+import { emptyConversation, useConversationStore } from '@/features/conversation/store'
 import { WorkspaceNavigation } from './workspace-navigation'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -12,6 +12,69 @@ beforeEach(() => {
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   useConversationStore.setState({ status: 'ready' })
+})
+
+test('a background reply keeps its progress badge while other sessions remain navigable', async () => {
+  const first = {
+    id: 'A',
+    path: 'A.jsonl',
+    cwd: 'general',
+    title: '后台会话',
+    modified: 1,
+    messageCount: 1,
+  }
+  const second = { ...first, id: 'B', path: 'B.jsonl', title: '当前会话' }
+  const openSession = vi.fn()
+  useWorkspaceStore.setState({ generalCwd: 'general', sessions: [first, second], openSession })
+  useConversationStore.setState({
+    sessionId: 'B',
+    sessionFile: second.path,
+    instanceId: 'B',
+    backgroundSessions: new Map([
+      [
+        'A',
+        {
+          projectPath: null,
+          data: {
+            ...emptyConversation,
+            instanceId: 'A',
+            sessionId: 'A',
+            sessionFile: first.path,
+            status: 'running',
+            activeRunId: 'run-A',
+          },
+        },
+      ],
+    ]),
+  })
+  const user = userEvent.setup()
+  render(
+    <WorkspaceNavigation
+      desktop
+      onCreate={vi.fn()}
+      onSettings={vi.fn()}
+      onInstructions={vi.fn()}
+    />,
+  )
+  expect(screen.getByRole('button', { name: '后台会话' }).parentElement).toContainElement(
+    screen.getByRole('status', { name: '正在回复' }),
+  )
+  expect(screen.getByRole('button', { name: '后台会话' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '后台会话' }))
+  expect(openSession).toHaveBeenCalledExactlyOnceWith(first)
+  act(() =>
+    useConversationStore.getState().receive([
+      {
+        instanceId: 'A',
+        sessionId: 'A',
+        projectPath: 'general',
+        runId: 'run-A',
+        sequence: 1,
+        data: { type: 'run_finished', status: 'complete', error: null },
+      },
+    ]),
+  )
+  expect(screen.queryByRole('status', { name: '正在回复' })).not.toBeInTheDocument()
 })
 
 test.each([project.path, 'general'])(
@@ -450,6 +513,8 @@ test('only the replying session shows progress and terminal events always clear 
   const progress = screen.getByRole('status', { name: '正在回复' })
   const currentRow = screen.getByRole('button', { name: session.title }).parentElement
   const otherRow = screen.getByRole('button', { name: '其他讨论' }).parentElement
+  expect(screen.getByRole('button', { name: '其他讨论' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: session.title })).toBeEnabled()
   expect(currentRow).toContainElement(progress)
   expect(otherRow).not.toContainElement(progress)
   act(() => useConversationStore.setState({ status: 'stopping' }))
