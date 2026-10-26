@@ -10,7 +10,7 @@ beforeEach(() => {
   useConversationStore.setState(useConversationStore.getInitialState(), true)
 })
 
-test('Default is initially selected and five explicit efforts include distinct XHigh and Max', async () => {
+test('Default is initially selected and six explicit efforts include Off, XHigh and Max', async () => {
   const changeThinkingLevel = vi.fn()
   useConversationStore.setState({
     status: 'ready',
@@ -25,6 +25,7 @@ test('Default is initially selected and five explicit efforts include distinct X
   await user.keyboard(' ')
   expect(screen.getAllByRole('option').map((item) => item.textContent)).toEqual([
     'Default',
+    'Off',
     'Low',
     'Medium',
     'High',
@@ -33,6 +34,24 @@ test('Default is initially selected and five explicit efforts include distinct X
   ])
   await user.click(screen.getByRole('option', { name: 'XHigh' }))
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('xhigh')
+})
+
+test('Off can be explicitly selected instead of Default', async () => {
+  const changeThinkingLevel = vi.fn()
+  useConversationStore.setState({
+    status: 'ready',
+    thinkingLevel: 'medium',
+    availableThinkingLevels: ['off', 'medium'],
+    changeThinkingLevel,
+  })
+  const user = userEvent.setup()
+  render(<ThinkingPicker />)
+  const picker = screen.getByRole('combobox', { name: '思考强度' })
+  await user.click(picker)
+  await user.click(screen.getByRole('option', { name: 'Off' }))
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('off')
+  act(() => useConversationStore.setState({ thinkingLevel: 'off', requestedThinkingLevel: 'off' }))
+  expect(picker).toHaveTextContent('Off')
 })
 
 test('a model with two native levels enables only its supported effort and Default', async () => {
@@ -58,7 +77,7 @@ test('a model with two native levels enables only its supported effort and Defau
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
 })
 
-test('non-reasoning models retain Default while every explicit effort is disabled', async () => {
+test('non-reasoning models offer Default and Off while reasoning efforts are disabled', async () => {
   useConversationStore.setState({
     status: 'ready',
     thinkingLevel: 'off',
@@ -71,6 +90,7 @@ test('non-reasoning models retain Default while every explicit effort is disable
   expect(
     screen.getAllByRole('option').filter((item) => item.getAttribute('aria-disabled') === 'true'),
   ).toHaveLength(5)
+  expect(screen.getByRole('option', { name: 'Off' })).not.toHaveAttribute('aria-disabled', 'true')
 })
 
 test('a manual XHigh selection remains distinct from Max and can be reset to Default', async () => {
@@ -88,6 +108,7 @@ test('a manual XHigh selection remains distinct from Max and can be reset to Def
   expect(picker).toHaveTextContent('XHigh')
   await user.tab()
   await user.keyboard(' ')
+  expect(screen.getByRole('option', { name: 'Off' })).toHaveAttribute('aria-disabled', 'true')
   await user.click(screen.getByRole('option', { name: 'Default' }))
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('default')
   act(() => useConversationStore.setState({ settingsPending: 'model' }))
@@ -144,11 +165,13 @@ test('a pending model does not constrain efforts using the previous model capabi
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
 })
 
-test('the old fixed effort is replaced by Default and new choices can still be remembered', () => {
+test('the old fixed effort is replaced by Default and explicit choices including Off are remembered', async () => {
   localStorage.setItem('pi-hearth.thinking-level', 'high')
   expect(loadThinkingPreference()).toBe('default')
-  saveThinkingPreference('xhigh')
+  await saveThinkingPreference('xhigh')
   expect(loadThinkingPreference()).toBe('xhigh')
-  saveThinkingPreference('default')
+  await saveThinkingPreference('off')
+  expect(loadThinkingPreference()).toBe('off')
+  await saveThinkingPreference('default')
   expect(loadThinkingPreference()).toBe('default')
 })

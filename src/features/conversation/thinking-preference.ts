@@ -2,7 +2,7 @@ import { isDesktop } from '@/lib/desktop'
 import { updateAppSettings } from '@/lib/app-settings'
 
 const key = 'pi-hearth.thinking-level-v2'
-const levels = ['default', 'low', 'medium', 'high', 'xhigh', 'max']
+const levels = ['default', 'off', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export function loadThinkingPreference(): string {
   try {

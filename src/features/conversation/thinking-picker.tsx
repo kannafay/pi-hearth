@@ -34,6 +34,7 @@ export function ThinkingPicker() {
   )
   const items = [
     { value: 'default', label: 'Default' },
+    { value: 'off', label: 'Off' },
     { value: 'low', label: 'Low' },
     { value: 'medium', label: 'Medium' },
     { value: 'high', label: 'High' },

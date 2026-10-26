@@ -1188,7 +1188,7 @@ test('unsupported efforts are rejected while supported levels and Default can be
     await useConversationStore.getState().changeThinkingLevel(level)
   }
   expect(setPiThinkingLevel).not.toHaveBeenCalled()
-  for (const level of ['high', 'default']) {
+  for (const level of ['off', 'high', 'default']) {
     await useConversationStore.getState().changeThinkingLevel(level)
     expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', level)
     expect(useConversationStore.getState()).toMatchObject({
@@ -1197,10 +1197,39 @@ test('unsupported efforts are rejected while supported levels and Default can be
       requestedThinkingLevel: level,
       settingsPending: null,
     })
+    expect(loadThinkingPreference()).toBe(level)
   }
+  useConversationStore.setState({ availableThinkingLevels: ['high'] })
+  await useConversationStore.getState().changeThinkingLevel('off')
+  expect(setPiThinkingLevel).toHaveBeenCalledTimes(3)
   useConversationStore.setState({ status: 'running' })
   await useConversationStore.getState().changeThinkingLevel('low')
-  expect(setPiThinkingLevel).toHaveBeenCalledTimes(2)
+  expect(setPiThinkingLevel).toHaveBeenCalledTimes(3)
+})
+
+test('Off is sent to Pi and restored from preferences when reconnecting', async () => {
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  vi.mocked(setPiThinkingLevel).mockImplementation(async (instanceId, level) => ({
+    ...snapshot,
+    instanceId,
+    thinkingLevel: level,
+  }))
+  await useConversationStore.getState().changeThinkingLevel('off')
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-1', 'off')
+  expect(loadThinkingPreference()).toBe('off')
+
+  useConversationStore.setState(useConversationStore.getInitialState(), true)
+  vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => {
+    hydrate({ ...snapshot, instanceId: 'pi-off-restored' })
+  })
+  await useConversationStore.getState().connect('project')
+  expect(setPiThinkingLevel).toHaveBeenLastCalledWith('pi-off-restored', 'off')
+  expect(useConversationStore.getState()).toMatchObject({
+    thinkingLevel: 'off',
+    requestedThinkingLevel: 'off',
+    settingsPending: null,
+    status: 'ready',
+  })
 })
 
 test('turn timing uses native start and finish events rather than the time the UI received them', () => {

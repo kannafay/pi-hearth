@@ -279,11 +279,9 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
     {
         return Err("无效的面板宽度设置。".into());
     }
-    if settings
-        .thinking_level
-        .as_deref()
-        .is_some_and(|level| !["default", "low", "medium", "high", "xhigh", "max"].contains(&level))
-    {
+    if settings.thinking_level.as_deref().is_some_and(|level| {
+        !["default", "off", "low", "medium", "high", "xhigh", "max"].contains(&level)
+    }) {
         return Err("无效的思考档位设置。".into());
     }
     Ok(settings)
@@ -687,6 +685,40 @@ mod tests {
         assert!(reopened.developer_mode);
         assert_eq!(reopened.navigation_width, 312.0);
         assert_eq!(reopened.thinking_level.as_deref(), Some("xhigh"));
+    }
+
+    #[tokio::test]
+    async fn off_thinking_preference_survives_reopening_and_can_return_to_default() {
+        let root = fixture();
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                thinking_level: Some("off".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        save_preferences(&root, &Preferences::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            settings(&root).await.unwrap().thinking_level.as_deref(),
+            Some("off")
+        );
+        update_settings(
+            &root,
+            AppSettingsPatch {
+                thinking_level: Some("default".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            settings(&root).await.unwrap().thinking_level.as_deref(),
+            Some("default")
+        );
     }
 
     #[tokio::test]
