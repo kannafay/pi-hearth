@@ -478,16 +478,16 @@ select {
 .workspace-navigation
   :is(.sidebar-session-row, .sidebar-project-row)
   :is(.sidebar-session-link, .sidebar-session-action, .sidebar-project-action) {
-  background: transparent;
+  background-color: transparent;
 }
 
 .workspace-navigation
   :is(.sidebar-session-action, .sidebar-project-action):is(:hover, [aria-expanded='true']) {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background-color: color-mix(in oklch, var(--foreground) 6%, transparent);
 }
 
 .workspace-navigation [data-slot='button']:hover {
-  background: var(--sidebar-accent);
+  background-color: var(--sidebar-accent);
 }
 
 .sidebar-tabs {
