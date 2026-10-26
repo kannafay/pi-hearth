@@ -260,7 +260,7 @@ select {
 }
 
 .workspace-navigation {
-  --muted: var(--background);
+  --muted: var(--sidebar-row-selected);
   --sidebar-accent: var(--muted);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
