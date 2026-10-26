@@ -14,9 +14,13 @@ import { groupModelsByProvider, modelKey } from './models'
 export function ModelPicker({
   label = '切换模型',
   compact = false,
+  open,
+  onOpenChange,
 }: {
   label?: string
   compact?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const { runtimeModels, modelCatalog, model, status, readOnly, settingsPending, changeModel } =
     useConversationStore(
@@ -41,6 +45,8 @@ export function ModelPicker({
   }))
   return (
     <Select
+      open={open}
+      onOpenChange={onOpenChange}
       items={items}
       value={model ? modelKey(model) : null}
       disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly) || !models.length}

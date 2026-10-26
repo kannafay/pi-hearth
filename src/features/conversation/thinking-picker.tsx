@@ -10,7 +10,10 @@ import {
 import { thinkingCapabilitiesPending, useConversationStore } from './store'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-export function ThinkingPicker() {
+export function ThinkingPicker({
+  open,
+  onOpenChange,
+}: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
   const {
     status,
     readOnly,
@@ -46,6 +49,8 @@ export function ThinkingPicker() {
 
   return (
     <Select
+      open={open}
+      onOpenChange={onOpenChange}
       items={items}
       value={value}
       disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly)}

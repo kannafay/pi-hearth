@@ -19,6 +19,7 @@ import {
   stopPi,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
+import { compactPi } from '@/lib/composer'
 import { getResponseStatus } from './response-status'
 import { modelKey } from './models'
 import {
@@ -87,6 +88,7 @@ interface ConversationState extends ConversationData {
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
+  compact: (instructions?: string) => Promise<boolean>
   rewrite: (messageId: string, message?: string) => Promise<boolean>
   stop: () => Promise<void>
   changeModel: (model: ModelInfo) => Promise<void>
@@ -149,6 +151,11 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
     thinkingLevel: snapshot.thinkingLevel ?? 'off',
     availableThinkingLevels: snapshot.availableThinkingLevels ?? [],
     status: snapshot.activeRunId ? 'running' : 'ready',
+    activity:
+      snapshot.activeRunId &&
+      !snapshot.messages.some((message) => message.id === `${snapshot.activeRunId}-user`)
+        ? '正在压缩上下文…'
+        : '',
   }
 }
 
@@ -696,6 +703,23 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               activity: '',
               lastLocalActivityAt: Date.now(),
             }
+          : state,
+      )
+      return false
+    }
+  },
+  compact: async (instructions = '') => {
+    const { instanceId, status, readOnly, settingsPending } = get()
+    if (!instanceId || status !== 'ready' || readOnly || settingsPending) return false
+    const runId = crypto.randomUUID()
+    set({ status: 'running', activeRunId: runId, error: null, activity: '正在压缩上下文…' })
+    try {
+      await compactPi(instanceId, runId, instructions)
+      return true
+    } catch (reason) {
+      updateInstance(instanceId, (state) =>
+        state.activeRunId === runId
+          ? { ...state, status: 'ready', activeRunId: null, error: String(reason), activity: '' }
           : state,
       )
       return false

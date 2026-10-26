@@ -352,7 +352,12 @@ impl PiClient {
                                 if let Some(run) = &run_id {
                                     let display = body.as_object_mut().and_then(|body| body.remove("__hearthMessage")).and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_else(|| body["message"].as_str().unwrap_or_default().into());
                                     let attachments = body.as_object_mut().and_then(|body| body.remove("__hearthAttachments")).and_then(|value| serde_json::from_value(value).ok());
-                                    match conversation.begin_with_attachments(run.clone(), display, attachments) {
+                                    let started = if body["type"] == "compact" {
+                                        conversation.begin_compaction(run.clone())
+                                    } else {
+                                        conversation.begin_with_attachments(run.clone(), display, attachments)
+                                    };
+                                    match started {
                                         Ok(events) => emit(&channel, events),
                                         Err(error) => { let _ = reply.send(Err(error)); continue; }
                                     }
@@ -374,8 +379,8 @@ impl PiClient {
                                     let _ = reply.send(Err("无法向 Pi 发送命令，连接已关闭。".into()));
                                     exit_error = Some("Pi 输入管道已中断，请重新连接。".into()); break;
                                 }
-                                let deadline = if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
-                                let writes = matches!(body["type"].as_str(), Some("prompt" | "set_model" | "set_thinking_level" | "set_session_name"));
+                                let deadline = if body["type"] == "compact" { 120 } else if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
+                                let writes = matches!(body["type"].as_str(), Some("prompt" | "compact" | "set_model" | "set_thinking_level" | "set_session_name"));
                                 pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes });
                             }
                             Some(Control::Subscribe { channel: next, reply }) => { channel = next; let _ = reply.send(conversation.snapshot.clone()); }
@@ -437,6 +442,11 @@ impl PiClient {
                                             let result: Result<Value, String> = if record["success"] == true { Ok(record["data"].clone()) } else { Err(record["error"].as_str().unwrap_or("Pi 拒绝了命令。").into()) };
                                             if request.prompt_run.as_ref() == conversation.snapshot.active_run_id.as_ref() && request.prompt_run.is_some() {
                                                 match &result {
+                                                    _ if record["command"] == "compact" => {
+                                                        let cancelled = conversation.is_cancelling();
+                                                        let error = if cancelled { None } else { result.as_ref().err().cloned() };
+                                                        emit(&channel, conversation.finish(if cancelled { "cancelled" } else if error.is_some() { "failed" } else { "complete" }, error));
+                                                    },
                                                     Err(error) => emit(&channel, conversation.finish("failed", Some(error.clone()))),
                                                     Ok(data) if data["disposition"] == "handled" => emit(&channel, conversation.finish("complete", None)),
                                                     _ => {}
@@ -761,6 +771,7 @@ impl PiClient {
     }
 
     pub async fn request(&self, body: Value, run_id: Option<String>) -> Result<Value, String> {
+        let response_timeout = if body["type"] == "compact" { 125 } else { 25 };
         let trace =
             crate::developer::Operation::start(body["type"].as_str().unwrap_or("Pi RPC"), || {
                 format!("instance={}", self.instance_id)
@@ -774,7 +785,7 @@ impl PiClient {
             })
             .await
             .map_err(|_| "Pi 连接已关闭，请重新连接。")?;
-            timeout(Duration::from_secs(25), receive)
+            timeout(Duration::from_secs(response_timeout), receive)
                 .await
                 .map_err(|_| "Pi 命令响应超时。")?
                 .map_err(|_| "Pi 连接已关闭。")?
@@ -1711,6 +1722,31 @@ impl PiManager {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[tokio::test]
+    async fn rejected_native_compaction_finishes_the_operation_without_a_fake_prompt() {
+        let fixture = ResidentFixture::new().await;
+        let client = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        let before = client.snapshot().await.unwrap();
+        let result = client
+            .request(
+                json!({"type":"compact", "customInstructions":"Keep file paths"}),
+                Some(Uuid::new_v4().to_string()),
+            )
+            .await;
+        assert!(result.is_err());
+        let after = client.snapshot().await.unwrap();
+        assert!(after.active_run_id.is_none());
+        assert_eq!(
+            serde_json::to_value(after.messages).unwrap(),
+            serde_json::to_value(before.messages).unwrap()
+        );
+        fixture.manager.disconnect().await;
+    }
 
     #[tokio::test]
     async fn failed_resource_reload_rolls_back_preferences_and_drops_the_broken_runtime() {

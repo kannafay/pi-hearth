@@ -1,6 +1,7 @@
 pub mod attachments;
 pub mod catalog;
 mod client;
+pub mod composer;
 mod config;
 pub mod files;
 pub(crate) mod process_tree;

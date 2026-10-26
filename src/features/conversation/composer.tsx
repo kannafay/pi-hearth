@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { ArrowUp, LoaderCircle, Paperclip, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/icon-button'
@@ -26,18 +26,27 @@ import { useConversationStore } from './store'
 import { ConnectionNotice } from './connection-notice'
 import { sessionKey } from '@/lib/session-preferences'
 import { ConversationProjectPicker } from './conversation-project-picker'
+import { executeComposerCommand, type ComposerActions } from './composer-commands'
+import { useComposerCompletion } from './use-composer-completion'
+import { ComposerCompletionMenu } from './composer-completion-menu'
+import { slashCommand } from './composer-completion'
 
 export function Composer({
   onSendStart,
   onCreateProject,
+  onSettings,
+  onResume,
+  onRename,
 }: {
   onSendStart: () => void
   onCreateProject?: () => void
-}) {
+} & ComposerActions) {
   const { draft, setDraft, draftAttachments, clearAttachments, sessionActionPending } =
     useWorkspaceStore()
   const {
     status,
+    instanceId,
+    activity,
     sessionFile,
     runStarted,
     hasMessages,
@@ -50,6 +59,8 @@ export function Composer({
   } = useConversationStore(
     useShallow((state) => ({
       status: state.status,
+      instanceId: state.instanceId,
+      activity: state.activity,
       sessionFile: state.sessionFile,
       hasMessages: state.messages.length > 0,
       error: state.error,
@@ -60,14 +71,30 @@ export function Composer({
       stop: state.stop,
       runStarted: Boolean(
         state.activeRunId &&
-        state.messages.some((message) => message.id === `${state.activeRunId}-user`),
+        (state.activity === '正在压缩上下文…' ||
+          state.messages.some((message) => message.id === `${state.activeRunId}-user`)),
       ),
     })),
   )
-  const [attachmentError, setAttachmentError] = useState('')
+  const [attachmentState, setAttachmentState] = useState({ instanceId, error: '' })
+  const attachmentError = attachmentState.instanceId === instanceId ? attachmentState.error : ''
+  const setAttachmentError = useCallback(
+    (error: string) => setAttachmentState({ instanceId, error }),
+    [instanceId],
+  )
   const [pending, setPending] = useState(0)
   const [selecting, setSelecting] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [commandInstance, setCommandInstance] = useState<string | null>(null)
+  const commandBusy = Boolean(instanceId && commandInstance === instanceId)
+  const [pickerState, setPickerState] = useState<{
+    instanceId: string | null
+    value: 'model' | 'thinking' | null
+  }>({ instanceId, value: null })
+  const picker = pickerState.instanceId === instanceId ? pickerState.value : null
+  const setPicker = (value: 'model' | 'thinking' | null) => setPickerState({ instanceId, value })
+  const submitting = useRef<{ instanceId: string | null; token: symbol } | null>(null)
+  const draftInput = useRef<HTMLTextAreaElement>(null)
   const nativePaste = useRef<Promise<Attachment[]> | null>(null)
   const inputArea = useRef<HTMLDivElement>(null)
   const busy = status === 'running' || status === 'stopping'
@@ -76,30 +103,41 @@ export function Composer({
   const sessionUpdating = Boolean(
     sessionActionPending && sessionKey(sessionActionPending) === sessionKey(sessionFile),
   )
+  const completion = useComposerCompletion({
+    draft,
+    setDraft,
+    instanceId,
+    input: draftInput,
+    enabled:
+      status === 'ready' && !readOnly && !settingsPending && !sessionUpdating && !commandBusy,
+  })
 
-  async function receive(request: Promise<Attachment[]>) {
-    const instanceId = useConversationStore.getState().instanceId
-    setPending((count) => count + 1)
-    setAttachmentError('')
-    try {
-      const files = await request
-      if (useConversationStore.getState().instanceId !== instanceId) {
-        releaseAttachments(files.map((file) => file.id))
+  const receive = useCallback(
+    async (request: Promise<Attachment[]>) => {
+      const instanceId = useConversationStore.getState().instanceId
+      setPending((count) => count + 1)
+      setAttachmentError('')
+      try {
+        const files = await request
+        if (useConversationStore.getState().instanceId !== instanceId) {
+          releaseAttachments(files.map((file) => file.id))
+          return []
+        }
+        if (useWorkspaceStore.getState().draftAttachments.length + files.length > MAX_ATTACHMENTS) {
+          releaseAttachments(files.map((file) => file.id))
+          throw new Error('每条消息最多添加 10 个附件。')
+        }
+        useWorkspaceStore.getState().addAttachments(files)
+        return files
+      } catch (reason) {
+        setAttachmentError(String(reason))
         return []
+      } finally {
+        setPending((count) => count - 1)
       }
-      if (useWorkspaceStore.getState().draftAttachments.length + files.length > MAX_ATTACHMENTS) {
-        releaseAttachments(files.map((file) => file.id))
-        throw new Error('每条消息最多添加 10 个附件。')
-      }
-      useWorkspaceStore.getState().addAttachments(files)
-      return files
-    } catch (reason) {
-      setAttachmentError(String(reason))
-      return []
-    } finally {
-      setPending((count) => count - 1)
-    }
-  }
+    },
+    [setAttachmentError],
+  )
 
   async function choose() {
     if (selecting) return
@@ -144,7 +182,7 @@ export function Composer({
       disposed = true
       unlisten?.()
     }
-  }, [desktop])
+  }, [desktop, receive])
 
   function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.files)
@@ -166,19 +204,55 @@ export function Composer({
   }
 
   async function submit() {
-    if (nativePaste.current) await nativePaste.current
-    const latest = useWorkspaceStore.getState()
-    const text = latest.draft.trim()
-    const ids = latest.draftAttachments.map((file) => file.id)
-    const instanceId = useConversationStore.getState().instanceId
-    onSendStart()
-    if (await send(text, ids)) {
+    const submittedInstance = useConversationStore.getState().instanceId
+    if (submitting.current?.instanceId === submittedInstance) return
+    const attempt = Symbol()
+    submitting.current = { instanceId: submittedInstance, token: attempt }
+    try {
+      if (nativePaste.current) await nativePaste.current
+      if (useConversationStore.getState().instanceId !== submittedInstance) return
+      const latest = useWorkspaceStore.getState()
+      const text = latest.draft.trim()
+      const ids = latest.draftAttachments.map((file) => file.id)
+      const instanceId = useConversationStore.getState().instanceId
+      const state = useConversationStore.getState()
       if (
-        useConversationStore.getState().instanceId === instanceId &&
-        useWorkspaceStore.getState().draft.trim() === text
+        state.status !== 'ready' ||
+        state.readOnly ||
+        state.settingsPending ||
+        pending ||
+        selecting ||
+        sessionUpdating
       )
-        setDraft('')
-      clearAttachments(ids)
+        return
+      setAttachmentError('')
+      setCommandInstance(submittedInstance)
+      const command = slashCommand(text)
+        ? await executeComposerCommand(text, ids.length, {
+            onSettings,
+            onResume,
+            onRename,
+            onPicker: setPicker,
+          })
+        : null
+      if (useConversationStore.getState().instanceId !== instanceId) return
+      if (command === null) onSendStart()
+      if (command === true || (command === null && (await send(text, ids)))) {
+        if (
+          useConversationStore.getState().instanceId === instanceId &&
+          useWorkspaceStore.getState().draft.trim() === text
+        )
+          setDraft('')
+        clearAttachments(ids)
+      }
+    } catch (reason) {
+      if (useConversationStore.getState().instanceId === submittedInstance)
+        setAttachmentError(String(reason))
+    } finally {
+      if (submitting.current?.token === attempt) {
+        submitting.current = null
+        setCommandInstance(null)
+      }
     }
   }
 
@@ -195,6 +269,15 @@ export function Composer({
         </p>
       )}
       {status === 'disconnected' && <ConnectionNotice className="mb-2 px-1" />}
+      {busy && activity === '正在压缩上下文…' && (
+        <p
+          role="status"
+          className="mb-2 flex items-center gap-2 px-1 text-xs text-muted-foreground"
+        >
+          <LoaderCircle aria-hidden className="size-3 animate-spin" />
+          {activity}
+        </p>
+      )}
       <div
         className="composer-project-reveal"
         data-open={choosingProject}
@@ -210,138 +293,174 @@ export function Composer({
           </div>
         </div>
       </div>
-      <div
-        ref={inputArea}
-        aria-label="消息输入区"
-        className={`relative z-1 overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
-        onPointerDown={(event) => {
-          if (event.button !== 0 || event.defaultPrevented || readOnly) return
-          const target = event.target
-          if (
-            !(target instanceof Element) ||
-            !event.currentTarget.contains(target) ||
-            target.closest(
-              'button, a, input, textarea, select, [role="button"], [role="combobox"], [contenteditable], .os-scrollbar',
-            )
-          )
-            return
-          event.preventDefault()
-          event.currentTarget.querySelector('textarea')?.focus({ preventScroll: true })
-        }}
-        onDragOver={(event) => {
-          if (event.dataTransfer.types.includes('Files')) {
-            event.preventDefault()
-            setDragging(true)
-          }
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragging(false)
-          if (event.dataTransfer.files.length && !readOnly)
-            void receive(stageFiles(Array.from(event.dataTransfer.files)))
-        }}
-      >
-        {draftAttachments.length > 0 && (
-          <div className="px-3 pt-3">
-            <AttachmentList files={draftAttachments} onRemove={(id) => clearAttachments([id])} />
-          </div>
-        )}
-        <Textarea
-          variant="embedded"
-          aria-label="消息草稿"
-          rows={1}
-          placeholder={dragging ? '松开以添加附件' : '发送消息，或粘贴图片与文件…'}
-          value={draft}
-          disabled={Boolean(readOnly)}
-          onChange={(event) => setDraft(event.target.value)}
-          onPaste={paste}
-          onKeyDown={(event) => {
+      <div className="relative">
+        <ComposerCompletionMenu completion={completion} />
+        <div
+          ref={inputArea}
+          aria-label="消息输入区"
+          className={`relative z-1 overflow-hidden rounded-xl border bg-(--composer-background) pb-2 shadow-xs transition-colors focus-within:border-ring/60 ${dragging ? 'border-ring bg-muted/30' : 'border-input'}`}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || event.defaultPrevented || readOnly) return
+            const target = event.target
             if (
-              (event.ctrlKey || event.metaKey) &&
-              event.key.toLowerCase() === 'v' &&
-              desktop &&
-              !readOnly
-            ) {
-              // Inspect formats without entering the attachment loading state for text.
-              const request = hasClipboardAttachments()
-                .then((available) => (available ? receive(clipboardAttachments()) : []))
-                .catch(() => [])
-              nativePaste.current = request
-              void request.finally(() =>
-                setTimeout(() => {
-                  if (nativePaste.current === request) nativePaste.current = null
-                }, 250),
+              !(target instanceof Element) ||
+              !event.currentTarget.contains(target) ||
+              target.closest(
+                'button, a, input, textarea, select, [role="button"], [role="combobox"], [contenteditable], .os-scrollbar',
               )
-            }
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            )
+              return
+            event.preventDefault()
+            event.currentTarget.querySelector('textarea')?.focus({ preventScroll: true })
+          }}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes('Files')) {
               event.preventDefault()
-              if (
-                status === 'ready' &&
-                !settingsPending &&
-                !sessionUpdating &&
-                !selecting &&
-                !pending &&
-                (draft.trim() || draftAttachments.length)
-              )
-                void submit()
+              setDragging(true)
             }
           }}
-          className="composer-input max-h-48 min-h-12 px-3.5 pt-3 pb-2"
-        />
-        <div className="flex h-7 items-stretch justify-between gap-2 px-2">
-          <div className="flex h-full min-w-0 items-stretch gap-1">
-            <IconButton
-              label="添加附件"
-              title="添加附件（也可粘贴或拖入）"
-              variant="ghost"
-              size="icon-sm"
-              disabled={!desktop || Boolean(readOnly) || selecting || pending > 0}
-              className="shrink-0 text-foreground/70"
-              onClick={() => void choose()}
-            >
-              {pending ? (
-                <LoaderCircle className="size-3.5 animate-spin" />
-              ) : (
-                <Paperclip className="size-4 stroke-[1.6]" />
-              )}
-            </IconButton>
-            <PermissionPicker />
-            <ModelPicker compact />
-            <ThinkingPicker />
-          </div>
-          {busy ? (
-            <Button
-              aria-label="停止生成"
-              size="icon-sm"
-              variant="secondary"
-              disabled={status === 'stopping' || !runStarted}
-              onClick={() => void stop()}
-            >
-              {status === 'stopping' ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Square className="size-3 fill-current" />
-              )}
-            </Button>
-          ) : (
-            <Button
-              aria-label="发送消息"
-              size="icon-sm"
-              disabled={
-                status !== 'ready' ||
-                Boolean(readOnly) ||
-                Boolean(settingsPending) ||
-                sessionUpdating ||
-                selecting ||
-                pending > 0 ||
-                (!draft.trim() && !draftAttachments.length)
-              }
-              onClick={() => void submit()}
-            >
-              <ArrowUp />
-            </Button>
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDragging(false)
+            if (event.dataTransfer.files.length && !readOnly)
+              void receive(stageFiles(Array.from(event.dataTransfer.files)))
+          }}
+        >
+          {draftAttachments.length > 0 && (
+            <div className="px-3 pt-3">
+              <AttachmentList files={draftAttachments} onRemove={(id) => clearAttachments([id])} />
+            </div>
           )}
+          <Textarea
+            ref={draftInput}
+            variant="embedded"
+            aria-label="消息草稿"
+            rows={1}
+            placeholder={dragging ? '松开以添加附件' : '发送消息，或粘贴图片与文件…'}
+            value={draft}
+            disabled={Boolean(readOnly)}
+            aria-autocomplete="list"
+            aria-expanded={completion.open}
+            aria-controls={completion.open ? completion.id : undefined}
+            aria-activedescendant={
+              completion.open && completion.items[completion.active]
+                ? `${completion.id}-${completion.active}`
+                : undefined
+            }
+            onChange={(event) => {
+              setDraft(event.target.value)
+              completion.edit(event.target)
+            }}
+            onSelect={(event) => completion.updateSelection(event.currentTarget)}
+            onFocus={(event) => {
+              completion.focus()
+              completion.updateSelection(event.target)
+            }}
+            onBlur={completion.blur}
+            onPaste={paste}
+            onKeyDown={(event) => {
+              if (completion.onKeyDown(event)) return
+              if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key.toLowerCase() === 'v' &&
+                desktop &&
+                !readOnly
+              ) {
+                // Inspect formats without entering the attachment loading state for text.
+                const request = hasClipboardAttachments()
+                  .then((available) => (available ? receive(clipboardAttachments()) : []))
+                  .catch(() => [])
+                nativePaste.current = request
+                void request.finally(() =>
+                  setTimeout(() => {
+                    if (nativePaste.current === request) nativePaste.current = null
+                  }, 250),
+                )
+              }
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
+              ) {
+                event.preventDefault()
+                if (
+                  status === 'ready' &&
+                  !settingsPending &&
+                  !commandBusy &&
+                  !sessionUpdating &&
+                  !selecting &&
+                  !pending &&
+                  (draft.trim() || draftAttachments.length)
+                )
+                  void submit()
+              }
+            }}
+            className="composer-input max-h-48 min-h-12 px-3.5 pt-3 pb-2"
+          />
+          <div className="flex h-7 items-stretch justify-between gap-2 px-2">
+            <div className="flex h-full min-w-0 items-stretch gap-1">
+              <IconButton
+                label="添加附件"
+                title="添加附件（也可粘贴或拖入）"
+                variant="ghost"
+                size="icon-sm"
+                disabled={!desktop || Boolean(readOnly) || selecting || pending > 0}
+                className="shrink-0 text-foreground/70"
+                onClick={() => void choose()}
+              >
+                {pending ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : (
+                  <Paperclip className="size-4 stroke-[1.6]" />
+                )}
+              </IconButton>
+              <PermissionPicker />
+              <ModelPicker
+                compact
+                open={picker === 'model'}
+                onOpenChange={(open) => setPicker(open ? 'model' : null)}
+              />
+              <ThinkingPicker
+                open={picker === 'thinking'}
+                onOpenChange={(open) => setPicker(open ? 'thinking' : null)}
+              />
+            </div>
+            {busy ? (
+              <Button
+                aria-label="停止生成"
+                size="icon-sm"
+                variant="secondary"
+                disabled={status === 'stopping' || !runStarted}
+                onClick={() => void stop()}
+              >
+                {status === 'stopping' ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Square className="size-3 fill-current" />
+                )}
+              </Button>
+            ) : (
+              <Button
+                aria-label="发送消息"
+                size="icon-sm"
+                disabled={
+                  status !== 'ready' ||
+                  Boolean(readOnly) ||
+                  Boolean(settingsPending) ||
+                  commandBusy ||
+                  sessionUpdating ||
+                  selecting ||
+                  pending > 0 ||
+                  (!draft.trim() && !draftAttachments.length)
+                }
+                onClick={() => void submit()}
+              >
+                <ArrowUp />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

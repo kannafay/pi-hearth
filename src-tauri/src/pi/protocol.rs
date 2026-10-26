@@ -50,6 +50,7 @@ pub struct Conversation {
     blocks: BTreeMap<usize, (String, String)>,
     last_error: Option<String>,
     cancelled: bool,
+    compacting: bool,
 }
 
 impl Conversation {
@@ -87,6 +88,7 @@ impl Conversation {
             blocks: BTreeMap::new(),
             last_error: None,
             cancelled: false,
+            compacting: false,
         }
     }
 
@@ -131,6 +133,7 @@ impl Conversation {
             return Err("当前回复尚未结束。".into());
         }
         self.snapshot.active_run_id = Some(run_id.clone());
+        self.compacting = false;
         self.last_error = None;
         self.cancelled = false;
         self.current_message = None;
@@ -153,6 +156,19 @@ impl Conversation {
             id: message.id.clone(),
         });
         Ok(vec![self.event(EventData::RunStarted { message })])
+    }
+
+    pub fn begin_compaction(&mut self, run_id: String) -> Result<Vec<PiEvent>, String> {
+        if self.snapshot.active_run_id.is_some() {
+            return Err("请等待当前回复结束后再压缩上下文。".into());
+        }
+        self.snapshot.active_run_id = Some(run_id);
+        self.compacting = true;
+        self.last_error = None;
+        self.cancelled = false;
+        Ok(vec![self.event(EventData::Status {
+            text: "正在压缩上下文…".into(),
+        })])
     }
 
     pub fn mark_cancelling(&mut self) {
@@ -399,12 +415,13 @@ impl Conversation {
             return vec![];
         }
         let finished_at = now_ms();
-        if let Some(user) = self
-            .snapshot
-            .messages
-            .iter_mut()
-            .rev()
-            .find(|message| message.role == "user")
+        if !self.compacting
+            && let Some(user) = self
+                .snapshot
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.role == "user")
         {
             user.finished_at = Some(finished_at);
         }
@@ -442,6 +459,7 @@ impl Conversation {
             finished_at: Some(finished_at),
         }));
         self.snapshot.active_run_id = None;
+        self.compacting = false;
         events
     }
 
@@ -684,6 +702,35 @@ fn model_info(value: &Value) -> Option<ModelInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compaction_tracks_busy_state_without_inserting_messages_or_retiming_a_reply() {
+        let mut conversation = Conversation::new("instance".into(), "cwd".into());
+        conversation
+            .begin("previous".into(), "Earlier prompt".into())
+            .unwrap();
+        conversation.finish("complete", None);
+        let before = serde_json::to_value(&conversation.snapshot.messages).unwrap();
+        let events = conversation.begin_compaction("compact".into()).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            conversation.snapshot.active_run_id.as_deref(),
+            Some("compact")
+        );
+        assert!(
+            conversation
+                .begin("other".into(), "Cannot race".into())
+                .is_err()
+        );
+        conversation.mark_cancelling();
+        let finished = conversation.finish("cancelled", None);
+        assert_eq!(finished.len(), 1);
+        assert!(conversation.snapshot.active_run_id.is_none());
+        assert_eq!(
+            serde_json::to_value(&conversation.snapshot.messages).unwrap(),
+            before
+        );
+    }
 
     #[test]
     fn model_responses_use_provider_display_metadata_without_changing_identity() {

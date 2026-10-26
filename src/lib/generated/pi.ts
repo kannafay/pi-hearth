@@ -3,6 +3,8 @@
 
 export type ModelInfo = { provider: string, providerName?: string, id: string, name: string, };
 
+export type ComposerCommand = { name: string, description: string, };
+
 export type Attachment = { id: string, name: string, kind: string, mimeType: string, size: number, preview: string | null, sourcePath?: string, text?: string, };
 
 export type AttachmentPreview = { kind: string, source: string | null, text: string | null, };

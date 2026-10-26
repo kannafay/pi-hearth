@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { ScrollArea } from '@/components/scroll-area'
 import { useConversationStore } from './store'
 import { Composer } from './composer'
+import type { ComposerActions } from './composer-commands'
 import { createConversationViewSelector } from './conversation-turns'
 import { ConversationTurn } from './conversation-turn'
 import { ConversationWelcome } from './conversation-welcome'
@@ -234,9 +235,10 @@ function ConversationView({
 
 export const ConversationPanel = memo(function ConversationPanel({
   onCreateProject,
+  ...actions
 }: {
   onCreateProject?: () => void
-}) {
+} & ComposerActions) {
   const session = useConversationStore((state) =>
     state.connectionTarget?.sessionPath === null && !state.messages.length && !state.tools.length
       ? null
@@ -252,7 +254,7 @@ export const ConversationPanel = memo(function ConversationPanel({
         controller={controller}
         onActionStart={toEnd}
       />
-      <Composer onSendStart={toEnd} onCreateProject={onCreateProject} />
+      <Composer onSendStart={toEnd} onCreateProject={onCreateProject} {...actions} />
     </>
   )
 })

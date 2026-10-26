@@ -421,7 +421,14 @@ function WorkspaceLayout() {
                         {session?.title ?? conversation.firstUserText ?? '新对话'}
                       </span>
                     </div>
-                    <ConversationPanel onCreateProject={createProject} />
+                    <ConversationPanel
+                      onCreateProject={createProject}
+                      onSettings={() => setSettingsOpen(true)}
+                      onResume={openSearch}
+                      onRename={() => {
+                        if (session) navigationState.setRenameSession(session)
+                      }}
+                    />
                   </main>
                 </ResizablePanel>
                 <ResizableHandle

@@ -13,6 +13,12 @@ pub struct ModelInfo {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
+pub struct ComposerCommand {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub id: String,
@@ -408,6 +414,7 @@ pub struct ResourceCatalog {
 fn export_frontend_types() {
     let declarations = [
         ModelInfo::decl(),
+        ComposerCommand::decl(),
         Attachment::decl(),
         AttachmentPreview::decl(),
         ChatMessage::decl(),
