@@ -57,7 +57,7 @@ test('slash menu merges app actions with loaded skills and keyboard completion d
   ).toBeVisible()
   await user.keyboard('model{Tab}')
   expect(input).toHaveValue('/model ')
-  expect(screen.queryByRole('listbox', { name: '命令与技能' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('listbox', { name: '快捷操作' })).not.toBeInTheDocument()
   expect(input).toHaveFocus()
   expect(useConversationStore.getState().send).not.toHaveBeenCalled()
 })

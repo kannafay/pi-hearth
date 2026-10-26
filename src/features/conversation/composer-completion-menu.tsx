@@ -9,6 +9,7 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
   }, [completion.active, completion.open, completion.items.length])
   if (!completion.open) return null
+  const title = completion.kind === 'file' ? '项目文件' : '快捷操作'
   const indexedItems = completion.items.map((item, index) => ({ item, index }))
   const groups = (
     completion.kind === 'file'
@@ -22,7 +23,7 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
   return (
     <div className="absolute bottom-full left-0 z-30 mb-2 w-full max-w-lg overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 duration-100 motion-reduce:animate-none">
       <div className="flex h-9 items-center justify-between px-3 text-xs text-muted-foreground">
-        <span>{completion.kind === 'file' ? '项目文件' : '命令与技能'}</span>
+        <span>{title}</span>
         <span aria-hidden>↑ ↓ 选择 · Enter / Tab 补全 · Esc 关闭</span>
       </div>
       <ScrollArea viewportClassName="max-h-[min(288px,45dvh)] overflow-y-auto p-1 pt-0">
@@ -30,7 +31,7 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
           ref={list}
           id={completion.id}
           role="listbox"
-          aria-label={completion.kind === 'file' ? '项目文件' : '命令与技能'}
+          aria-label={title}
           aria-busy={completion.loading}
         >
           {groups.map((group, groupIndex) => (
@@ -38,7 +39,7 @@ export function ComposerCompletionMenu({ completion }: { completion: ComposerCom
               key={group.key}
               role={group.title ? 'group' : undefined}
               aria-labelledby={group.title ? `${completion.id}-${group.key}-label` : undefined}
-              className={groupIndex ? 'mt-1 border-t pt-1' : undefined}
+              className={groupIndex ? 'mt-2' : undefined}
             >
               {group.title && (
                 <div
