@@ -255,6 +255,17 @@ select {
   background: var(--shell-tint);
 }
 
+.theme-toggle-icon > svg {
+  display: none;
+}
+
+:root:not([data-theme-mode]) .theme-toggle-icon [data-theme-icon='system'],
+:root[data-theme-mode='system'] .theme-toggle-icon [data-theme-icon='system'],
+:root[data-theme-mode='light'] .theme-toggle-icon [data-theme-icon='light'],
+:root[data-theme-mode='dark'] .theme-toggle-icon [data-theme-icon='dark'] {
+  display: block;
+}
+
 :root[data-native-backdrop] .workspace-shell {
   background: transparent;
 }

@@ -56,25 +56,63 @@ afterEach(() => {
   vi.restoreAllMocks()
   document.documentElement.classList.remove('dark')
   document.documentElement.style.colorScheme = ''
+  document.documentElement.removeAttribute('data-theme-mode')
 })
 
 test.each([false, true])(
-  'same-color automatic and explicit choices do not repaint (%s)',
+  'same-color automatic and explicit choices update the icon mode without repainting (%s)',
   (dark) => {
     vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: dark } as MediaQueryList)
     renderHook(useTheme)
     finishThemeFrame()
     expect(setWindowTheme).toHaveBeenCalledExactlyOnceWith(dark ? 'dark' : 'light')
     const mutations = new MutationObserver(() => {})
-    mutations.observe(document.documentElement, { attributes: true })
+    mutations.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-theme-changing', 'data-native-backdrop'],
+    })
     act(() => useWorkspaceStore.getState().setTheme(dark ? 'dark' : 'light'))
+    expect(document.documentElement).toHaveAttribute('data-theme-mode', dark ? 'dark' : 'light')
     act(() => useWorkspaceStore.getState().setTheme('system'))
+    expect(document.documentElement).toHaveAttribute('data-theme-mode', 'system')
     expect(setWindowTheme).toHaveBeenCalledTimes(1)
     expect(mutations.takeRecords()).toHaveLength(0)
     mutations.disconnect()
     expect(document.documentElement.classList.contains('dark')).toBe(dark)
   },
 )
+
+test('the displayed icon waits for native preparation and uses the latest same-color choice', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  useWorkspaceStore.setState({ theme: 'light' })
+  renderHook(useTheme)
+  await act(async () => {})
+  finishThemeFrame()
+  expect(document.documentElement).toHaveAttribute('data-theme-mode', 'light')
+  act(() => systemChanged(true))
+
+  let prepared!: () => void
+  vi.mocked(setWindowTheme).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        prepared = resolve
+      }),
+  )
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(document.documentElement).toHaveAttribute('data-theme-mode', 'light')
+  expect(document.documentElement).not.toHaveClass('dark')
+  const calls = vi.mocked(setWindowTheme).mock.calls.length
+  act(() => useWorkspaceStore.getState().setTheme('system'))
+  expect(setWindowTheme).toHaveBeenCalledTimes(calls)
+  expect(document.documentElement).toHaveAttribute('data-theme-mode', 'light')
+  await act(async () => prepared())
+  expect(document.documentElement).toHaveClass('dark')
+  expect(document.documentElement).toHaveAttribute('data-theme-mode', 'system')
+  act(() => useWorkspaceStore.getState().setTheme('dark'))
+  expect(document.documentElement).toHaveAttribute('data-theme-mode', 'dark')
+  expect(setWindowTheme).toHaveBeenCalledTimes(calls)
+  finishThemeFrame()
+})
 
 test('theme changes snap together and restore transitions after the latest switch or unmount', () => {
   const root = document.documentElement

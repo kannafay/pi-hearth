@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { useWorkspaceStore } from '@/app/store'
 import { finishWindowThemeChange, isDesktop, setWindowTheme } from '@/lib/desktop'
 import { observeSystemTheme, usesNativeSystemTheme } from '@/lib/system-theme'
@@ -13,6 +13,10 @@ export function useTheme() {
   const currentRequest = useRef<string | null>(null)
   const nativeTheme =
     theme === 'system' && isDesktop() && !usesNativeSystemTheme() ? null : dark ? 'dark' : 'light'
+  const applyThemeMode = useEffectEvent(() => {
+    const root = document.documentElement
+    if (root.dataset.themeMode !== theme) root.dataset.themeMode = theme
+  })
 
   useEffect(() => {
     let disposed = false
@@ -65,6 +69,8 @@ export function useTheme() {
         void root.offsetHeight
         finishThemeColorTransitions()
       }
+      // Present the header glyph in the same scene as the committed palette.
+      applyThemeMode()
       if (changed || request) {
         // Reveal only after the new WebView palette has had a paint opportunity.
         frame = window.requestAnimationFrame(() => {
@@ -102,4 +108,14 @@ export function useTheme() {
       root.removeAttribute('data-native-backdrop')
     }
   }, [dark, nativeTheme])
+
+  // Switching between automatic and explicit modes may keep the same palette.
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    if (
+      root.classList.contains('dark') === dark &&
+      root.style.colorScheme === (dark ? 'dark' : 'light')
+    )
+      applyThemeMode()
+  }, [dark, theme])
 }

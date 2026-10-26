@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { themeOptions } from '@/app/theme-options'
+import { ThemeToggleIcon } from '@/app/theme-toggle-icon'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useWindowResizeMotion } from '@/app/use-window-resize-motion'
 import { IconButton } from '@/components/icon-button'
@@ -147,7 +148,7 @@ function WorkspaceLayout() {
     projectPath?.split(/[\\/]/).filter(Boolean).at(-1)
   const session = workspace.sessions.find((session) => isCurrentSession(session, conversation))
   const themeIndex = themeOptions.findIndex((item) => item.value === theme)
-  const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]
+  const { label: themeLabel } = themeOptions[themeIndex] ?? themeOptions[0]
   const nextTheme = themeOptions[(themeIndex + 1) % themeOptions.length]
   const inspector = <Inspector tab={inspectorTab} onTabChange={setInspectorTab} />
 
@@ -290,7 +291,7 @@ function WorkspaceLayout() {
           title={`主题：${themeLabel}，点击切换为${nextTheme.label}`}
           onClick={() => setTheme(nextTheme.value)}
         >
-          <ThemeIcon />
+          <ThemeToggleIcon />
         </IconButton>
         <div data-tauri-drag-region className="h-full flex-1" />
         <IconButton
