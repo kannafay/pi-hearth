@@ -307,66 +307,124 @@ test.each(['select', 'menu'])(
   },
 )
 
-test.each(['left', 'right'])('search remains usable over the %s floating panel', async (side) => {
+test.each([
+  ['left', 'button'],
+  ['left', 'shortcut'],
+  ['right', 'button'],
+  ['right', 'shortcut'],
+] as const)('opening search closes the %s floating panel using %s', async (side, entry) => {
   vi.mocked(useMediaQuery).mockReturnValue(true)
   const user = userEvent.setup()
   render(<WorkspaceShell />)
-  await user.click(
-    screen.getByRole('button', { name: side === 'left' ? '展开侧栏' : '打开查看面板' }),
-  )
-  const panel = await screen.findByRole('dialog', {
-    name: side === 'left' ? '项目与会话' : '项目文件与变更',
-  })
-  await user.click(screen.getByRole('button', { name: '搜索会话' }))
-  expect(await screen.findByRole('dialog', { name: '搜索会话' })).toBeVisible()
-  expect(panel).toHaveAttribute('inert')
+  const show = side === 'left' ? '展开侧栏' : '打开查看面板'
+  const title = side === 'left' ? '项目与会话' : '项目文件与变更'
+  const tab = side === 'left' ? '聊天' : '文件'
+  await user.click(screen.getByRole('button', { name: show }))
+  const panel = await screen.findByRole('dialog', { name: title })
+  await user.click(within(panel).getByRole('tab', { name: tab }))
+  const searchButton = screen.getByRole('button', { name: '搜索会话' })
+  if (entry === 'button') await user.click(searchButton)
+  else await user.keyboard('{Control>}k{/Control}')
+  const input = await screen.findByRole('combobox', { name: '搜索项目、标题或对话内容' })
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument())
+  expect(input).toHaveFocus()
+  expect(screen.getByRole('button', { name: show })).toHaveAttribute('aria-expanded', 'false')
   await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(searchButton).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: show }))
+  expect(
+    within(await screen.findByRole('dialog', { name: title })).getByRole('tab', { name: tab }),
+  ).toHaveAttribute('aria-selected', 'true')
+})
+
+test.each([
+  [false, 'left'],
+  [false, 'right'],
+  [true, 'left'],
+  [true, 'right'],
+] as const)('search hands off from the header (narrow: %s, panel: %s)', async (narrow, side) => {
+  vi.mocked(useMediaQuery).mockReturnValue(narrow)
+  useWorkspaceStore.setState({ sidebarOpen: false })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  const search = await screen.findByRole('dialog', { name: '搜索会话' })
+  const input = within(search).getByRole('combobox')
+  await user.type(input, '搜索后切换面板')
+  const show = side === 'left' ? '展开侧栏' : '打开查看面板'
+  const hide = side === 'left' ? '收起侧栏' : '收起查看面板'
+  const toggle = screen.getByRole('button', { name: show })
+  expect(toggle).toBeEnabled()
+  await user.click(toggle)
   await waitFor(() =>
     expect(screen.queryByRole('dialog', { name: '搜索会话' })).not.toBeInTheDocument(),
   )
-  expect(panel).not.toHaveAttribute('inert')
-  expect(panel).toBeVisible()
-})
-
-test.each([false, true])(
-  'header panels remain toggleable while search is open (narrow: %s)',
-  async (narrow) => {
-    vi.mocked(useMediaQuery).mockReturnValue(narrow)
-    useWorkspaceStore.setState({ sidebarOpen: false })
-    const user = userEvent.setup()
-    render(<WorkspaceShell />)
-    await user.click(screen.getByRole('button', { name: '搜索会话' }))
-    const search = await screen.findByRole('dialog', { name: '搜索会话' })
-    const input = within(search).getByRole('combobox')
-    await user.type(input, '保留搜索内容')
-
-    for (const [side, show, hide] of [
-      ['left', '展开侧栏', '收起侧栏'],
-      ['right', '打开查看面板', '收起查看面板'],
-    ] as const) {
-      const toggle = screen.getByRole('button', { name: show })
-      expect(toggle).toBeEnabled()
-      await user.click(toggle)
-      expect(screen.getByRole('button', { name: hide })).toHaveAttribute('aria-expanded', 'true')
-      expect(search).toBeVisible()
-      expect(search).not.toHaveAttribute('inert')
-      expect(input).toHaveValue('保留搜索内容')
-      if (narrow)
-        expect(
-          document.querySelector('.workspace-floating-panel[data-side="' + side + '"]'),
-        ).toHaveAttribute('inert')
-      await user.click(screen.getByRole('button', { name: hide }))
-      expect(screen.getByRole('button', { name: show })).toHaveAttribute('aria-expanded', 'false')
-    }
-
-    expect(screen.getByRole('main').closest('.workspace-body')).toHaveAttribute('inert')
-    await user.click(screen.getByRole('button', { name: '搜索会话' }))
-    expect(input).toHaveFocus()
+  expect(screen.getByRole('button', { name: hide })).toHaveAttribute('aria-expanded', 'true')
+  if (narrow) {
+    const panel = await screen.findByRole('dialog', {
+      name: side === 'left' ? '项目与会话' : '项目文件与变更',
+    })
+    expect(panel).not.toHaveAttribute('inert')
+    await waitFor(() => expect(panel).toContainElement(document.activeElement as HTMLElement))
+    await user.click(within(panel).getByRole('tab', { name: side === 'left' ? '聊天' : '文件' }))
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByRole('main').closest('.workspace-body')).not.toHaveAttribute('inert')
-  },
-)
+  } else {
+    expect(toggle).toHaveFocus()
+  }
+  expect(screen.getByRole('main').closest('.workspace-body')).not.toHaveAttribute('inert')
+})
+
+test('search preserves both fixed panels and their saved widths', async () => {
+  useWorkspaceStore.setState({ inspectorOpen: true, navigationWidth: 352, inspectorWidth: 420 })
+  const user = userEvent.setup()
+  render(<WorkspaceShell />)
+  const navigation = screen.getByRole('navigation')
+  const inspector = screen.getByRole('complementary', { name: '项目查看面板' })
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  expect(screen.getByRole('button', { name: '收起侧栏' })).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('button', { name: '收起查看面板' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+  expect(navigation).toBeInTheDocument()
+  expect(inspector).toBeInTheDocument()
+  expect(navigation.closest('.workspace-body')).toHaveAttribute('inert')
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    sidebarOpen: true,
+    inspectorOpen: true,
+    navigationWidth: 352,
+    inspectorWidth: 420,
+  })
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('navigation')).toBe(navigation)
+  expect(screen.getByRole('complementary', { name: '项目查看面板' })).toBe(inspector)
+  expect(navigation.closest('.workspace-body')).not.toHaveAttribute('inert')
+})
+
+test('shrinking during search does not reveal or later restore a floating inspector', async () => {
+  let compact = false
+  vi.mocked(useMediaQuery).mockImplementation((query) =>
+    query === '(max-width: 1199px)' ? compact : false,
+  )
+  useWorkspaceStore.setState({ inspectorOpen: true, inspectorWidth: 420 })
+  const user = userEvent.setup()
+  const view = render(<WorkspaceShell />)
+  await user.click(screen.getByRole('button', { name: '搜索会话' }))
+  compact = true
+  view.rerender(<WorkspaceShell />)
+  await waitFor(() => expect(useWorkspaceStore.getState().inspectorOpen).toBe(false))
+  expect(screen.queryByRole('dialog', { name: '项目文件与变更' })).not.toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('button', { name: '打开查看面板' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  expect(useWorkspaceStore.getState().inspectorWidth).toBe(420)
+})
 
 test('search preserves the narrow sidebar guard for an underlying unfinished form', async () => {
   vi.mocked(useMediaQuery).mockReturnValue(true)

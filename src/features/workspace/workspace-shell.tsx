@@ -81,13 +81,8 @@ function WorkspaceLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInput = useRef<HTMLInputElement>(null)
+  const searchButton = useRef<HTMLButtonElement>(null)
   const searchReturnFocus = useRef<HTMLElement>(null)
-  const openSearch = useCallback(() => {
-    if (!searchOpen && document.activeElement instanceof HTMLElement)
-      searchReturnFocus.current = document.activeElement
-    setSearchOpen(true)
-    searchInput.current?.focus()
-  }, [searchOpen])
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('changes')
   const [floatingSidebar, setFloatingSidebar] = useState({ narrow: false, open: false })
   const navigationState = useWorkspaceNavigation()
@@ -104,6 +99,18 @@ function WorkspaceLayout() {
   const projectPresence = useDialogPresence(projectDialog)
   const compact = useMediaQuery('(max-width: 1199px)')
   const narrow = useMediaQuery('(width < 960px)')
+  const openSearch = useCallback(() => {
+    if (!searchOpen && document.activeElement instanceof HTMLElement) {
+      const target = document.activeElement
+      searchReturnFocus.current = target.closest('.workspace-floating-panel')
+        ? searchButton.current
+        : target
+    }
+    setFloatingSidebarOpen(false)
+    if (compact) setInspectorOpen(false)
+    setSearchOpen(true)
+    searchInput.current?.focus()
+  }, [compact, searchOpen, setFloatingSidebarOpen, setInspectorOpen])
   if (floatingSidebar.narrow !== narrow) setFloatingSidebar({ narrow, open: false })
   const floatingSidebarOpen = floatingSidebar.narrow === narrow && floatingSidebar.open
   const dockedSidebarOpen = sidebarOpen && !narrow
@@ -115,11 +122,12 @@ function WorkspaceLayout() {
     floatingSidebarOpen,
   )
   const dockedInspectorOpen = inspectorOpen && !compact
+  const floatingInspectorOpen = inspectorOpen && compact && !searchOpen
   const { hostDocked: inspectorDocked, ...inspectorPanel } = useAnimatedPanel(
     inspectorOpen,
     inspectorWidth,
     !compact,
-    inspectorOpen && compact,
+    floatingInspectorOpen,
   )
   const contentDialogOpen =
     settingsOpen ||
@@ -131,7 +139,7 @@ function WorkspaceLayout() {
     contentDialogOpen ||
     searchOpen ||
     (floatingSidebarOpen && narrow) ||
-    (inspectorOpen && compact) ||
+    floatingInspectorOpen ||
     Boolean(dialogLayers?.layers.length)
   const desktop = isDesktop()
   const projectName =
@@ -142,6 +150,11 @@ function WorkspaceLayout() {
   const { label: themeLabel, icon: ThemeIcon } = themeOptions[themeIndex] ?? themeOptions[0]
   const nextTheme = themeOptions[(themeIndex + 1) % themeOptions.length]
   const inspector = <Inspector tab={inspectorTab} onTabChange={setInspectorTab} />
+
+  useEffect(() => {
+    // A docked inspector may become floating if the window shrinks during search.
+    if (searchOpen && compact && inspectorOpen) setInspectorOpen(false)
+  }, [compact, inspectorOpen, searchOpen, setInspectorOpen])
 
   useEffect(() => {
     if (!desktop) return
@@ -218,6 +231,22 @@ function WorkspaceLayout() {
     void controlWindow(action).catch((reason: unknown) => setError(String(reason)))
   }
 
+  function toggleWorkspacePanel(side: 'left' | 'right') {
+    if (searchOpen) {
+      searchReturnFocus.current = null
+      setSearchOpen(false)
+    }
+    if (side === 'left') {
+      if (narrow) {
+        if (!floatingSidebarOpen) setInspectorOpen(false)
+        setFloatingSidebarOpen(!floatingSidebarOpen)
+      } else toggleSidebar()
+    } else {
+      setFloatingSidebarOpen(false)
+      setInspectorOpen(!inspectorOpen)
+    }
+  }
+
   return (
     <div className="workspace-shell flex h-dvh min-h-0 flex-col overflow-hidden text-foreground">
       <header
@@ -242,16 +271,12 @@ function WorkspaceLayout() {
           label={sidebarVisible ? '收起侧栏' : '展开侧栏'}
           aria-expanded={sidebarVisible}
           disabled={narrow && contentDialogOpen}
-          onClick={() => {
-            if (narrow) {
-              if (!floatingSidebarOpen) setInspectorOpen(false)
-              setFloatingSidebarOpen(!floatingSidebarOpen)
-            } else toggleSidebar()
-          }}
+          onClick={() => toggleWorkspacePanel('left')}
         >
           <PanelLeft />
         </IconButton>
         <IconButton
+          ref={searchButton}
           variant="titlebar"
           label="搜索会话"
           title="搜索会话 (Ctrl+K)"
@@ -272,10 +297,7 @@ function WorkspaceLayout() {
           variant="titlebar"
           label={inspectorOpen ? '收起查看面板' : '打开查看面板'}
           aria-expanded={inspectorOpen}
-          onClick={() => {
-            setFloatingSidebarOpen(false)
-            setInspectorOpen(!inspectorOpen)
-          }}
+          onClick={() => toggleWorkspacePanel('right')}
         >
           <PanelRight />
         </IconButton>
@@ -455,7 +477,7 @@ function WorkspaceLayout() {
       )}
       {!inspectorDocked && (
         <WorkspaceFloatingPanel
-          open={compact && inspectorOpen}
+          open={floatingInspectorOpen}
           onOpenChange={setInspectorOpen}
           side="right"
           title="项目文件与变更"
