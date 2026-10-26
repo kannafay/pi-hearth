@@ -33,7 +33,7 @@ const ReplyMarkdown = memo(function ReplyMarkdown({
       translations={markdownTranslations}
       isAnimating={streaming}
       mode={streaming ? 'streaming' : 'static'}
-      className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-6 wrap-anywhere"
+      className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
     >
       {text}
     </Streamdown>
@@ -147,7 +147,9 @@ export const ConversationTurn = memo(function ConversationTurn({
             </form>
           ) : user.text ? (
             <div className="user-message-bubble min-w-0 max-w-full rounded-xl px-3 py-2">
-              <p className="whitespace-pre-wrap text-[14px] leading-6 wrap-anywhere">{user.text}</p>
+              <p className="whitespace-pre-wrap text-[14px] leading-[1.65] wrap-anywhere">
+                {user.text}
+              </p>
             </div>
           ) : null}
           {!editing && (

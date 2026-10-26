@@ -547,6 +547,65 @@ select {
   transition-property: opacity, color, background-color;
 }
 
+.conversation-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 20px 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.conversation-markdown h1 {
+  font-size: 24px;
+}
+
+.conversation-markdown h2 {
+  font-size: 20px;
+}
+
+.conversation-markdown h3 {
+  font-size: 17px;
+}
+
+.conversation-markdown h4 {
+  font-size: 15px;
+}
+
+.conversation-markdown :is(h5, h6) {
+  font-size: 14px;
+}
+
+.conversation-markdown > :first-child {
+  margin-top: 0;
+}
+
+.conversation-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.conversation-markdown :is(ul, ol) {
+  padding-inline-start: 1.5em;
+  list-style-position: outside;
+}
+
+.conversation-markdown li {
+  padding-block: 2px;
+}
+
+.conversation-markdown li :is(ul, ol) {
+  margin-block: 4px 0;
+  padding-inline-start: 1.35em;
+}
+
+.conversation-markdown blockquote {
+  margin-block: 12px;
+  border-inline-start-width: 2px;
+  padding-inline-start: 12px;
+  font-style: normal;
+}
+
+.conversation-markdown :is(th, td) {
+  padding: 6px 12px;
+}
+
 .conversation-markdown [data-streamdown='code-block'] {
   min-width: 0;
   max-width: 100%;
@@ -559,10 +618,16 @@ select {
 }
 
 .conversation-markdown [data-streamdown='code-block-header'] {
-  height: 44px;
+  height: 36px;
   min-width: 0;
   border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-  padding: 0 88px 0 16px;
+  padding: 0 80px 0 12px;
+}
+
+.conversation-markdown
+  [data-streamdown='code-block']
+  > :has(> [data-streamdown='code-block-actions']) {
+  top: 4px;
 }
 
 .conversation-markdown [data-streamdown='code-block-header'] > span {
@@ -599,17 +664,21 @@ select {
   min-width: 0;
   border: 0;
   border-radius: 0;
-  padding: 16px;
+  padding: 12px;
   background: transparent;
-  font-size: 14px;
-  line-height: 1.7;
-  overscroll-behavior: contain;
+  font-size: 13px;
+  line-height: 1.6;
+  /* Let vertical wheel input continue into the conversation at the code area's edges. */
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   tab-size: 2;
 }
 
 .conversation-markdown [data-streamdown='code-block-body'] pre {
   background: transparent;
   font-family: 'Cascadia Code', Consolas, 'SFMono-Regular', monospace;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .conversation-markdown [data-streamdown='code-block-body'] code > span::before {
