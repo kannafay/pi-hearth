@@ -115,19 +115,21 @@ test('thinking collapses independently and stays collapsed as more content arriv
 
 test('collapsing a pinned thinking header keeps that group in view', async () => {
   const user = userEvent.setup()
-  render(
-    <ExecutionProcess
-      stateKey="pinned"
-      active
-      items={[
-        { kind: 'thinking', id: 'long', text: '第一组的长内容。' },
-        { kind: 'thinking', id: 'next', text: '下一组内容。' },
-      ]}
-    />,
+  const view = render(
+    <div data-scroll-area>
+      <ExecutionProcess
+        stateKey="pinned"
+        active
+        items={[
+          { kind: 'thinking', id: 'long', text: '第一组的长内容。' },
+          { kind: 'thinking', id: 'next', text: '下一组内容。' },
+        ]}
+      />
+    </div>,
   )
   const header = screen.getAllByRole('button', { name: '思考' })[0]
   const group = header.closest('[data-slot="collapsible"]')!
-  const viewport = screen.getByRole('region', { name: '执行过程详情' })
+  const viewport = view.container.querySelector<HTMLElement>('[data-scroll-area]')!
   header.style.position = 'sticky'
   vi.spyOn(header, 'getBoundingClientRect').mockReturnValue({ top: 50 } as DOMRect)
   vi.spyOn(group, 'getBoundingClientRect').mockReturnValue({ top: -450 } as DOMRect)

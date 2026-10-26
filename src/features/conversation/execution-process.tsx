@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { Brain, ChevronRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Brain, ChevronRight, MessageSquareText } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ProcessItem } from './conversation-turns'
 import { ToolRecord } from './tool-record'
-import { ScrollArea } from '@/components/scroll-area'
 import { useConversationLocalState } from './conversation-local-state'
 import { useExecutionRecord } from './use-execution-record'
+import { ExecutionRecord } from './execution-record'
 
 export function formatElapsed(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -39,40 +39,35 @@ function ElapsedTime({
   )
 }
 
-function ThinkingRecord({
+function ProcessTextRecord({
   item,
   stateKey,
 }: {
-  item: Extract<ProcessItem, { kind: 'thinking' }>
+  item: Exclude<ProcessItem, { kind: 'tool' }>
   stateKey?: string
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
-    `thinking:${stateKey ?? ''}:${item.id}:expanded`,
+    `${item.kind}:${stateKey ?? ''}:${item.id}:expanded`,
     true,
   )
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="pr-1">
-      <CollapsibleTrigger
-        ref={headerRef}
-        className="execution-record-header flex w-full items-center gap-1.5 rounded-sm text-left text-[14px] font-medium text-foreground/65 transition-colors duration-160 ease-out outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-      >
-        <Brain aria-hidden className="size-3.5 stroke-[1.6]" />
-        思考
-        <ChevronRight
-          aria-hidden
-          className={`size-3.5 shrink-0 transition-transform duration-160 ease-out ${open ? 'rotate-90' : ''}`}
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="execution-process-content">
-        <div className="space-y-2 pt-2 text-[14px] leading-[1.65] text-muted-foreground wrap-anywhere">
-          {item.text.split(/\n\s*\n/).map((paragraph, index) => (
+    <ExecutionRecord
+      icon={item.kind === 'thinking' ? Brain : MessageSquareText}
+      title={item.kind === 'thinking' ? '思考' : '执行说明'}
+      open={open}
+      onOpenChange={setOpen}
+      headerRef={headerRef}
+    >
+      <div className="space-y-2">
+        {(item.kind === 'thinking' ? item.text : item.message.text)
+          .split(/\n\s*\n/)
+          .map((paragraph, index) => (
             <p key={index} className="whitespace-pre-wrap">
               {paragraph}
             </p>
           ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </ExecutionRecord>
   )
 }
 
@@ -93,8 +88,6 @@ export function ExecutionProcess({
     stateKey ? `process:${stateKey}` : undefined,
     null,
   )
-  const viewport = useRef<HTMLDivElement>(null)
-  const follow = useRef(true)
   const tools = items.flatMap((item) => (item.kind === 'tool' ? [item.tool] : []))
   const awaiting = tools.some((tool) => tool.status === 'awaiting_approval')
   // A manual choice applies to this phase only; finishing always collapses the process.
@@ -104,12 +97,6 @@ export function ExecutionProcess({
     startedAt !== undefined && finishedAt !== undefined
       ? Math.max(0, finishedAt - startedAt)
       : undefined
-
-  useEffect(() => {
-    if (open && (active || awaiting) && (follow.current || awaiting) && viewport.current) {
-      viewport.current.scrollTop = viewport.current.scrollHeight
-    }
-  }, [items, active, awaiting, open])
 
   if (!active && !items.length && elapsed !== undefined && elapsed <= 2000) return null
 
@@ -134,35 +121,15 @@ export function ExecutionProcess({
         ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="execution-process-content">
-        <ScrollArea
-          ref={viewport}
-          role="region"
-          aria-label="执行过程详情"
-          className="mt-3"
-          viewportClassName="max-h-80 overflow-x-hidden overflow-y-auto pr-2"
-          onScroll={() => {
-            const element = viewport.current
-            if (element)
-              follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48
-          }}
-        >
-          <div className="space-y-4">
-            {items.map((item) =>
-              item.kind === 'tool' ? (
-                <ToolRecord key={item.id} tool={item.tool} compact />
-              ) : item.kind === 'thinking' ? (
-                <ThinkingRecord key={item.id} item={item} stateKey={stateKey} />
-              ) : (
-                <p
-                  key={item.id}
-                  className="pr-1 text-[13px] leading-[1.65] whitespace-pre-wrap text-muted-foreground wrap-anywhere"
-                >
-                  {item.message.text}
-                </p>
-              ),
-            )}
-          </div>
-        </ScrollArea>
+        <div role="region" aria-label="执行过程详情" className="mt-2 space-y-3">
+          {items.map((item) =>
+            item.kind === 'tool' ? (
+              <ToolRecord key={item.id} tool={item.tool} />
+            ) : (
+              <ProcessTextRecord key={item.id} item={item} stateKey={stateKey} />
+            ),
+          )}
+        </div>
       </CollapsibleContent>
     </Collapsible>
   )

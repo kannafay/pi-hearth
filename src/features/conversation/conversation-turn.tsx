@@ -4,7 +4,7 @@ import { codeHighlighter } from './code-highlighter'
 import { Check, Copy, Download } from 'lucide-react'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
-import { ConversationCode } from './conversation-code'
+import { ConversationCode, ConversationCodeState } from './conversation-code'
 import { ExecutionProcess } from './execution-process'
 import { MessageActions } from './message-actions'
 import { useConversationStore } from './store'
@@ -21,22 +21,26 @@ const markdownPlugins = { code: codeHighlighter }
 const ReplyMarkdown = memo(function ReplyMarkdown({
   text,
   streaming,
+  stateKey,
 }: {
   text: string
   streaming: boolean
+  stateKey: string
 }) {
   return (
-    <Streamdown
-      plugins={markdownPlugins}
-      components={markdownComponents}
-      icons={markdownIcons}
-      translations={markdownTranslations}
-      isAnimating={streaming}
-      mode={streaming ? 'streaming' : 'static'}
-      className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
-    >
-      {text}
-    </Streamdown>
+    <ConversationCodeState stateKey={stateKey}>
+      <Streamdown
+        plugins={markdownPlugins}
+        components={markdownComponents}
+        icons={markdownIcons}
+        translations={markdownTranslations}
+        isAnimating={streaming}
+        mode={streaming ? 'streaming' : 'static'}
+        className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
+      >
+        {text}
+      </Streamdown>
+    </ConversationCodeState>
   )
 })
 
@@ -182,7 +186,11 @@ export const ConversationTurn = memo(function ConversationTurn({
           />
           <div className="space-y-2">
             {reply ? (
-              <ReplyMarkdown text={reply.text} streaming={reply.status === 'streaming'} />
+              <ReplyMarkdown
+                stateKey={reply.id}
+                text={reply.text}
+                streaming={reply.status === 'streaming'}
+              />
             ) : null}
             {active && (
               <div

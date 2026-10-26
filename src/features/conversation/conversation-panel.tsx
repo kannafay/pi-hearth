@@ -57,6 +57,8 @@ const ConversationMessages = memo(function ConversationMessages({
   const ids = useConversationStore((state) => selectView(state).ids)
   const viewport = useRef<HTMLDivElement>(null)
   const [focused, setFocused] = useState<string | null>(null)
+  const [readingDisclosure, setReadingDisclosure] = useState(false)
+  const userScrolling = useRef(false)
   const initialized = useRef(false)
   const getItemKey = useCallback((index: number) => ids[index], [ids])
   const focusedIndex = focused === null ? -1 : ids.indexOf(focused)
@@ -78,10 +80,12 @@ const ConversationMessages = memo(function ConversationMessages({
     estimateSize: () => 280,
     overscan: 3,
     paddingStart: 32,
-    anchorTo: 'end',
+    anchorTo: readingDisclosure ? 'start' : 'end',
     followOnAppend: true,
     scrollEndThreshold: 80,
     directDomUpdates: true,
+    // Translated rows offset sticky execution headers away from the scroll viewport.
+    directDomUpdatesMode: 'position',
     // Streaming and animated process panels can resize in the same observer cycle.
     useAnimationFrameWithResizeObserver: true,
     rangeExtractor,
@@ -91,7 +95,12 @@ const ConversationMessages = memo(function ConversationMessages({
   })
 
   useLayoutEffect(() => {
-    const current = { toEnd: () => virtualizer.scrollToEnd() }
+    const current = {
+      toEnd: () => {
+        setReadingDisclosure(false)
+        virtualizer.scrollToEnd()
+      },
+    }
     controller.current = current
     return () => {
       if (controller.current === current) controller.current = null
@@ -128,11 +137,30 @@ const ConversationMessages = memo(function ConversationMessages({
       className="min-h-0 flex-1"
       viewportClassName="h-full overflow-x-hidden overflow-y-auto px-6"
       style={{ overflowAnchor: 'none' }}
-      onWheel={() => virtualizer.cancelScroll()}
-      onTouchStart={() => virtualizer.cancelScroll()}
+      onClickCapture={(event) => {
+        if (!(event.target as HTMLElement).closest('[data-slot="collapsible-trigger"]')) return
+        // Manual disclosure changes keep the reader's position instead of following the new end.
+        userScrolling.current = false
+        virtualizer.cancelScroll()
+        setReadingDisclosure(true)
+      }}
+      onWheel={() => {
+        userScrolling.current = true
+        virtualizer.cancelScroll()
+      }}
+      onTouchStart={() => {
+        userScrolling.current = true
+        virtualizer.cancelScroll()
+      }}
+      onScroll={() => {
+        if (readingDisclosure && userScrolling.current && virtualizer.isAtEnd())
+          setReadingDisclosure(false)
+      }}
       onKeyDown={(event) => {
-        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key))
+        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+          userScrolling.current = true
           virtualizer.cancelScroll()
+        }
       }}
       onFocusCapture={(event) => {
         setFocused(
@@ -156,7 +184,7 @@ const ConversationMessages = memo(function ConversationMessages({
               ref={virtualizer.measureElement}
               data-index={item.index}
               data-turn-id={ids[item.index]}
-              className="absolute top-0 left-0 w-full pb-8"
+              className="absolute left-0 w-full pb-8"
             >
               <ConversationRow
                 id={ids[item.index]}
