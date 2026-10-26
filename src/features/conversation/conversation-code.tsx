@@ -1,6 +1,7 @@
 import { createContext, useContext, useId, type ComponentProps, type ReactNode } from 'react'
 import { ChevronRight, CodeXml } from 'lucide-react'
 import {
+  Block,
   CodeBlock,
   CodeBlockCopyButton,
   CodeBlockDownloadButton,
@@ -8,6 +9,7 @@ import {
   StreamdownContext,
   useIsCodeFenceIncomplete,
   type ExtraProps,
+  type BlockProps,
 } from 'streamdown'
 import { buttonVariants } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -15,6 +17,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useConversationLocalState } from './conversation-local-state'
 
 const CodeScope = createContext<string | undefined>(undefined)
+const CodeBlockIndex = createContext(0)
+
+export function ConversationMarkdownBlock(props: BlockProps) {
+  return (
+    <CodeBlockIndex.Provider value={props.index}>
+      <Block {...props} />
+    </CodeBlockIndex.Provider>
+  )
+}
 
 export function ConversationCodeState({
   stateKey,
@@ -78,13 +89,16 @@ function FencedCode({
   const isIncomplete = useIsCodeFenceIncomplete()
   const context = useContext(StreamdownContext)
   const scope = useContext(CodeScope)
+  const blockIndex = useContext(CodeBlockIndex)
   const fallbackKey = useId()
   const streaming = context.isAnimating
   const [choice, setChoice] = useConversationLocalState<{
     streaming: boolean
     open: boolean
   } | null>(
-    !streaming && scope ? `code:${scope}:${offset ?? fallbackKey}:expanded` : undefined,
+    !streaming && scope
+      ? `code:${scope}:${blockIndex}:${offset ?? fallbackKey}:expanded`
+      : undefined,
     null,
   )
   // A completed reply starts collapsed, even if its code fence closed before the reply finished.
@@ -102,7 +116,7 @@ function FencedCode({
           <span className="truncate">{language || '代码'}</span>
           <ChevronRight
             aria-hidden
-            className={`size-3.5 shrink-0 transition-transform duration-160 ease-out ${open ? 'rotate-90' : ''}`}
+            className={`conversation-disclosure-chevron size-3.5 shrink-0 ${open ? 'rotate-90' : ''}`}
           />
         </CollapsibleTrigger>
         <div data-streamdown="code-block-actions" className="flex shrink-0 items-center">

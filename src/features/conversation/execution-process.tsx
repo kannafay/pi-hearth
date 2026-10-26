@@ -114,7 +114,7 @@ export function ExecutionProcess({
         {items.length > 0 && (
           <ChevronRight
             aria-hidden
-            className="size-3.5 shrink-0 transition-transform duration-160 ease-out in-data-panel-open:rotate-90"
+            className="conversation-disclosure-chevron size-3.5 shrink-0 in-data-panel-open:rotate-90"
           />
         )}
         {awaiting ? (

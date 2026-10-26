@@ -53,13 +53,13 @@ export function ExecutionRecord({
       <CollapsibleTrigger
         ref={headerRef}
         disabled={disabled}
-        className="execution-record-header flex w-full min-w-0 items-center gap-1.5 py-1 text-left text-[14px] font-medium text-foreground/65 transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:pb-3"
+        className="execution-record-header flex w-full min-w-0 items-center gap-1.5 py-1 text-left text-[14px] font-medium text-foreground/65 outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:pb-3"
       >
         <Icon aria-hidden className="size-3.5 shrink-0 stroke-[1.6]" />
         <span className="min-w-0 max-w-1/2 truncate">{title}</span>
         <ChevronRight
           aria-hidden
-          className={`size-3.5 shrink-0 transition-transform duration-160 ease-out ${open ? 'rotate-90' : ''}`}
+          className={`conversation-disclosure-chevron size-3.5 shrink-0 ${open ? 'rotate-90' : ''}`}
         />
         {summary}
         {status && <span className="ml-auto flex shrink-0 items-center gap-2">{status}</span>}

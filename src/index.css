@@ -71,6 +71,8 @@
     0 8px 24px -8px oklch(0.12 0.01 300 / 16%), 0 2px 8px -4px oklch(0.12 0.01 300 / 10%);
   --dialog-duration: 240ms;
   --dialog-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --conversation-disclosure-duration: 240ms;
+  --conversation-disclosure-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --shell-tint: #f5f3f8;
   --workspace-border: oklch(0.94 0.002 300);
   --caption-hover: oklch(0.9 0.006 300);
@@ -529,6 +531,14 @@ select {
     border-bottom: 1px solid transparent;
     border-radius: 0;
     background: var(--background);
+    transition:
+      color 160ms ease-out,
+      padding-bottom var(--conversation-disclosure-duration) var(--conversation-disclosure-ease);
+  }
+
+  .conversation-disclosure-chevron {
+    transition: transform var(--conversation-disclosure-duration)
+      var(--conversation-disclosure-ease);
   }
 }
 
@@ -539,6 +549,9 @@ select {
   height: var(--collapsible-panel-height);
   overflow: hidden;
   opacity: 1;
+}
+
+.settings-model-content {
   transition:
     height 200ms var(--dialog-ease),
     opacity 160ms ease-out;
@@ -549,6 +562,9 @@ select {
 .conversation-code-content {
   /* Clip disclosure animations without introducing another scrolling ancestor. */
   overflow: clip;
+  transition:
+    height var(--conversation-disclosure-duration) var(--conversation-disclosure-ease),
+    opacity var(--conversation-disclosure-duration) var(--conversation-disclosure-ease);
 }
 
 :is(
@@ -651,6 +667,8 @@ select {
 }
 
 .conversation-code [data-streamdown='code-block'] {
+  /* Virtual rows already limit mounted code. Measure its actual height for the disclosure. */
+  content-visibility: visible !important;
   min-width: 0;
   margin: 0;
   gap: 0;

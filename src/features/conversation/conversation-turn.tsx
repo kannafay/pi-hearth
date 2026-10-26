@@ -4,7 +4,11 @@ import { codeHighlighter } from './code-highlighter'
 import { Check, Copy, Download } from 'lucide-react'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
-import { ConversationCode, ConversationCodeState } from './conversation-code'
+import {
+  ConversationCode,
+  ConversationCodeState,
+  ConversationMarkdownBlock,
+} from './conversation-code'
 import { ExecutionProcess } from './execution-process'
 import { MessageActions } from './message-actions'
 import { useConversationStore } from './store'
@@ -18,7 +22,7 @@ const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download
 const markdownTranslations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
 const markdownPlugins = { code: codeHighlighter }
 
-const ReplyMarkdown = memo(function ReplyMarkdown({
+export const ReplyMarkdown = memo(function ReplyMarkdown({
   text,
   streaming,
   stateKey,
@@ -28,14 +32,16 @@ const ReplyMarkdown = memo(function ReplyMarkdown({
   stateKey: string
 }) {
   return (
-    <ConversationCodeState stateKey={stateKey}>
+    <ConversationCodeState key={stateKey} stateKey={stateKey}>
       <Streamdown
         plugins={markdownPlugins}
         components={markdownComponents}
         icons={markdownIcons}
         translations={markdownTranslations}
         isAnimating={streaming}
-        mode={streaming ? 'streaming' : 'static'}
+        mode="streaming"
+        parseIncompleteMarkdown={streaming}
+        BlockComponent={ConversationMarkdownBlock}
         className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
       >
         {text}
