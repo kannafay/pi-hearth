@@ -105,7 +105,7 @@ test('preparing an empty new conversation and choosing its project keep the welc
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
   expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveAttribute(
     'placeholder',
-    '发送消息，或粘贴图片与文件…',
+    '发送消息，输入 / 使用命令，@ 引用文件…',
   )
   act(() => useConversationStore.setState({ status: 'ready', sessionFile: 'new.jsonl' }))
   expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBe(welcome)
@@ -559,7 +559,7 @@ test('an uncached conversation keeps its history skeleton and editable draft wit
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '取消连接' })).not.toBeInTheDocument()
   const input = screen.getByRole('textbox', { name: '消息草稿' })
-  expect(input).toHaveAttribute('placeholder', '发送消息，或粘贴图片与文件…')
+  expect(input).toHaveAttribute('placeholder', '发送消息，输入 / 使用命令，@ 引用文件…')
   await user.type(input, '先写草稿')
   expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
   act(() => useConversationStore.setState({ status: 'ready' }))

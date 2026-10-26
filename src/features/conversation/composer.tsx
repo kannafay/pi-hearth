@@ -337,7 +337,7 @@ export function Composer({
             variant="embedded"
             aria-label="消息草稿"
             rows={1}
-            placeholder={dragging ? '松开以添加附件' : '发送消息，或粘贴图片与文件…'}
+            placeholder={dragging ? '松开以添加附件' : '发送消息，输入 / 使用命令，@ 引用文件…'}
             value={draft}
             disabled={Boolean(readOnly)}
             aria-autocomplete="list"

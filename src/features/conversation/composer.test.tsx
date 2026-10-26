@@ -272,7 +272,7 @@ test('drafts stay editable while settings are applied and Enter cannot race the 
   const user = userEvent.setup()
   render(<Composer onSendStart={() => {}} />)
   const input = screen.getByRole('textbox', { name: '消息草稿' })
-  expect(input).toHaveAttribute('placeholder', '发送消息，或粘贴图片与文件…')
+  expect(input).toHaveAttribute('placeholder', '发送消息，输入 / 使用命令，@ 引用文件…')
   await user.type(input, '继续编辑{Enter}')
   expect(input).toHaveValue('继续编辑')
   expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
