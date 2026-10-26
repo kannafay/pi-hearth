@@ -96,8 +96,8 @@ function FencedCode({
       onOpenChange={(open) => setChoice({ streaming, open })}
       className="conversation-code min-w-0 max-w-full border"
     >
-      <div className="conversation-code-header flex min-h-9 min-w-0 items-center gap-2 px-3">
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+      <div className="conversation-code-header flex min-h-9 min-w-0 items-center gap-2 px-1">
+        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch px-2 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
           <CodeXml aria-hidden className="size-3.5 shrink-0 stroke-[1.6]" />
           <span className="truncate">{language || '代码'}</span>
           <ChevronRight

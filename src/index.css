@@ -631,9 +631,13 @@ select {
   padding: 6px 12px;
 }
 
+.conversation-code,
+.tool-record-code {
+  border-color: color-mix(in oklch, var(--border) 70%, var(--background));
+}
+
 .conversation-code {
   overflow: hidden;
-  border-color: color-mix(in oklch, var(--border) 70%, var(--background));
   border-radius: 10px;
   background: color-mix(in oklch, var(--muted) 60%, var(--background));
 }
