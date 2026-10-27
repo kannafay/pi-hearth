@@ -5,9 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { useMediaQuery } from '@/app/use-media-query'
-import { useConversationStore } from '@/features/conversation/store'
+import { emptyConversation, useConversationStore } from '@/features/conversation/store'
 import { controlWindow } from '@/lib/desktop'
 import type { PiEvent } from '@/lib/generated/pi'
+import * as composerBridge from '@/lib/composer'
 import { WorkspaceShell } from './workspace-shell'
 import { ConversationPanel } from '@/features/conversation/conversation-panel'
 
@@ -185,6 +186,154 @@ test.each([false, true])(
     expect(refresh).toHaveBeenCalledTimes(1)
   },
 )
+
+test.each(['general', 'D:/projects/hearth'])(
+  'compaction and new messages in %s promote activity without crossing pins or rebounding',
+  async (cwd) => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const sessions = ['Pinned', 'Other', 'Active'].map((id, index) => ({
+      id,
+      path: `${id.toLowerCase()}.jsonl`,
+      cwd,
+      title: id,
+      modified: 3000 - index * 1000,
+      messageCount: 1,
+    }))
+    useWorkspaceStore.setState({
+      projects: [{ path: 'D:/projects/hearth', name: 'Hearth' }],
+      projectPath: cwd === 'general' ? null : cwd,
+      generalCwd: 'general',
+      sessions,
+      sessionOrder: sessions.map((item) => item.path),
+      sessionPreferences: { 'pinned.jsonl': { pinned: true, archived: false } },
+      refresh,
+    })
+    useConversationStore.setState({
+      instanceId: 'runtime',
+      sessionId: 'Active',
+      sessionFile: 'active.jsonl',
+      connectionTarget: {
+        projectPath: cwd === 'general' ? null : cwd,
+        sessionPath: 'active.jsonl',
+      },
+      messages: [
+        {
+          id: 'old',
+          role: 'user',
+          text: 'Task',
+          thinking: '',
+          status: 'complete',
+          error: null,
+          timestamp: 1000,
+        },
+      ],
+    })
+    let reject!: (reason: string) => void
+    vi.spyOn(composerBridge, 'compactPi').mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail
+      }),
+    )
+    render(<WorkspaceShell />)
+    const rows = () =>
+      [...document.querySelectorAll('[data-sort-kind="session"]')].map((row) =>
+        row.getAttribute('data-sort-path'),
+      )
+    expect(rows()).toEqual(['pinned.jsonl', 'other.jsonl', 'active.jsonl'])
+    let pending!: Promise<boolean>
+    act(() => {
+      pending = useConversationStore.getState().compact()
+    })
+    expect(rows()).toEqual(['pinned.jsonl', 'active.jsonl', 'other.jsonl'])
+    await act(async () => {
+      reject('Nothing to compact (session too small)')
+      await pending
+    })
+    expect(rows()).toEqual(['pinned.jsonl', 'active.jsonl', 'other.jsonl'])
+    act(() => useWorkspaceStore.setState({ sessions: structuredClone(sessions) }))
+    expect(rows()).toEqual(['pinned.jsonl', 'active.jsonl', 'other.jsonl'])
+    act(() => {
+      useWorkspaceStore
+        .getState()
+        .reorderNavigation('session', 'other.jsonl', 'active.jsonl', 'before')
+    })
+    act(() => useConversationStore.setState({ lastLocalActivityAt: 9000 }))
+    expect(rows()).toEqual(['pinned.jsonl', 'other.jsonl', 'active.jsonl'])
+    act(() => useConversationStore.setState({ status: 'running', activeRunId: 'next-send' }))
+    expect(rows()).toEqual(['pinned.jsonl', 'active.jsonl', 'other.jsonl'])
+  },
+)
+
+test('background completion promotes that session without changing the current selection', () => {
+  const sessions = ['Current', 'Background'].map((id, index) => ({
+    id,
+    path: `${id.toLowerCase()}.jsonl`,
+    cwd: 'general',
+    title: id,
+    modified: 2000 - index * 1000,
+    messageCount: 1,
+  }))
+  const refresh = vi.fn().mockResolvedValue(undefined)
+  useWorkspaceStore.setState({
+    sessions,
+    sessionOrder: sessions.map((item) => item.path),
+    generalCwd: 'general',
+    refresh,
+  })
+  useConversationStore.setState({
+    instanceId: 'current-runtime',
+    sessionId: 'Current',
+    sessionFile: 'current.jsonl',
+    messages: [
+      {
+        id: 'old',
+        role: 'user',
+        text: 'Task',
+        thinking: '',
+        status: 'complete',
+        error: null,
+        timestamp: 2000,
+      },
+    ],
+    backgroundSessions: new Map([
+      [
+        'background-runtime',
+        {
+          projectPath: null,
+          data: {
+            ...emptyConversation,
+            instanceId: 'background-runtime',
+            sessionId: 'Background',
+            sessionFile: 'background.jsonl',
+            status: 'running',
+            activeRunId: 'background-run',
+          },
+        },
+      ],
+    ]),
+  })
+  render(<WorkspaceShell />)
+  act(() =>
+    useConversationStore.getState().receive([
+      {
+        instanceId: 'background-runtime',
+        sessionId: 'Background',
+        projectPath: 'general',
+        runId: 'background-run',
+        sequence: 1,
+        data: { type: 'run_finished', status: 'complete', error: null, finishedAt: 5000 },
+      },
+    ]),
+  )
+  expect(
+    [...document.querySelectorAll('[data-sort-kind="session"]')].map((row) =>
+      row.getAttribute('data-sort-path'),
+    ),
+  ).toEqual(['background.jsonl', 'current.jsonl'])
+  expect(useConversationStore.getState().sessionId).toBe('Current')
+  expect(useWorkspaceStore.getState().selectedSessionPath).toBe('current.jsonl')
+  expect(refresh).toHaveBeenCalledTimes(1)
+})
 
 test('header search remains available when the sidebar is collapsed', async () => {
   const user = userEvent.setup()

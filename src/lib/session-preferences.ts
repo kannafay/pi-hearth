@@ -44,3 +44,27 @@ export function visibleSessions(
         b.modified - a.modified,
     )
 }
+
+// Materialize the current order before promoting activity so a later catalog
+// refresh cannot restore the previous manual position. Other rows keep their order.
+export function promoteSessionOrder(
+  sessions: SessionInfo[],
+  preferences: SessionPreferences,
+  order: string[],
+  paths: string[],
+) {
+  if (!paths.length) return order
+  const current = visibleSessions(sessions, preferences, order).map((session) =>
+    sessionKey(session.path)!,
+  )
+  const available = new Set(current)
+  const promoted = [...new Set(paths.map((path) => sessionKey(path)!))].filter((path) =>
+    available.has(path),
+  )
+  if (!promoted.length) return order
+  const active = new Set(promoted)
+  const next = [...promoted, ...current.filter((path) => !active.has(path))]
+  return next.length === order.length && next.every((path, index) => path === order[index])
+    ? order
+    : next
+}

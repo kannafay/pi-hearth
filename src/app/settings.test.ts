@@ -90,6 +90,31 @@ test('UI changes save only changed fields and never overwrite startup settings',
   ])
 })
 
+test('recent session activity saves its new position and restores it on the next startup', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  useWorkspaceStore.setState({
+    sessions: ['history', 'older'].map((id, index) => ({
+      id,
+      path: `${id}.jsonl`,
+      cwd: 'general',
+      title: id,
+      modified: 100 - index,
+      messageCount: 1,
+    })),
+  })
+  useWorkspaceStore.getState().promoteSession({ sessionId: 'older', sessionFile: 'OLDER.JSONL' })
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
+    sessionOrder: ['older.jsonl', 'history.jsonl'],
+  })
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
+  vi.mocked(loadAppSettings).mockResolvedValue({
+    ...saved,
+    sessionOrder: ['older.jsonl', 'history.jsonl'],
+  })
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState().sessionOrder).toEqual(['older.jsonl', 'history.jsonl'])
+})
+
 test('the saved custom directory survives startup while the default directory is active', async () => {
   vi.mocked(loadAppSettings).mockResolvedValue({ ...saved, projectsDirectory: '' })
   await useWorkspaceStore.getState().hydrateSettings()

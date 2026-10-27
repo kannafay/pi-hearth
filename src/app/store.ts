@@ -37,6 +37,7 @@ import {
   sessionKey,
   isCurrentSession,
   sessionPreference,
+  promoteSessionOrder,
   visibleSessions,
   type SessionPreferences,
 } from '@/lib/session-preferences'
@@ -123,6 +124,7 @@ interface WorkspaceState {
   setTheme: (theme: Theme) => void
   initialize: () => Promise<void>
   syncActiveSession: () => void
+  promoteSession: (session: { sessionId: string | null; sessionFile: string | null }) => void
   refresh: () => Promise<void>
   openSession: (session: SessionInfo) => Promise<void>
   newConversation: (
@@ -600,10 +602,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     // a new message and must not move a conversation when it is opened.
     const modified = messages.reduce(
       (latest, message) =>
-        Math.max(
-          latest,
-          message.timestamp ?? Math.max(message.startedAt ?? 0, message.finishedAt ?? 0),
-        ),
+        message.role === 'user' || message.role === 'assistant'
+          ? Math.max(
+              latest,
+              message.timestamp ?? Math.max(message.startedAt ?? 0, message.finishedAt ?? 0),
+            )
+          : latest,
       previous?.modified ?? 0,
     )
     const session: SessionInfo = {
@@ -630,7 +634,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ? state.sessions.map((item) => (samePath(item.path, session.path) ? session : item))
         : [session, ...state.sessions],
       selectedSessionPath: session.path,
+      sessionOrder: !previous
+        ? promoteSessionOrder(
+            [session, ...state.sessions],
+            state.sessionPreferences,
+            state.sessionOrder,
+            [session.path],
+          )
+        : state.sessionOrder,
     }))
+  },
+  promoteSession: (current) => {
+    const state = get()
+    const session = state.sessions.find((entry) => isCurrentSession(entry, current))
+    if (!session || hasPath(state.archivedProjects, session.cwd)) return
+    const sessionOrder = promoteSessionOrder(
+      state.sessions,
+      state.sessionPreferences,
+      state.sessionOrder,
+      [session.path],
+    )
+    if (sessionOrder !== state.sessionOrder) set({ sessionOrder })
   },
   refresh: async () => {
     if (get().loading) {
@@ -678,8 +702,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             : session
         }),
       ]
+      const state = get()
+      const changed = catalog.sessions
+        .filter((session) => {
+          const local = state.sessions.find((entry) =>
+            isCurrentSession(entry, { sessionId: session.id, sessionFile: session.path }),
+          )
+          return !local || session.modified > local.modified
+        })
+        .sort((a, b) => b.modified - a.modified)
       set({
         ...catalogState({ ...catalog, sessions }),
+        sessionOrder: promoteSessionOrder(
+          sessions,
+          catalog.sessionPreferences ?? {},
+          state.sessionOrder,
+          changed.map((session) => session.path),
+        ),
         ...(connecting ? {} : { selectedSessionPath: next?.path ?? previous?.path ?? path }),
         error: null,
       })

@@ -538,6 +538,96 @@ test('restored completion times do not reorder chats, while a real new message s
   ).toEqual([newer.id, older.id])
 })
 
+test.each([session.cwd, 'general'])(
+  'activity in %s survives catalog rollback and only a new action overrides later dragging',
+  async (cwd) => {
+    const older = { ...session, cwd, modified: 1000 }
+    const newer = { ...older, id: 'new', path: 'new.jsonl', modified: 2000 }
+    const sessions = [newer, older]
+    useWorkspaceStore.setState({
+      ...catalog,
+      initialized: true,
+      sessions,
+      sessionOrder: [newer.path, older.path],
+    })
+    useConversationStore.setState({
+      instanceId: 'runtime',
+      sessionId: older.id,
+      sessionFile: older.path,
+      connectionTarget: { projectPath: cwd === 'general' ? null : cwd, sessionPath: older.path },
+      messages: [
+        {
+          id: 'old-user',
+          role: 'user',
+          text: 'Task',
+          thinking: '',
+          status: 'complete',
+          error: null,
+          timestamp: 1000,
+        },
+        {
+          id: 'summary',
+          role: 'compactionSummary',
+          text: 'Summary',
+          thinking: '',
+          status: 'complete',
+          error: null,
+          timestamp: 9000,
+        },
+      ],
+    })
+    const order = () => {
+      const state = useWorkspaceStore.getState()
+      return visibleSessions(state.sessions, state.sessionPreferences, state.sessionOrder).map(
+        (item) => item.id,
+      )
+    }
+    useWorkspaceStore.getState().syncActiveSession()
+    expect(order()).toEqual([newer.id, older.id])
+    useWorkspaceStore.getState().promoteSession(useConversationStore.getState())
+    expect(order()).toEqual([older.id, newer.id])
+    vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions })
+    await useWorkspaceStore.getState().refresh()
+    expect(order()).toEqual([older.id, newer.id])
+    useWorkspaceStore.getState().reorderNavigation('session', newer.path, older.path, 'before')
+    const manual = useWorkspaceStore.getState().sessionOrder
+    useWorkspaceStore.getState().syncActiveSession()
+    await useWorkspaceStore.getState().refresh()
+    expect(useWorkspaceStore.getState().sessionOrder).toBe(manual)
+    expect(order()).toEqual([newer.id, older.id])
+    useWorkspaceStore.getState().promoteSession(useConversationStore.getState())
+    expect(order()).toEqual([older.id, newer.id])
+    expect(useConversationStore.getState().connect).not.toHaveBeenCalled()
+  },
+)
+
+test('new catalog activity updates manual order by recency and unchanged refreshes retain a later drag', async () => {
+  const sessions = ['a', 'b', 'c'].map((id, index) => ({
+    ...session,
+    id,
+    path: `${id}.jsonl`,
+    modified: 100 - index,
+  }))
+  useWorkspaceStore.setState({
+    ...catalog,
+    initialized: true,
+    sessions,
+    sessionOrder: sessions.map((item) => item.path),
+  })
+  const changed = sessions.map((item) => ({
+    ...item,
+    modified: item.id === 'c' ? 3000 : item.id === 'b' ? 2000 : item.modified,
+  }))
+  vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: changed })
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().sessionOrder).toEqual(['c.jsonl', 'b.jsonl', 'a.jsonl'])
+  useWorkspaceStore.getState().reorderNavigation('session', 'a.jsonl', 'c.jsonl', 'before')
+  const manual = useWorkspaceStore.getState().sessionOrder
+  await useWorkspaceStore.getState().refresh()
+  expect(useWorkspaceStore.getState().sessionOrder).toBe(manual)
+  expect(manual).toEqual(['a.jsonl', 'c.jsonl', 'b.jsonl'])
+})
+
 test('a new session stays selected through local events and catalog refresh with a Windows path alias', async () => {
   const native = {
     ...session,

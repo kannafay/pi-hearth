@@ -47,7 +47,7 @@ beforeEach(() => {
   })
 })
 
-test('manual order remains stable after new replies, while new chats join the top of their partition', () => {
+test('session activity replaces manual order within its partition while new chats still join the top', () => {
   const order = ['chat-b.jsonl', 'chat-a.jsonl']
   const updated = history.map((session) =>
     session.id === 'chat-a' ? { ...session, modified: 1000 } : session,
@@ -58,6 +58,32 @@ test('manual order remains stable after new replies, while new chats join the to
   expect(sorted.indexOf(sorted.find((session) => session.id === 'chat-b')!)).toBeLessThan(
     sorted.indexOf(sorted.find((session) => session.id === 'chat-a')!),
   )
+  useWorkspaceStore.setState({ sessions: updated, sessionOrder: order })
+  useWorkspaceStore.getState().promoteSession({ sessionId: 'chat-a', sessionFile: 'CHAT-A.JSONL' })
+  const promoted = useWorkspaceStore.getState().sessionOrder
+  const active = visibleSessions(updated, useWorkspaceStore.getState().sessionPreferences, promoted)
+  expect(
+    active.filter((session) => session.cwd === projects[1].path).map((session) => session.id),
+  ).toEqual(['pinned-chat', 'chat-a', 'chat-b'])
+  expect(
+    active.filter((session) => session.cwd === 'general').map((session) => session.id),
+  ).toEqual(['general-a', 'general-b'])
+  useWorkspaceStore
+    .getState()
+    .reorderNavigation('session', 'chat-b.jsonl', 'chat-a.jsonl', 'before')
+  expect(useWorkspaceStore.getState().sessionOrder.indexOf('chat-b.jsonl')).toBeLessThan(
+    useWorkspaceStore.getState().sessionOrder.indexOf('chat-a.jsonl'),
+  )
+  useWorkspaceStore.getState().promoteSession({ sessionId: 'chat-a', sessionFile: 'chat-a.jsonl' })
+  expect(
+    visibleSessions(
+      updated,
+      useWorkspaceStore.getState().sessionPreferences,
+      useWorkspaceStore.getState().sessionOrder,
+    )
+      .filter((session) => session.cwd === projects[1].path)
+      .map((session) => session.id),
+  ).toEqual(['pinned-chat', 'chat-a', 'chat-b'])
   const fresh = { ...history[1], id: 'new', path: 'new.jsonl', modified: 2000 }
   expect(
     visibleSessions([...updated, fresh], useWorkspaceStore.getState().sessionPreferences, order)[1]

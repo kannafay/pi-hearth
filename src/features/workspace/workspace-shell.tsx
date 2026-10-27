@@ -27,6 +27,7 @@ import { controlWindow, isDesktop } from '@/lib/desktop'
 import { toast } from '@/lib/toast'
 import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
+import { findCachedSession } from '@/features/conversation/session-cache'
 
 export function WorkspaceShell() {
   useOperationNotifications()
@@ -161,22 +162,58 @@ function WorkspaceLayout() {
   useEffect(() => {
     if (!desktop) return
     const unsubscribe = useConversationStore.subscribe((state, previous) => {
+      const sameRuntime =
+        state.instanceId !== null &&
+        state.instanceId === previous.instanceId &&
+        state.sessionId === previous.sessionId
+      const started =
+        sameRuntime &&
+        state.activeRunId !== null &&
+        state.activeRunId !== previous.activeRunId &&
+        state.status === 'running'
+      const completed =
+        sameRuntime &&
+        previous.activeRunId !== null &&
+        state.activeRunId === null &&
+        state.status === 'ready'
+      const messageActivity =
+        sameRuntime &&
+        previous.status !== 'connecting' &&
+        state.messages.length > previous.messages.length &&
+        (state.activeRunId !== null || state.lastLocalActivityAt !== previous.lastLocalActivityAt)
       const finished =
         state.status === 'ready' &&
         (state.lastLocalActivityAt !== previous.lastLocalActivityAt ||
           (previous.activeRunId !== null && state.activeRunId === null))
-      const backgroundFinished = [...previous.backgroundSessions.keys()].some(
-        (id) => !state.backgroundSessions.has(id) && state.instanceId !== id,
+      const backgroundFinished = [...previous.backgroundSessions].filter(
+        ([id]) => !state.backgroundSessions.has(id) && state.instanceId !== id,
       )
       if (
         state.instanceId !== previous.instanceId ||
         state.sessionId !== previous.sessionId ||
         state.sessionFile !== previous.sessionFile ||
         state.messages.length !== previous.messages.length ||
+        started ||
         finished
       )
         useWorkspaceStore.getState().syncActiveSession()
-      if (finished || backgroundFinished) void useWorkspaceStore.getState().refresh()
+      if (started || completed || messageActivity)
+        useWorkspaceStore.getState().promoteSession(state)
+      for (const [, { data }] of backgroundFinished) {
+        const cached = findCachedSession(state.sessionCache, data.sessionId, data.sessionFile)?.[1]
+        const before = findCachedSession(
+          previous.sessionCache,
+          data.sessionId,
+          data.sessionFile,
+        )?.[1]
+        if (
+          cached &&
+          cached !== before &&
+          cached.display.lastLocalActivityAt !== data.lastLocalActivityAt
+        )
+          useWorkspaceStore.getState().promoteSession(data)
+      }
+      if (finished || backgroundFinished.length) void useWorkspaceStore.getState().refresh()
     })
     useWorkspaceStore.getState().syncActiveSession()
     void useWorkspaceStore.getState().initialize()
