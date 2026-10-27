@@ -109,7 +109,7 @@ test.each(['代理模式', '代理地址', '不使用代理的地址', '测试�
     expect(await screen.findByRole('status')).toHaveTextContent('连接成功')
     if (field === '代理模式') {
       await user.click(screen.getByRole('combobox', { name: field }))
-      await user.click(screen.getByRole('option', { name: '直连' }))
+      await user.click(await screen.findByRole('option', { name: '直连' }))
     } else {
       await user.type(screen.getByRole('textbox', { name: field }), '1')
     }
