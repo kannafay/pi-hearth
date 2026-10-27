@@ -61,7 +61,13 @@ function useOutputPage(instanceId: string | null, toolId: string, section: 'argu
   return { page, loading, error, load }
 }
 
-export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall }) {
+export const ToolRecord = memo(function ToolRecord({
+  tool,
+  compactApproval = false,
+}: {
+  tool: ToolCall
+  compactApproval?: boolean
+}) {
   const { instanceId, status, permissionMode } = useConversationStore(
     useShallow((state) => ({
       instanceId: state.instanceId,
@@ -73,14 +79,13 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
   const running = tool.status === 'running' || tool.status === 'queued'
   const [expanded, setExpanded, headerRef] = useExecutionRecord(
     `tool:${tool.id}:expanded`,
-    awaiting
+    awaiting && !compactApproval
       ? 'approval'
       : tool.status === 'running'
         ? 'active'
         : tool.status === 'queued'
           ? 'pending'
           : 'finished',
-    'details',
   )
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')
@@ -107,16 +112,54 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
     }
   }
 
-  return (
+  const approval = awaiting && (
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="w-full text-xs leading-5 text-muted-foreground">
+        {tool.name === 'read'
+          ? '此文件位于项目外或路径尚未确认。'
+          : ['write', 'edit'].includes(tool.name)
+            ? '此操作会修改本地文件。'
+            : '此命令将在当前项目目录执行。'}
+        确认有效期为 2 分钟。
+        {permissionMode === 'auto' &&
+          (approvalReasons[tool.approvalReason ?? ''] ??
+            '自动评估无法确定此操作的风险，需要你确认本次执行。')}
+      </p>
+      <Button
+        size="sm"
+        disabled={!instanceId || status === 'stopping' || deciding}
+        onClick={() => void decide(true)}
+      >
+        <Check />
+        允许本次
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!instanceId || status === 'stopping' || deciding}
+        onClick={() => void decide(false)}
+      >
+        <X />
+        拒绝
+      </Button>
+      {error && (
+        <p role="alert" className="w-full text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+
+  const details = (
     <ExecutionRecord
       icon={Icon}
       title={toolLabels[tool.name] ?? tool.name}
       open={expanded}
       onOpenChange={setExpanded}
       headerRef={headerRef}
-      disabled={awaiting}
-      follow={running || awaiting}
-      revealEnd={awaiting}
+      disabled={awaiting && !compactApproval}
+      follow={running || (awaiting && !compactApproval)}
+      revealEnd={awaiting && !compactApproval}
       aria-label={`${toolLabels[tool.name] ?? tool.name}：${statusLabels[tool.status] ?? tool.status}`}
       summary={
         <Tooltip>
@@ -136,24 +179,26 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
         </Tooltip>
       }
       status={
-        <>
-          {(running || (awaiting && deciding)) && (
-            <LoaderCircle
-              aria-hidden
-              className="size-3.5 shrink-0 animate-spin text-muted-foreground"
-            />
-          )}
-          <span
-            className={`shrink-0 text-xs ${tool.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
-          >
-            {statusLabels[tool.status] ?? tool.status}
-          </span>
-          {tool.durationMs !== null && (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {(tool.durationMs / 1000).toFixed(1)}s
+        compactApproval && awaiting ? undefined : (
+          <>
+            {(running || (awaiting && deciding)) && (
+              <LoaderCircle
+                aria-hidden
+                className="size-3.5 shrink-0 animate-spin text-muted-foreground"
+              />
+            )}
+            <span
+              className={`shrink-0 text-xs ${tool.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {statusLabels[tool.status] ?? tool.status}
             </span>
-          )}
-        </>
+            {tool.durationMs !== null && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {(tool.durationMs / 1000).toFixed(1)}s
+              </span>
+            )}
+          </>
+        )
       }
     >
       <div className="space-y-3">
@@ -179,43 +224,7 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
             </p>
           )}
         </div>
-        {awaiting && (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="w-full text-xs leading-5 text-muted-foreground">
-              {tool.name === 'read'
-                ? '此文件位于项目外或路径尚未确认。'
-                : ['write', 'edit'].includes(tool.name)
-                  ? '此操作会修改本地文件。'
-                  : '此命令将在当前项目目录执行。'}
-              确认有效期为 2 分钟。
-              {permissionMode === 'auto' &&
-                (approvalReasons[tool.approvalReason ?? ''] ??
-                  '自动评估无法确定此操作的风险，需要你确认本次执行。')}
-            </p>
-            <Button
-              size="sm"
-              disabled={!instanceId || status === 'stopping' || deciding}
-              onClick={() => void decide(true)}
-            >
-              <Check />
-              允许本次
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!instanceId || status === 'stopping' || deciding}
-              onClick={() => void decide(false)}
-            >
-              <X />
-              拒绝
-            </Button>
-            {error && (
-              <p role="alert" className="w-full text-xs text-destructive">
-                {error}
-              </p>
-            )}
-          </div>
-        )}
+        {!compactApproval && approval}
         {(tool.output || output.page) && (
           <div>
             <p className="mb-1.5 text-xs text-muted-foreground">
@@ -251,5 +260,11 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
         )}
       </div>
     </ExecutionRecord>
+  )
+  return (
+    <>
+      {details}
+      {compactApproval && approval}
+    </>
   )
 })

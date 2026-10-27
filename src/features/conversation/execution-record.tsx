@@ -1,8 +1,7 @@
-import { useContext, useEffect, useRef, type ReactNode, type Ref } from 'react'
+import { useEffect, useRef, type ReactNode, type Ref } from 'react'
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/scroll-area'
-import { ExecutionInspection } from './use-execution-record'
 
 export function ExecutionRecord({
   icon: Icon,
@@ -35,7 +34,6 @@ export function ExecutionRecord({
   const content = useRef<HTMLDivElement>(null)
   const atEnd = useRef(true)
   const frame = useRef<number | null>(null)
-  const inspect = useContext(ExecutionInspection)
 
   useEffect(() => {
     // A new approval must reveal its actions even if the previous output was read above.
@@ -87,13 +85,6 @@ export function ExecutionRecord({
             role="region"
             aria-label={`${title}详情`}
             viewportClassName="max-h-76 overflow-x-hidden overflow-y-auto pr-3 text-[14px] leading-[1.6] text-muted-foreground wrap-anywhere"
-            onWheel={(event) => {
-              if (event.deltaY < 0) inspect?.()
-            }}
-            onTouchStart={() => inspect?.()}
-            onKeyDown={(event) => {
-              if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) inspect?.()
-            }}
             onScroll={() => {
               const element = viewport.current
               if (element)

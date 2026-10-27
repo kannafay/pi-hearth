@@ -90,88 +90,66 @@ test('quick replies with thinking retain the duration and accessible disclosure'
   )
 })
 
-test('thinking collapses independently and stays collapsed as more content arrives', async () => {
+test('live work stays collapsed with one changing status and no disclosure arrow', async () => {
   const user = userEvent.setup()
   const thought = {
     kind: 'thinking' as const,
     id: 'thought',
-    text: '初始思考内容。',
+    text: '内部思考内容。',
     streaming: true,
   }
-  const view = render(<ExecutionProcess stateKey="turn" items={[thought]} active />)
-  const process = screen.getByRole('button', { name: '执行过程' })
-  const thinking = screen.getByRole('button', { name: '思考' })
-  await waitFor(() => expect(thinking).toHaveAttribute('aria-expanded', 'true'))
-  expect(screen.getByText(thought.text)).toBeVisible()
-  await user.click(thinking)
-  expect(thinking).toHaveAttribute('aria-expanded', 'false')
-  expect(process).toHaveAttribute('aria-expanded', 'true')
-  await waitFor(() => expect(screen.queryByText(thought.text)).not.toBeInTheDocument())
+  const view = render(
+    <ExecutionProcess stateKey="turn" items={[thought]} active status="正在思考…" />,
+  )
+  const trigger = screen.getByRole('button', { name: '执行过程' })
+  const status = screen.getByRole('status')
+  expect(trigger).toBeDisabled()
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(trigger.querySelector('svg')).toBeNull()
+  expect(status).toHaveTextContent('正在思考')
+  expect(status.closest('[data-execution-process]')).toContainElement(trigger)
+  expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
+  expect(screen.queryByText(thought.text)).not.toBeInTheDocument()
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
   view.rerender(
-    <ExecutionProcess
-      stateKey="turn"
-      items={[{ ...thought, text: '持续收到的新内容。' }]}
-      active
-    />,
+    <ExecutionProcess stateKey="turn" items={[thought]} active status="正在编辑文件…" />,
   )
-  expect(thinking).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByText('持续收到的新内容。')).not.toBeInTheDocument()
-  await user.click(thinking)
-  expect(screen.getByText('持续收到的新内容。')).toBeVisible()
-  await user.keyboard(' ')
-  expect(thinking).toHaveAttribute('aria-expanded', 'false')
-})
-
-test('new active details animate their first opening without replaying it on a virtual remount', () => {
-  vi.useFakeTimers()
-  const local = new Map<string, unknown>()
-  const content = (
-    <ConversationLocalState initial={local}>
-      <ExecutionProcess
-        stateKey="entry"
-        active
-        items={[{ kind: 'thinking', id: 'thought', text: '正在思考。', streaming: true }]}
-      />
-    </ConversationLocalState>
-  )
-  const view = render(content)
+  expect(screen.getByRole('status')).toBe(status)
+  expect(status).toHaveTextContent('正在编辑文件')
+  view.rerender(<ExecutionProcess stateKey="turn" items={[thought]} active={false} />)
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(trigger).toBeEnabled()
+  expect(trigger.querySelector('svg')).not.toBeNull()
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await user.click(trigger)
   expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
-  act(() => vi.advanceTimersByTime(32))
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
-  view.unmount()
-  render(content)
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  expect(screen.getByText(thought.text)).toBeVisible()
 })
 
-test('active thinking choices survive virtual remounts and reset when it finishes offscreen', async () => {
+test('resuming work clears an opened archive even across virtual remounts', async () => {
   const user = userEvent.setup()
   const local = new Map<string, unknown>()
-  const content = (streaming = true) => (
+  const content = (active: boolean) => (
     <ConversationLocalState initial={local}>
       <ExecutionProcess
-        stateKey="remounted"
-        active
-        items={[{ kind: 'thinking', id: 'thought', text: '持续思考。', streaming }]}
+        stateKey="resumed"
+        active={active}
+        items={[{ kind: 'thinking', id: 'thought', text: '已完成的思考', streaming: false }]}
       />
     </ConversationLocalState>
   )
-  let view = render(content())
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true'),
-  )
-  await user.click(screen.getByRole('button', { name: '思考' }))
+  let view = render(content(false))
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
+  expect(screen.getByRole('region', { name: '执行过程详情' })).toBeVisible()
   view.unmount()
-  view = render(content())
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
-  await user.click(screen.getByRole('button', { name: '思考' }))
-  view.unmount()
-  view = render(content(false))
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
-  await user.click(screen.getByRole('button', { name: '思考' }))
+  view = render(content(true))
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
   view.unmount()
   render(content(false))
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByText('持续思考。')).toBeVisible()
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('collapsing a pinned thinking header keeps that group in view', async () => {
@@ -180,7 +158,7 @@ test('collapsing a pinned thinking header keeps that group in view', async () =>
     <div data-scroll-area>
       <ExecutionProcess
         stateKey="pinned"
-        active
+        active={false}
         items={[
           { kind: 'thinking', id: 'long', text: '第一组的长内容。', streaming: false },
           { kind: 'thinking', id: 'next', text: '下一组内容。', streaming: true },
@@ -188,6 +166,7 @@ test('collapsing a pinned thinking header keeps that group in view', async () =>
       />
     </div>,
   )
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
   await user.click(screen.getAllByRole('button', { name: '思考' })[0])
   const header = screen.getAllByRole('button', { name: '思考' })[0]
   const group = header.closest('[data-slot="collapsible"]')!
@@ -201,7 +180,7 @@ test('collapsing a pinned thinking header keeps that group in view', async () =>
   expect(header).toHaveAttribute('aria-expanded', 'false')
   expect(screen.getAllByRole('button', { name: '思考' })[1]).toHaveAttribute(
     'aria-expanded',
-    'true',
+    'false',
   )
 })
 
@@ -255,25 +234,6 @@ test('each thinking section keeps its own choice across process reopening and vi
     'aria-expanded',
     'false',
   )
-})
-
-test('the running process cannot be folded until the whole reply finishes', async () => {
-  const user = userEvent.setup()
-  const items = [{ kind: 'thinking' as const, id: 'thought', text: '思考内容', streaming: true }]
-  const view = render(<ExecutionProcess stateKey="locked" items={items} active />)
-  const process = screen.getByRole('button', { name: '执行过程' })
-  expect(process).toBeDisabled()
-  await user.click(process)
-  expect(process).toHaveAttribute('aria-expanded', 'true')
-  view.rerender(<ExecutionProcess stateKey="locked" items={items} active={false} />)
-  expect(process).toBeEnabled()
-  expect(process).toHaveAttribute('aria-expanded', 'false')
-  await user.click(process)
-  expect(process).toHaveAttribute('aria-expanded', 'true')
-  view.rerender(<ExecutionProcess stateKey="locked" items={items} active />)
-  expect(process).toBeDisabled()
-  view.rerender(<ExecutionProcess stateKey="locked" items={items} active={false} />)
-  expect(process).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('quick replies with tools retain the duration and accessible tool records', async () => {

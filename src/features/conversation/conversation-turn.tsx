@@ -13,7 +13,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { useConversationLocalState } from './conversation-local-state'
 import { getResponseStatus } from './response-status'
 import { ResponseError } from './response-error'
-import { ResponseWaiting } from './response-waiting'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/scroll-area'
 
@@ -61,15 +60,17 @@ export const ConversationTurn = memo(function ConversationTurn({
   const hasAssistant =
     active || process.length > 0 || reply || cancelled || error || user?.finishedAt !== undefined
   const activity = useConversationStore((state) => (active ? state.activity : ''))
-  const responseStatus =
-    activity ||
-    getResponseStatus(
-      lastAssistant,
-      process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : [])),
-    )
-  // Preserve the last phase between message completion and the next ordered event,
-  // but show a waiting indicator only when no response content is being produced.
-  const waiting = !['正在思考…', '正在生成…'].includes(responseStatus)
+  const tools = process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : []))
+  const unfinished =
+    active && tools.some((tool) => ['queued', 'running', 'awaiting_approval'].includes(tool.status))
+  const displayReply = unfinished ? null : reply
+  const responseStatus = activity || getResponseStatus(lastAssistant, tools)
+  // Thinking and tool activity share the process status; answer text replaces that status.
+  const processStatus =
+    responseStatus === '正在生成…' ||
+    (displayReply?.phase === 'final_answer' && responseStatus === '等待回复…')
+      ? undefined
+      : responseStatus
   const rewrite = useConversationStore((state) => state.rewrite)
   const canRewrite = useConversationStore(
     (state) =>
@@ -188,19 +189,16 @@ export const ConversationTurn = memo(function ConversationTurn({
             active={active}
             startedAt={user?.startedAt}
             finishedAt={user?.finishedAt}
-            interrupted={cancelled || Boolean(error)}
+            status={processStatus}
           />
           <div className="space-y-2">
-            {reply ? (
+            {displayReply ? (
               <ReplyMarkdown
-                stateKey={reply.id}
-                text={reply.text}
-                streaming={reply.status === 'streaming'}
+                stateKey={displayReply.id}
+                text={displayReply.text}
+                streaming={displayReply.status === 'streaming'}
               />
             ) : null}
-            {active && waiting && (
-              <ResponseWaiting text={responseStatus.replace(/(?:…|\.{3})$/, '')} />
-            )}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && !active && (
               <ResponseError key={error} error={error} stateKey={turn.id} />

@@ -56,6 +56,25 @@ test('truncated arguments can be approved immediately without loading the full p
   expect(loadPiToolOutput).not.toHaveBeenCalled()
 })
 
+test('compact approvals keep actions outside optional parameters and submit the correct decision', async () => {
+  vi.mocked(decidePiTool).mockResolvedValue()
+  const user = userEvent.setup()
+  render(<ToolRecord tool={{ ...tool, argumentsTruncated: true }} compactApproval />)
+  const header = screen.getByRole('button', { name: /写入文件/ })
+  const allow = screen.getByRole('button', { name: '允许本次' })
+  expect(header).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText(tool.arguments)).not.toBeInTheDocument()
+  expect(allow).toBeEnabled()
+  await user.click(header)
+  expect(screen.getByText(tool.arguments)).toBeVisible()
+  expect(screen.getByRole('region', { name: '写入文件详情' })).not.toContainElement(allow)
+  await user.click(header)
+  await user.click(allow)
+  expect(decidePiTool).toHaveBeenCalledExactlyOnceWith('pi-1', 'approve-1', true)
+  expect(screen.getByRole('button', { name: '拒绝' })).toBeDisabled()
+  expect(loadPiToolOutput).not.toHaveBeenCalled()
+})
+
 test('full arguments remain optional to inspect and the request can still be refused', async () => {
   vi.mocked(loadPiToolOutput).mockResolvedValue({
     content: '完整参数',
