@@ -99,6 +99,23 @@ test('incomplete streaming code stays visible and actions become usable after co
   expect(screen.getByText('<hello>&')).toBeInTheDocument()
 })
 
+test('received code is displayed before a line is complete without a typewriter animation', () => {
+  const initial = 'const message = "h'
+  const { container, rerender } = view('```javascript\n' + initial, true)
+  const body = container.querySelector('[data-streamdown="code-block-body"]')!
+  expect(body.querySelector('code')!.textContent).toBe(initial)
+  const next = initial + 'ello'
+  rerender(
+    <TooltipProvider>
+      <Streamdown components={components} mode="streaming" isAnimating>
+        {'```javascript\n' + next}
+      </Streamdown>
+    </TooltipProvider>,
+  )
+  expect(body.querySelector('code')!.textContent).toBe(next)
+  expect(body.querySelector('[data-sd-animate]')).toBeNull()
+})
+
 test('code stays expanded through a closed fence and reply completion until manually folded', async () => {
   const user = userEvent.setup()
   const content = (text: string, streaming: boolean) => (

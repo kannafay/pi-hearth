@@ -155,6 +155,52 @@ test('closing a disclosure ignores a late highlight result during its exit anima
   expect(view.container.querySelector('span[style*="--sdm-c"]')).toBeNull()
 })
 
+test('appending streamed characters preserves existing colors while new text is immediately visible', () => {
+  const callbacks: ((result: HighlightResult) => void)[] = []
+  vi.mocked(codeHighlighter.highlight).mockImplementation((_options, callback) => {
+    callbacks.push(callback!)
+    return null
+  })
+  const initial = 'const ready = 1;\nconst message = "hello'
+  const view = render(<Body code={initial} active />)
+  const result = (code: string): HighlightResult => ({
+    tokens: code.split('\n').map((content) => [{ content, color: '#123456' }]),
+  })
+  act(() => callbacks[0](result(initial)))
+  const stableLine = screen.getByText('const ready = 1;')
+  const growingLine = screen.getByText('const message = "hello')
+  const next = initial + ' world";\nfinish()'
+  view.rerender(<Body code={next} active />)
+  expect(view.container.querySelector('code')!.textContent).toBe(next)
+  expect(screen.getByText('const ready = 1;')).toBe(stableLine)
+  expect(stableLine).toHaveStyle({ '--sdm-c': '#123456' })
+  expect(screen.getByText('const message = "hello')).toBe(growingLine)
+  expect(growingLine).toHaveStyle({ '--sdm-c': '#123456' })
+  act(() => callbacks[1](result(next)))
+  expect(view.container.querySelector('code')!.textContent).toBe(next)
+  expect(screen.getByText('const ready = 1;')).toBe(stableLine)
+  expect(screen.getByText('finish()')).toHaveStyle({ '--sdm-c': '#123456' })
+})
+
+test('changed source never displays obsolete tokens or applies a late result for an older revision', () => {
+  const callbacks: ((result: HighlightResult) => void)[] = []
+  vi.mocked(codeHighlighter.highlight).mockImplementation((_options, callback) => {
+    callbacks.push(callback!)
+    return null
+  })
+  const view = render(<Body code="old source" />)
+  act(() => callbacks[0]({ tokens: [[{ content: 'old source', color: '#123456' }]] }))
+  view.rerender(<Body code="changed source" />)
+  expect(view.container.querySelector('code')!.textContent).toBe('changed source')
+  expect(screen.queryByText('old source')).not.toBeInTheDocument()
+  view.rerender(<Body code="current source" />)
+  act(() => callbacks[1]({ tokens: [[{ content: 'changed source', color: '#123456' }]] }))
+  expect(view.container.querySelector('code')!.textContent).toBe('current source')
+  expect(view.container.querySelector('span[style*="--sdm-c"]')).toBeNull()
+  act(() => callbacks[2]({ tokens: [[{ content: 'current source', color: '#123456' }]] }))
+  expect(screen.getByText('current source')).toHaveStyle({ '--sdm-c': '#123456' })
+})
+
 test('streaming follows the end, pauses for a reader, and resumes when they return to the end', () => {
   vi.useFakeTimers()
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>

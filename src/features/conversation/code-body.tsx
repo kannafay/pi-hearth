@@ -20,7 +20,7 @@ import { codeHighlighter } from './code-highlighter'
 
 const chunkSize = 16
 type Chunk = { start: number; text: string; count: number }
-type Highlighted = { chunks: Chunk[]; result: HighlightResult }
+type Highlighted = { result: HighlightResult }
 
 function tokenStyle(token: HighlightToken): CSSProperties {
   const style: Record<string, string> = { ...token.htmlStyle }
@@ -49,54 +49,77 @@ function rootStyle(result?: HighlightResult): CSSProperties {
   return style
 }
 
-const CodeChunk = memo(function CodeChunk({
-  chunk,
-  result,
-  startLine,
-  lineNumbers,
-}: {
-  chunk: Chunk
-  result?: HighlightResult
-  startLine: number
-  lineNumbers: boolean
-}) {
-  return (
-    <span
-      className="conversation-code-chunk"
-      style={{ '--code-chunk-lines': chunk.count } as CSSProperties}
-      data-line-labels={
-        lineNumbers
-          ? Array.from({ length: chunk.count }, (_, index) => startLine + chunk.start + index).join(
-              '\n',
-            )
-          : undefined
-      }
-    >
-      {result
-        ? result.tokens.slice(chunk.start, chunk.start + chunk.count).map((tokens, index) => (
-            <Fragment key={index}>
-              {tokens.map((token, index) => (
-                <span
-                  key={index}
-                  {...token.htmlAttrs}
-                  className={
-                    'text-[var(--sdm-c,inherit)] dark:text-[var(--shiki-dark,var(--sdm-c,inherit))] ' +
-                    (token.bgColor || token.htmlStyle?.['background-color']
-                      ? 'bg-[var(--sdm-tbg)] dark:bg-[var(--shiki-dark-bg,var(--sdm-tbg))]'
-                      : '')
-                  }
-                  style={tokenStyle(token)}
-                >
-                  {token.content}
-                </span>
-              ))}
-              {chunk.start + index < result.tokens.length - 1 ? '\n' : ''}
-            </Fragment>
-          ))
-        : chunk.text}
-    </span>
-  )
-})
+const CodeChunk = memo(
+  function CodeChunk({
+    chunk,
+    result,
+    startLine,
+    lineNumbers,
+  }: {
+    chunk: Chunk
+    result?: HighlightResult
+    startLine: number
+    lineNumbers: boolean
+  }) {
+    return (
+      <span
+        className="conversation-code-chunk"
+        style={{ '--code-chunk-lines': chunk.count } as CSSProperties}
+        data-line-labels={
+          lineNumbers
+            ? Array.from(
+                { length: chunk.count },
+                (_, index) => startLine + chunk.start + index,
+              ).join('\n')
+            : undefined
+        }
+      >
+        {result
+          ? chunk.text
+              .split('\n')
+              .slice(0, chunk.count)
+              .map((line, index) => {
+                const tokens = result.tokens[chunk.start + index]
+                const previous = tokens?.map((token) => token.content).join('') ?? ''
+                // Keep accepted colors while the worker catches up with appended text.
+                // A changed prefix must render the current source instead of stale tokens.
+                const reusable = previous.length > 0 && line.startsWith(previous)
+                return (
+                  <Fragment key={index}>
+                    {reusable
+                      ? tokens!.map((token, index) => (
+                          <span
+                            key={index}
+                            {...token.htmlAttrs}
+                            className={
+                              'text-[var(--sdm-c,inherit)] dark:text-[var(--shiki-dark,var(--sdm-c,inherit))] ' +
+                              (token.bgColor || token.htmlStyle?.['background-color']
+                                ? 'bg-[var(--sdm-tbg)] dark:bg-[var(--shiki-dark-bg,var(--sdm-tbg))]'
+                                : '')
+                            }
+                            style={tokenStyle(token)}
+                          >
+                            {token.content}
+                          </span>
+                        ))
+                      : line}
+                    {reusable ? line.slice(previous.length) : ''}
+                    {index < chunk.count - 1 || chunk.text.endsWith('\n') ? '\n' : ''}
+                  </Fragment>
+                )
+              })
+          : chunk.text}
+      </span>
+    )
+  },
+  (before, after) =>
+    before.chunk.start === after.chunk.start &&
+    before.chunk.count === after.chunk.count &&
+    before.chunk.text === after.chunk.text &&
+    before.result === after.result &&
+    before.startLine === after.startLine &&
+    before.lineNumbers === after.lineNumbers,
+)
 
 // Keep every source line selectable and searchable; only nearby chunks need token spans.
 export function CodeBody({
@@ -153,7 +176,7 @@ export function CodeBody({
     let current = true
     const apply = (result: HighlightResult) => {
       if (!current) return
-      pending.current = { chunks, result }
+      pending.current = { result }
       if (!selecting.current) setHighlighted(pending.current)
     }
     const result = codeHighlighter.highlight(
@@ -164,7 +187,7 @@ export function CodeBody({
     return () => {
       current = false
     }
-  }, [chunks, source, language, isIncomplete, shikiTheme, open])
+  }, [source, language, isIncomplete, shikiTheme, open])
 
   useLayoutEffect(updateVisible, [chunks.length, codeBlockMaxHeight, updateVisible])
   useEffect(() => {
@@ -244,11 +267,7 @@ export function CodeBody({
                 key={chunk.start}
                 chunk={chunk}
                 result={
-                  index >= visible.start &&
-                  index <= visible.end &&
-                  highlighted?.chunks[index]?.text === chunk.text
-                    ? highlighted.result
-                    : undefined
+                  index >= visible.start && index <= visible.end ? highlighted?.result : undefined
                 }
                 startLine={startLine}
                 lineNumbers={lineNumbers}
