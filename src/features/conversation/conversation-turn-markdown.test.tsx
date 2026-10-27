@@ -69,7 +69,11 @@ test('manual code folding survives reply completion and virtual row remounts ind
 test('completed replies retain headings, lists, tables and reference links with the stable renderer', () => {
   const text =
     '# 标题\n\n普通段落与 `code`。\n\n1. 第一项\n2. 第二项\n\n| 列名 | 值 |\n| --- | --- |\n| 测试 | 内容 |\n\n[参考说明][guide]\n\n[guide]: https://example.com/guide'
-  render(<ReplyMarkdown stateKey="reply" text={text} streaming={false} />)
+  render(
+    <TooltipProvider>
+      <ReplyMarkdown stateKey="reply" text={text} streaming={false} />
+    </TooltipProvider>,
+  )
   expect(screen.getByRole('heading', { name: '标题' })).toBeVisible()
   expect(screen.getAllByRole('listitem')).toHaveLength(2)
   expect(screen.getByRole('cell', { name: '内容' })).toBeVisible()

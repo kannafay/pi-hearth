@@ -2,13 +2,14 @@ import { memo } from 'react'
 import { Streamdown } from 'streamdown'
 import { Check, Copy, Download } from 'lucide-react'
 import { codeHighlighter } from './code-highlighter'
+import { ConversationTable } from './conversation-table'
 import {
   ConversationCode,
   ConversationCodeState,
   ConversationMarkdownBlock,
 } from './conversation-code'
 
-const components = { code: ConversationCode }
+const components = { code: ConversationCode, table: ConversationTable }
 const icons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
 const translations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
 const plugins = { code: codeHighlighter }
@@ -32,6 +33,7 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
         isAnimating={streaming}
         mode="streaming"
         parseIncompleteMarkdown={streaming}
+        tableMaxHeight={400}
         BlockComponent={ConversationMarkdownBlock}
         className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
       >

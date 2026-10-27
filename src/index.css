@@ -749,11 +749,46 @@ select {
   font-style: normal;
 }
 
-.conversation-markdown :is(th, td) {
-  padding: 6px 12px;
+.conversation-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--background);
+  font-family: inherit;
+}
+
+.conversation-table :is(thead, tbody, tr) {
+  border: 0;
+  background: transparent;
+}
+
+.conversation-table :is(th, td) {
+  padding: 8px 12px;
+  vertical-align: top;
+}
+
+.conversation-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in oklch, var(--muted) 60%, var(--background));
+  box-shadow: inset 0 -1px color-mix(in oklch, var(--border) 70%, var(--background));
+  font-weight: 500;
+}
+
+.conversation-table tbody tr + tr td {
+  border-top: 1px solid color-mix(in oklch, var(--border) 55%, var(--background));
+}
+
+.conversation-table-scroll {
+  background: var(--background);
+}
+
+.conversation-table-header {
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
 }
 
 .conversation-code,
+.conversation-table,
 .tool-record-code {
   border-color: color-mix(in oklch, var(--border) 70%, var(--background));
 }
@@ -770,7 +805,8 @@ select {
   word-break: break-all;
 }
 
-.conversation-code {
+.conversation-code,
+.conversation-table {
   overflow: hidden;
   border-radius: 10px;
   background: color-mix(in oklch, var(--muted) 60%, var(--background));
@@ -808,15 +844,18 @@ select {
   backdrop-filter: none;
 }
 
-.conversation-code [data-streamdown='code-block-actions'] button {
+.conversation-code [data-streamdown='code-block-actions'] button,
+.conversation-table-actions button {
   transition-property: color, background-color, box-shadow;
 }
 
-.conversation-code [data-streamdown='code-block-actions'] button:hover {
+.conversation-code [data-streamdown='code-block-actions'] button:hover,
+.conversation-table-actions button:hover {
   background-color: color-mix(in oklch, var(--muted) 97%, var(--foreground));
 }
 
-.conversation-code [data-streamdown='code-block-actions'] svg {
+.conversation-code [data-streamdown='code-block-actions'] svg,
+.conversation-table-actions svg {
   width: 15px;
   height: 15px;
   stroke-width: 1.6;
