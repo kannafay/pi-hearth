@@ -1118,7 +1118,7 @@ fn emit(channel: &Channel<PiEvent>, events: Vec<PiEvent>) {
     }
 }
 
-fn pi_cli_path() -> Result<PathBuf, String> {
+pub(super) fn pi_cli_path() -> Result<PathBuf, String> {
     // The development runtime is pinned in package.json. Release sidecars are a
     // separate packaging step; never silently run an arbitrary global Pi version.
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

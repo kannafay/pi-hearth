@@ -28,6 +28,7 @@ import { toast } from '@/lib/toast'
 import type { ProjectInfo } from '@/lib/generated/pi'
 import { isCurrentSession, sessionKey } from '@/lib/session-preferences'
 import { findCachedSession } from '@/features/conversation/session-cache'
+import { ConversationMenu } from './conversation-menu'
 
 export function WorkspaceShell() {
   useOperationNotifications()
@@ -437,22 +438,39 @@ function WorkspaceLayout() {
                     aria-label="对话工作区"
                     className="workspace-surface flex h-full min-h-0 flex-col bg-background"
                   >
-                    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-7 text-[13px]">
-                      <Tooltip>
-                        <TooltipTrigger
-                          disabled={!projectPath}
-                          render={<span className="shrink-0 text-muted-foreground" />}
-                        >
-                          {projectName ?? '聊天'}
-                        </TooltipTrigger>
-                        <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
-                          {projectPath}
-                        </TooltipContent>
-                      </Tooltip>
-                      <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
-                        {session?.title ?? conversation.firstUserText ?? '新对话'}
-                      </span>
+                    <div
+                      data-slot="conversation-header"
+                      className="flex h-11 shrink-0 items-center gap-3 border-b border-border/60 px-4 text-[13px]"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        {projectPath && (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <span className="max-w-48 truncate text-muted-foreground" />
+                                }
+                              >
+                                {projectName ?? projectPath}
+                              </TooltipTrigger>
+                              <TooltipContent showArrow={false} className="max-w-96 wrap-anywhere">
+                                {projectPath}
+                              </TooltipContent>
+                            </Tooltip>
+                            <ChevronRight
+                              aria-hidden
+                              className="size-3 shrink-0 text-muted-foreground"
+                            />
+                          </>
+                        )}
+                        <span className="min-w-0 truncate">
+                          {session?.title ?? conversation.firstUserText ?? '新对话'}
+                        </span>
+                      </div>
+                      <ConversationMenu
+                        session={session}
+                        onRename={navigationState.setRenameSession}
+                      />
                     </div>
                     <ConversationPanel
                       onCreateProject={createProject}

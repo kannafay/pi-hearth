@@ -20,6 +20,18 @@ export async function getPiConfigDirectory() {
   return invoke<string>('pi_config_directory', { open: false })
 }
 
+export async function getPiCliVersion() {
+  requireDesktop()
+  return invoke<string>('pi_cli_version')
+}
+
+export type DirectoryApplication = 'vscode' | 'explorer' | 'terminal'
+
+export async function openDirectoryWith(path: string, application: DirectoryApplication) {
+  requireDesktop()
+  await invoke<void>('workspace_open_with', { path, application })
+}
+
 export async function openPiConfigDirectory() {
   requireDesktop()
   return invoke<string>('pi_config_directory', { open: true })

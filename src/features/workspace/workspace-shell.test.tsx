@@ -99,6 +99,39 @@ test('typing drafts does not rerender the workspace layout', () => {
   expect(vi.mocked(ConversationPanel).mock.calls.length).toBeGreaterThan(renders)
 })
 
+test.each([null, 'D:/projects/hearth'])(
+  'the header shows a project breadcrumb only for project conversations (%s)',
+  (projectPath) => {
+    const session = {
+      id: 'header',
+      path: 'header.jsonl',
+      cwd: projectPath ?? 'C:/Users/admin',
+      title: '会话标题',
+      modified: 0,
+      messageCount: 1,
+    }
+    useWorkspaceStore.setState({
+      projectPath,
+      sessions: [session],
+      projects: projectPath ? [{ path: projectPath, name: '项目名称' }] : [],
+    })
+    useConversationStore.setState({ sessionId: session.id, sessionFile: session.path })
+    render(<WorkspaceShell />)
+    const header = document.querySelector('[data-slot="conversation-header"]')!
+    expect(header).toHaveTextContent('会话标题')
+    expect(
+      within(header as HTMLElement).getByRole('button', { name: '会话更多操作' }),
+    ).toBeVisible()
+    if (projectPath) {
+      expect(header).toHaveTextContent('项目名称')
+      expect(header.querySelector('.lucide-chevron-right')).not.toBeNull()
+    } else {
+      expect(header).not.toHaveTextContent('聊天')
+      expect(header.querySelector('.lucide-chevron-right')).toBeNull()
+    }
+  },
+)
+
 test.each([false, true])(
   'local session events update navigation immediately and refresh only at completion (batched: %s)',
   (batched) => {

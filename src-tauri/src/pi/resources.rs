@@ -1,6 +1,6 @@
 use super::{
     catalog,
-    client::PiManager,
+    client::{PiManager, pi_cli_path},
     config::{local_agent_directory, prepare_config, redact},
     types::{ModelInfo, ResourceCatalog},
 };
@@ -74,6 +74,27 @@ fn find(catalog: &ResourceCatalog, kind: &str, source: &str, name: &str) -> Resu
         .find(|item| item.name == name && catalog::same_path(&item.source, source))
         .map(|item| item.source.clone())
         .ok_or("资源已不存在，请刷新列表。".into())
+}
+
+#[tauri::command]
+pub fn pi_cli_version() -> Result<String, String> {
+    cli_version(&pi_cli_path()?)
+}
+
+fn cli_version(cli: &Path) -> Result<String, String> {
+    let package = cli
+        .ancestors()
+        .nth(3)
+        .ok_or("无法定位 Pi CLI 版本信息。")?
+        .join("package.json");
+    let bytes = std::fs::read(package).map_err(|_| "无法读取 Pi CLI 版本信息。")?;
+    let package: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "Pi CLI 版本信息格式有误。")?;
+    package["version"]
+        .as_str()
+        .filter(|version| !version.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or("Pi CLI 版本信息缺少版本号。".into())
 }
 
 #[tauri::command]
@@ -191,6 +212,22 @@ pub async fn pi_models(app: tauri::AppHandle) -> Result<Vec<ModelInfo>, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_comes_from_the_cli_package_that_owns_the_runtime_entrypoint() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/pi-version-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(root.join("dist/bundle")).unwrap();
+        std::fs::write(root.join("package.json"), r#"{"version":"7.8.9"}"#).unwrap();
+        assert_eq!(
+            cli_version(&root.join("dist/bundle/cli.js")).unwrap(),
+            "7.8.9"
+        );
+        std::fs::write(root.join("package.json"), "{}").unwrap();
+        assert!(cli_version(&root.join("dist/bundle/cli.js")).is_err());
+    }
+
     #[test]
     fn skill_opening_targets_the_directory_and_mcp_reveals_the_exact_file() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))

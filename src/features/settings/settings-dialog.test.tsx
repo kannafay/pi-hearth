@@ -6,11 +6,20 @@ import { useWorkspaceStore } from '@/app/store'
 import { useTheme } from '@/app/use-theme'
 import { useMediaQuery } from '@/app/use-media-query'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
-import { getAppVersion, isDesktop, setWindowTheme } from '@/lib/desktop'
+import {
+  getAppVersion,
+  getPiCliVersion,
+  isDesktop,
+  openPiConfigDirectory,
+  setWindowTheme,
+} from '@/lib/desktop'
 import { loadResourceCatalog } from '@/lib/resources'
 
 vi.mock('@/lib/desktop', () => ({
   getAppVersion: vi.fn(),
+  getPiCliVersion: vi.fn().mockResolvedValue('1.3.0'),
+  getPiConfigDirectory: vi.fn().mockResolvedValue('C:\\Users\\admin\\.pi\\agent'),
+  openPiConfigDirectory: vi.fn().mockResolvedValue('C:\\Users\\admin\\.pi\\agent'),
   isDesktop: vi.fn(),
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
   openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
@@ -39,6 +48,8 @@ beforeEach(() => {
   vi.mocked(getAppVersion).mockReset()
   vi.mocked(loadResourceCatalog).mockReset()
   vi.mocked(setWindowTheme).mockClear()
+  vi.mocked(getPiCliVersion).mockClear()
+  vi.mocked(openPiConfigDirectory).mockClear()
 })
 
 test('browser preview shows its limits without invoking the desktop bridge', async () => {
@@ -61,6 +72,20 @@ test('desktop diagnostics displays the version returned by Rust', async () => {
   render(<SettingsHarness />)
   await user.click(screen.getByRole('tab', { name: '运行诊断' }))
   expect(await screen.findByText('已连接桌面核心，版本 0.1.0')).toBeVisible()
+})
+
+test('About shows the app and runtime versions and opens the resolved Pi configuration directory', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  expect(getPiCliVersion).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('tab', { name: '关于' }))
+  expect(await screen.findByText('1.3.0')).toBeVisible()
+  expect(screen.getByText('0.1.0')).toBeVisible()
+  expect(screen.getByText('C:\\Users\\admin\\.pi\\agent')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '打开 Pi CLI 配置目录' }))
+  expect(openPiConfigDirectory).toHaveBeenCalledExactlyOnceWith()
 })
 
 test('skills and MCP navigation share a read-only catalog without loading it on other pages', async () => {
