@@ -118,6 +118,34 @@ test('custom project session locations and environment overrides follow Pi stora
   delete process.env.PI_CODING_AGENT_SESSION_DIR
 })
 
+test('compression and branch summaries retain their native identity without rewriting history', async () => {
+  const manager = session(first, 'summary test')
+  const kept = manager.getBranch().find((entry) => entry.type === 'message').id
+  const compaction = manager.appendCompaction(
+    'Preserve the original task and progress.',
+    kept,
+    25000,
+  )
+  manager.branchWithSummary(compaction, 'Context from the previous branch.')
+  manager.appendMessage({ role: 'user', content: 'Continue the task', timestamp: Date.now() })
+  const file = manager.getSessionFile()
+  const before = await readFile(file, 'utf8')
+  const messages = await history(file, sdk)
+  const summaries = messages.filter((item) => item.role.endsWith('Summary'))
+  assert.deepEqual(
+    summaries.map(({ role, summary }) => ({ role, summary })),
+    [
+      { role: 'compactionSummary', summary: 'Preserve the original task and progress.' },
+      { role: 'branchSummary', summary: 'Context from the previous branch.' },
+    ],
+  )
+  assert.ok(summaries.every((item) => Number.isFinite(item.timestamp)))
+  assert.equal(messages.at(-1).content, 'Continue the task')
+  const [document] = await searchDocuments([file], sdk)
+  assert.ok(document.texts.includes('Preserve the original task and progress.'))
+  assert.equal(await readFile(file, 'utf8'), before)
+})
+
 test('renaming appends native metadata, preserves history and survives reload and later messages', async () => {
   const manager = session(first, 'original title')
   const file = manager.getSessionFile()

@@ -106,6 +106,39 @@ test('partial histories keep orphaned tool records, and plain chats need no proc
   expect(plain.reply?.text).toBe('你好。')
 })
 
+test('context summaries stay separate from replies and later progress in timeline order', () => {
+  const messages = [
+    message('u', 'user', '任务'),
+    message('a', 'assistant', '上下文摘要\n\n这仍是一条普通回复。'),
+    message('summary', 'compactionSummary', 'Compressed context'),
+    message('branch', 'branchSummary', 'Branch context'),
+    message('next', 'assistant', '继续执行'),
+  ]
+  const turns = buildConversationTurns(messages, [], [])
+  expect(turns.map(({ id }) => id)).toEqual(['u', 'summary', 'branch', 'process-next'])
+  expect(turns[0].reply).toBe(messages[1])
+  expect(turns[0].summary).toBeNull()
+  expect(turns[1]).toMatchObject({
+    user: null,
+    reply: null,
+    lastAssistant: null,
+    process: [],
+    summary: messages[2],
+  })
+  expect(turns[2].summary).toBe(messages[3])
+  expect(turns[3].reply).toBe(messages[4])
+  const select = createConversationViewSelector()
+  const initial = { ...transcript(0), messages }
+  const before = select(initial)
+  const updated = { ...messages[2], text: 'Updated context' }
+  const after = select({
+    ...initial,
+    messages: messages.map((item) => (item.id === updated.id ? updated : item)),
+  })
+  expect(after.turns.get('summary')?.summary).toBe(updated)
+  expect(after.turns.get('u')).toBe(before.turns.get('u'))
+})
+
 function transcript(count: number) {
   const messages = Array.from({ length: count }, (_, index) => [
     message(`u${index}`, 'user', `问题 ${index}`),

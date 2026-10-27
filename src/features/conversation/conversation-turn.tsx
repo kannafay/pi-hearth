@@ -1,7 +1,8 @@
 import { memo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { codeHighlighter } from './code-highlighter'
-import { Check, Copy, Download } from 'lucide-react'
+import { Check, ChevronRight, Copy, Download } from 'lucide-react'
+import type { ChatMessage } from '@/lib/generated/pi'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
 import {
@@ -17,6 +18,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { useConversationLocalState } from './conversation-local-state'
 import { getResponseStatus } from './response-status'
 import { ResponseError } from './response-error'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ScrollArea } from '@/components/scroll-area'
 
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
@@ -50,6 +53,33 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
     </ConversationCodeState>
   )
 })
+
+function ContextSummary({ message }: { message: ChatMessage }) {
+  const [open, setOpen] = useConversationLocalState(`summary:${message.id}`, false)
+  const title = message.role === 'compactionSummary' ? '上下文已压缩' : '分支上下文摘要'
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="inline-flex items-center gap-1.5 rounded-sm py-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        {title}
+        <ChevronRight
+          aria-hidden
+          className={`conversation-disclosure-chevron size-3.5 ${open ? 'rotate-90' : ''}`}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="execution-record-content">
+        <div className="pt-3">
+          <ScrollArea
+            role="region"
+            aria-label="上下文摘要详情"
+            viewportClassName="max-h-76 overflow-x-hidden overflow-y-auto pr-3"
+          >
+            <ReplyMarkdown stateKey={message.id} text={message.text} streaming={false} />
+          </ScrollArea>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
 
 export const ConversationTurn = memo(function ConversationTurn({
   turn,
@@ -94,6 +124,8 @@ export const ConversationTurn = memo(function ConversationTurn({
       setSubmitting(false)
     }
   }
+
+  if (turn.summary) return <ContextSummary message={turn.summary} />
 
   return (
     <div className="space-y-8">

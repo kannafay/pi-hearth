@@ -95,6 +95,49 @@ test('sent attachments sit outside and before the text bubble and still open pre
   expect(useWorkspaceStore.getState().attachmentPreview).toEqual(image)
 })
 
+test('compressed context starts folded, expands on click, and has no reply actions', async () => {
+  const message = (id: string, role: string, text: string): ChatMessage => ({
+    id,
+    role,
+    text,
+    thinking: '',
+    status: 'complete',
+    error: null,
+  })
+  useConversationStore.setState({
+    status: 'ready',
+    messages: [
+      message('user', 'user', '原始任务'),
+      message('reply', 'assistant', '正常回复'),
+      message('summary', 'compactionSummary', 'Internal context checkpoint'),
+      message('next', 'user', '继续'),
+      message('answer', 'assistant', '后续回复'),
+    ],
+  })
+  const user = userEvent.setup()
+  const { container } = render(<ConversationPanel />)
+  const trigger = screen.getByRole('button', { name: '上下文已压缩' })
+  const row = container.querySelector('[data-turn-id="summary"]') as HTMLElement
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('Internal context checkpoint')).not.toBeInTheDocument()
+  expect(within(row).queryByRole('group', { name: '回复操作' })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('button', { name: '复制回复' })).toHaveLength(2)
+  expect(screen.getAllByRole('button', { name: '重新回答' })).toHaveLength(2)
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(
+    within(screen.getByRole('region', { name: '上下文摘要详情' })).getByText(
+      'Internal context checkpoint',
+    ),
+  ).toBeVisible()
+  expect(within(row).queryByRole('button', { name: /复制|重新回答/ })).not.toBeInTheDocument()
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await waitFor(() =>
+    expect(screen.queryByText('Internal context checkpoint')).not.toBeInTheDocument(),
+  )
+})
+
 test('preparing an empty new conversation and choosing its project keep the welcome screen mounted', () => {
   useConversationStore.setState({
     status: 'connecting',

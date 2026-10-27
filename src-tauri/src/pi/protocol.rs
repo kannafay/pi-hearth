@@ -219,6 +219,25 @@ impl Conversation {
                 });
                 self.snapshot.messages.push(message);
             }
+            Some(role @ ("compactionSummary" | "branchSummary")) => {
+                let message = ChatMessage {
+                    id: Uuid::new_v4().to_string(),
+                    role: role.into(),
+                    text: raw["summary"].as_str().unwrap_or_default().into(),
+                    thinking: String::new(),
+                    status: "complete".into(),
+                    error: None,
+                    timestamp: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
+                    attachments: None,
+                    started_at: None,
+                    finished_at: None,
+                };
+                self.snapshot.timeline.push(TimelineEntry {
+                    kind: "message".into(),
+                    id: message.id.clone(),
+                });
+                self.snapshot.messages.push(message);
+            }
             Some("assistant") => {
                 self.record(&json!({"type":"message_start","message":raw}));
                 let mut message = raw.clone();
@@ -746,6 +765,31 @@ mod tests {
             serde_json::to_value(&conversation.snapshot.messages).unwrap(),
             before
         );
+    }
+
+    #[test]
+    fn restored_context_summaries_keep_their_roles_and_do_not_retime_a_reply() {
+        for role in ["compactionSummary", "branchSummary"] {
+            let mut conversation = Conversation::new("history".into(), "project".into());
+            conversation
+                .restore_message(&json!({"role":"user","content":"hello","timestamp":1000}));
+            conversation.restore_message(
+                &json!({"role":"assistant","content":"reply","__hearthFinishedAt":1200}),
+            );
+            conversation.restore_message(
+                &json!({"role":role,"summary":"# Task\n\nPreserve the task.","timestamp":9000}),
+            );
+            conversation.end_restore();
+            assert_eq!(conversation.snapshot.messages.len(), 3);
+            assert_eq!(conversation.snapshot.messages[0].finished_at, Some(1200.0));
+            let summary = &conversation.snapshot.messages[2];
+            assert_eq!(summary.role, role);
+            assert_eq!(summary.text, "# Task\n\nPreserve the task.");
+            assert_eq!(summary.status, "complete");
+            assert_eq!(summary.timestamp, Some(9000.0));
+            assert_eq!(conversation.snapshot.timeline[2].id, summary.id);
+            assert!(conversation.snapshot.active_run_id.is_none());
+        }
     }
 
     #[test]

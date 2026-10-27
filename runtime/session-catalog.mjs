@@ -99,7 +99,11 @@ export async function history(file, sdk) {
       return [{ role: 'assistant', content: entry.content }]
     if (entry.type === 'compaction' || entry.type === 'branch_summary')
       return [
-        { role: 'assistant', content: [{ type: 'text', text: `上下文摘要\n\n${entry.summary}` }] },
+        {
+          role: entry.type === 'compaction' ? 'compactionSummary' : 'branchSummary',
+          summary: entry.summary,
+          timestamp: Date.parse(entry.timestamp),
+        },
       ]
     return []
   })
@@ -114,14 +118,18 @@ export async function searchDocuments(files, sdk) {
         return {
           path: file,
           texts: messages
-            .filter((message) => ['user', 'assistant'].includes(message.role))
+            .filter((message) =>
+              ['user', 'assistant', 'compactionSummary', 'branchSummary'].includes(message.role),
+            )
             .map((message) =>
-              typeof message.content === 'string'
-                ? message.content
-                : (message.content ?? [])
-                    .filter((block) => block.type === 'text')
-                    .map((block) => block.text)
-                    .join('\n'),
+              typeof message.summary === 'string'
+                ? message.summary
+                : typeof message.content === 'string'
+                  ? message.content
+                  : (message.content ?? [])
+                      .filter((block) => block.type === 'text')
+                      .map((block) => block.text)
+                      .join('\n'),
             )
             .filter(Boolean),
         }

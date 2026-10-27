@@ -12,10 +12,15 @@ export interface ConversationTurnData {
   process: ProcessItem[]
   reply: ChatMessage | null
   lastAssistant: ChatMessage | null
+  summary: ChatMessage | null
 }
 
 type Entry = { kind: 'message'; message: ChatMessage } | { kind: 'tool'; tool: ToolCall }
 type Group = { id: string; user: ChatMessage | null; entries: Entry[] }
+
+function isSummary(message: ChatMessage) {
+  return message.role === 'compactionSummary' || message.role === 'branchSummary'
+}
 
 function groupConversation(
   messages: ChatMessage[],
@@ -38,7 +43,13 @@ function groupConversation(
       groups.push({ id: message.id, user: message, entries: [] })
       continue
     }
-    if (!groups.length) groups.push({ id: `process-${entry.id}`, user: null, entries: [] })
+    if (message && isSummary(message)) {
+      groups.push({ id: message.id, user: null, entries: [{ kind: 'message', message }] })
+      continue
+    }
+    const previous = groups.at(-1)?.entries[0]
+    if (!groups.length || (previous?.kind === 'message' && isSummary(previous.message)))
+      groups.push({ id: `process-${entry.id}`, user: null, entries: [] })
     const group = groups[groups.length - 1]
     if (message) group.entries.push({ kind: 'message', message })
     else if (tool) group.entries.push({ kind: 'tool', tool })
@@ -49,6 +60,15 @@ function groupConversation(
 
 function buildTurn(group: Group): ConversationTurnData {
   const tail = group.entries.at(-1)
+  if (tail?.kind === 'message' && isSummary(tail.message))
+    return {
+      id: group.id,
+      user: null,
+      process: [],
+      reply: null,
+      lastAssistant: null,
+      summary: tail.message,
+    }
   // A statement followed by another tool is progress, rather than the final answer.
   const reply = tail?.kind === 'message' && tail.message.text.trim() ? tail.message : null
   let lastAssistant: ChatMessage | null = null
@@ -72,7 +92,7 @@ function buildTurn(group: Group): ConversationTurnData {
       process.push({ kind: 'message', id: message.id, message })
     }
   }
-  return { id: group.id, user: group.user, process, reply, lastAssistant }
+  return { id: group.id, user: group.user, process, reply, lastAssistant, summary: null }
 }
 
 export function buildConversationTurns(
@@ -102,6 +122,7 @@ function sameTurn(previous: ConversationTurnData | undefined, next: Conversation
     previous?.user === next.user &&
     previous?.reply === next.reply &&
     previous?.lastAssistant === next.lastAssistant &&
+    previous?.summary === next.summary &&
     previous?.process.length === next.process.length &&
     previous.process.every((item, index) => {
       const other = next.process[index]
