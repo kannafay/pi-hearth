@@ -2,6 +2,8 @@ import { memo, useCallback, useLayoutEffect, useRef, useState, type RefObject } 
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { useShallow } from 'zustand/react/shallow'
 import { ScrollArea } from '@/components/scroll-area'
+import { IconButton } from '@/components/icon-button'
+import { ArrowDown } from 'lucide-react'
 import { useConversationStore } from './store'
 import { Composer } from './composer'
 import type { ComposerActions } from './composer-commands'
@@ -59,6 +61,7 @@ const ConversationMessages = memo(function ConversationMessages({
   const viewport = useRef<HTMLDivElement>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [readingDisclosure, setReadingDisclosure] = useState(false)
+  const [atEnd, setAtEnd] = useState(view.atEnd)
   const userScrolling = useRef(false)
   const initialized = useRef(false)
   const getItemKey = useCallback((index: number) => ids[index], [ids])
@@ -93,6 +96,7 @@ const ConversationMessages = memo(function ConversationMessages({
     enabled: ids.length > 0,
     initialOffset: view.offset ?? 0,
     initialMeasurementsCache: view.measurements,
+    onChange: (instance) => setAtEnd(instance.isAtEnd()),
   })
 
   useLayoutEffect(() => {
@@ -130,77 +134,100 @@ const ConversationMessages = memo(function ConversationMessages({
   }, [session, virtualizer, view])
 
   return (
-    <ScrollArea
-      ref={viewport}
-      role="log"
-      aria-label="对话消息"
-      aria-live="off"
-      className="min-h-0 flex-1"
-      viewportClassName="h-full overflow-x-hidden overflow-y-auto px-6"
-      style={{ overflowAnchor: 'none' }}
-      onClickCapture={(event) => {
-        if (!(event.target as HTMLElement).closest('[data-slot="collapsible-trigger"]')) return
-        // Manual disclosure changes keep the reader's position instead of following the new end.
-        userScrolling.current = false
-        virtualizer.cancelScroll()
-        setReadingDisclosure(true)
-      }}
-      onWheel={() => {
-        userScrolling.current = true
-        virtualizer.cancelScroll()
-      }}
-      onTouchStart={() => {
-        userScrolling.current = true
-        virtualizer.cancelScroll()
-      }}
-      onScroll={() => {
-        if (readingDisclosure && userScrolling.current && virtualizer.isAtEnd())
-          setReadingDisclosure(false)
-      }}
-      onKeyDown={(event) => {
-        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <ScrollArea
+        ref={viewport}
+        role="log"
+        aria-label="对话消息"
+        aria-live="off"
+        className="min-h-0 flex-1"
+        viewportClassName="h-full overflow-x-hidden overflow-y-auto px-6"
+        style={{ overflowAnchor: 'none' }}
+        onClickCapture={(event) => {
+          if (
+            !(event.target as HTMLElement).closest(
+              '[data-slot="collapsible-trigger"]:not(:disabled)',
+            )
+          )
+            return
+          // Manual disclosure changes keep the reader's position instead of following the new end.
+          userScrolling.current = false
+          virtualizer.cancelScroll()
+          setReadingDisclosure(true)
+        }}
+        onWheel={() => {
           userScrolling.current = true
           virtualizer.cancelScroll()
-        }
-      }}
-      onFocusCapture={(event) => {
-        setFocused(
-          (event.target as HTMLElement).closest<HTMLElement>('[data-turn-id]')?.dataset.turnId ??
-            null,
-        )
-      }}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null)
-      }}
-    >
-      {ids.length ? (
-        <div
-          ref={virtualizer.containerRef}
-          data-conversation-list
-          className="relative mx-auto w-full max-w-209"
+        }}
+        onTouchStart={() => {
+          userScrolling.current = true
+          virtualizer.cancelScroll()
+        }}
+        onScroll={() => {
+          setAtEnd(virtualizer.isAtEnd())
+          if (readingDisclosure && userScrolling.current && virtualizer.isAtEnd())
+            setReadingDisclosure(false)
+        }}
+        onKeyDown={(event) => {
+          if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+            userScrolling.current = true
+            virtualizer.cancelScroll()
+          }
+        }}
+        onFocusCapture={(event) => {
+          setFocused(
+            (event.target as HTMLElement).closest<HTMLElement>('[data-turn-id]')?.dataset.turnId ??
+              null,
+          )
+        }}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null)
+        }}
+      >
+        {ids.length ? (
+          <div
+            ref={virtualizer.containerRef}
+            data-conversation-list
+            className="relative mx-auto w-full max-w-209"
+          >
+            {virtualizer.getVirtualItems().map((item) => (
+              <div
+                key={item.key}
+                ref={virtualizer.measureElement}
+                data-index={item.index}
+                data-turn-id={ids[item.index]}
+                className="absolute left-0 w-full pb-8"
+              >
+                <ConversationRow
+                  id={ids[item.index]}
+                  last={item.index === ids.length - 1}
+                  onActionStart={onActionStart}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="h-full py-8">
+            <ConversationWelcome />
+          </div>
+        )}
+      </ScrollArea>
+      {ids.length > 0 && !atEnd && (
+        <IconButton
+          label="回到底部"
+          variant="outline"
+          size="icon-sm"
+          className="absolute bottom-2 left-1/2 z-20 -translate-x-1/2 rounded-full bg-background shadow-md"
+          onClick={() => {
+            setReadingDisclosure(false)
+            userScrolling.current = false
+            virtualizer.scrollToEnd()
+          }}
         >
-          {virtualizer.getVirtualItems().map((item) => (
-            <div
-              key={item.key}
-              ref={virtualizer.measureElement}
-              data-index={item.index}
-              data-turn-id={ids[item.index]}
-              className="absolute left-0 w-full pb-8"
-            >
-              <ConversationRow
-                id={ids[item.index]}
-                last={item.index === ids.length - 1}
-                onActionStart={onActionStart}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="h-full py-8">
-          <ConversationWelcome />
-        </div>
+          <ArrowDown className="size-4" />
+        </IconButton>
       )}
-    </ScrollArea>
+    </div>
   )
 })
 

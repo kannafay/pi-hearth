@@ -214,10 +214,11 @@ test('each thinking section keeps its own choice across process reopening and vi
   ]
   const content = (stateKey = 'turn') => (
     <ConversationLocalState initial={local}>
-      <ExecutionProcess stateKey={stateKey} items={items} active />
+      <ExecutionProcess stateKey={stateKey} items={items} active={false} />
     </ConversationLocalState>
   )
   let view = render(content())
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
   expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
     'aria-expanded',
     'false',
@@ -249,10 +250,30 @@ test('each thinking section keeps its own choice across process reopening and vi
   )
   view.unmount()
   render(content('another-turn'))
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
   expect(screen.getAllByRole('button', { name: '思考' })[0]).toHaveAttribute(
     'aria-expanded',
     'false',
   )
+})
+
+test('the running process cannot be folded until the whole reply finishes', async () => {
+  const user = userEvent.setup()
+  const items = [{ kind: 'thinking' as const, id: 'thought', text: '思考内容', streaming: true }]
+  const view = render(<ExecutionProcess stateKey="locked" items={items} active />)
+  const process = screen.getByRole('button', { name: '执行过程' })
+  expect(process).toBeDisabled()
+  await user.click(process)
+  expect(process).toHaveAttribute('aria-expanded', 'true')
+  view.rerender(<ExecutionProcess stateKey="locked" items={items} active={false} />)
+  expect(process).toBeEnabled()
+  expect(process).toHaveAttribute('aria-expanded', 'false')
+  await user.click(process)
+  expect(process).toHaveAttribute('aria-expanded', 'true')
+  view.rerender(<ExecutionProcess stateKey="locked" items={items} active />)
+  expect(process).toBeDisabled()
+  view.rerender(<ExecutionProcess stateKey="locked" items={items} active={false} />)
+  expect(process).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('quick replies with tools retain the duration and accessible tool records', async () => {

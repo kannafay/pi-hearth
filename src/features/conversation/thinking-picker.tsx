@@ -53,7 +53,7 @@ export function ThinkingPicker({
       onOpenChange={onOpenChange}
       items={items}
       value={value}
-      disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly)}
+      disabled={status === 'disconnected' || Boolean(readOnly)}
       onValueChange={(level) => {
         if (level) void changeThinkingLevel(level)
       }}

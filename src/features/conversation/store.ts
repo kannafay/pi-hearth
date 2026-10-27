@@ -486,6 +486,8 @@ function updateInstance(instanceId: string, update: (state: ConversationData) =>
     else backgroundSessions.delete(instanceId)
     return { backgroundSessions, sessionCache: rememberSession(state.sessionCache, data) }
   })
+  // A rejected request can end locally without a terminal runtime event.
+  void applyPendingSettings()
 }
 
 export function canReuseNewConversation(state: ConversationState, projectPath: string | null) {
@@ -546,6 +548,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }
       return next
     })
+    // Choices made during a reply are applied only after its terminal event.
+    // The current run, including any outstanding approvals, keeps its settings.
+    void applyPendingSettings()
   },
   connect: async (projectPath, sessionPath, options) => {
     flushEvents()
@@ -623,9 +628,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         (snapshot) => {
           if (request !== connection) return
           flushEvents()
-          const pendingSettings =
-            snapshot.readOnly || snapshot.activeRunId
-              ? null
+          const pendingSettings = snapshot.readOnly
+            ? null
+            : snapshot.activeRunId
+              ? get().pendingSettings
               : {
                   model: null,
                   thinkingLevel: requestedThinkingLevel,
@@ -638,13 +644,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               : {}),
             requestedThinkingLevel,
             pendingSettings,
-            settingsPending: pendingSettings
-              ? pendingSettings.permissionMode
-                ? ('permission' as const)
-                : pendingSettings.model
-                  ? ('model' as const)
-                  : ('thinking' as const)
-              : null,
+            settingsPending:
+              pendingSettings && !snapshot.activeRunId
+                ? pendingSettings.permissionMode
+                  ? ('permission' as const)
+                  : pendingSettings.model
+                    ? ('model' as const)
+                    : ('thinking' as const)
+                : null,
             lastLocalActivityAt: get().lastLocalActivityAt,
           }
           const backgroundSessions = new Map(get().backgroundSessions)
@@ -794,12 +801,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
   changeModel: async (model) => {
     const { instanceId, status, readOnly, pendingSettings, requestedThinkingLevel } = get()
-    if (
-      !['connecting', 'ready'].includes(status) ||
-      readOnly ||
-      (status === 'ready' && !instanceId)
-    )
-      return
+    if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
     set({
       pendingSettings: {
         ...(pendingSettings?.permissionMode
@@ -816,12 +818,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   changeThinkingLevel: async (level) => {
     const state = get()
     const { instanceId, status, readOnly, pendingSettings } = state
-    if (
-      !['connecting', 'ready'].includes(status) ||
-      readOnly ||
-      (status === 'ready' && !instanceId)
-    )
-      return
+    if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
     if (
       level !== 'default' &&
       !thinkingCapabilitiesPending(state) &&
@@ -844,9 +841,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   changePermission: async (mode) => {
     const state = get()
     if (
-      !['connecting', 'ready'].includes(state.status) ||
+      state.status === 'disconnected' ||
       state.readOnly ||
-      (state.status === 'ready' && !state.instanceId)
+      (state.status !== 'connecting' && !state.instanceId)
     )
       return
     set({

@@ -104,6 +104,9 @@ export const ConversationTurn = memo(function ConversationTurn({
       lastAssistant,
       process.flatMap((item) => (item.kind === 'tool' ? [item.tool] : [])),
     )
+  // Preserve the last phase between message completion and the next ordered event,
+  // but show a waiting indicator only when no response content is being produced.
+  const waiting = !['正在思考…', '正在生成…'].includes(responseStatus)
   const rewrite = useConversationStore((state) => state.rewrite)
   const canRewrite = useConversationStore(
     (state) =>
@@ -231,7 +234,7 @@ export const ConversationTurn = memo(function ConversationTurn({
                 streaming={reply.status === 'streaming'}
               />
             ) : null}
-            {active && (
+            {active && waiting && (
               <div
                 role="status"
                 aria-atomic="true"
@@ -246,7 +249,7 @@ export const ConversationTurn = memo(function ConversationTurn({
                     />
                   ))}
                 </span>
-                <span>{responseStatus}</span>
+                <span>{responseStatus.replace(/(?:…|\.{3})$/, '')}</span>
               </div>
             )}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}

@@ -47,14 +47,25 @@ test('connecting and pending selections stay usable and display the latest choic
   expect(picker).toHaveTextContent('完全访问')
 })
 
-test.each(['running', 'stopping', 'disconnected'] as const)(
-  'permission changes are disabled while %s',
-  (status) => {
-    useConversationStore.setState({ status, permissionMode: 'auto' })
+test.each(['running', 'stopping'] as const)(
+  'permission choices remain usable for the next turn while %s',
+  async (status) => {
+    const changePermission = vi.fn()
+    useConversationStore.setState({ status, permissionMode: 'auto', changePermission })
+    const user = userEvent.setup()
     render(<PermissionPicker />)
-    expect(screen.getByRole('combobox', { name: '会话权限' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: '会话权限' })).toBeEnabled()
+    await user.tab()
+    await user.keyboard(' ')
+    await user.click(screen.getByRole('option', { name: /询问模式/ }))
+    expect(changePermission).toHaveBeenCalledExactlyOnceWith('ask')
   },
 )
+
+test('disconnected sessions cannot change their permission', () => {
+  render(<PermissionPicker />)
+  expect(screen.getByRole('combobox', { name: '会话权限' })).toBeDisabled()
+})
 
 test('read-only sessions cannot change their permission', () => {
   useConversationStore.setState({ status: 'ready', readOnly: '目录不存在' })

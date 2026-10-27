@@ -49,7 +49,7 @@ export function ModelPicker({
       onOpenChange={onOpenChange}
       items={items}
       value={model ? modelKey(model) : null}
-      disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly) || !models.length}
+      disabled={status === 'disconnected' || Boolean(readOnly) || !models.length}
       onValueChange={(value) => {
         const selected = models.find((item) => modelKey(item) === value)
         if (selected) void changeModel(selected)

@@ -165,6 +165,26 @@ test('a pending model does not constrain efforts using the previous model capabi
   expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
 })
 
+test('effort remains selectable during a reply and displays the choice for the next turn', async () => {
+  const changeThinkingLevel = vi.fn()
+  useConversationStore.setState({
+    status: 'running',
+    thinkingLevel: 'medium',
+    availableThinkingLevels: ['off', 'medium', 'high'],
+    changeThinkingLevel,
+  })
+  const user = userEvent.setup()
+  render(<ThinkingPicker />)
+  const picker = screen.getByRole('combobox', { name: '思考强度' })
+  expect(picker).toBeEnabled()
+  await user.tab()
+  await user.keyboard(' ')
+  await user.click(screen.getByRole('option', { name: 'High' }))
+  expect(changeThinkingLevel).toHaveBeenCalledExactlyOnceWith('high')
+  act(() => useConversationStore.setState({ pendingSettings: { thinkingLevel: 'high' } }))
+  expect(picker).toHaveTextContent('High')
+})
+
 test('the old fixed effort is replaced by Default and explicit choices including Off are remembered', async () => {
   localStorage.setItem('pi-hearth.thinking-level', 'high')
   expect(loadThinkingPreference()).toBe('default')

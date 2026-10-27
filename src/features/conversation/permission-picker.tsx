@@ -25,7 +25,7 @@ export function PermissionPicker() {
     <Select
       items={permissionOptions}
       value={mode}
-      disabled={!['connecting', 'ready'].includes(status) || Boolean(readOnly)}
+      disabled={status === 'disconnected' || Boolean(readOnly)}
       onValueChange={(value) => {
         if (isPermissionMode(value)) void changePermission(value)
       }}

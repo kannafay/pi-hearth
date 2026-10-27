@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { emptyConversation, isSessionBusy, useConversationStore } from './store'
 import { findCachedSession } from './session-cache'
-import { connectPi, sendPiMessage, setPiThinkingLevel, stopPi } from '@/lib/pi'
+import { connectPi, sendPiMessage, setPiPermission, setPiThinkingLevel, stopPi } from '@/lib/pi'
 import type { ChatMessage, PiEvent, RuntimeSnapshot } from '@/lib/generated/pi'
 
 vi.mock('@/lib/pi', () => ({
@@ -54,6 +54,10 @@ beforeEach(() => {
   localStorage.clear()
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   vi.mocked(setPiThinkingLevel).mockImplementation(async (id) => snapshot(id.slice(3)))
+  vi.mocked(setPiPermission).mockImplementation(async (id, mode) => ({
+    ...snapshot(id.slice(3)),
+    permissionMode: mode,
+  }))
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate, _receive, file) => {
     hydrate(snapshot(file!.split('.')[0]))
   })
@@ -68,6 +72,47 @@ async function startA() {
   await useConversationStore.getState().connect('A', 'A.jsonl', { sessionId: 'A' })
   return receive
 }
+
+test('next-turn permission choices survive background completion and apply only when that chat is reopened', async () => {
+  await startA()
+  await useConversationStore.getState().changePermission('auto')
+  expect(setPiPermission).not.toHaveBeenCalled()
+  await useConversationStore.getState().connect('B', 'B.jsonl', { sessionId: 'B' })
+  expect(
+    useConversationStore.getState().backgroundSessions.get('pi-A')?.data.pendingSettings,
+  ).toEqual({ permissionMode: 'auto' })
+  vi.mocked(connectPi).mockImplementationOnce(async (_project, hydrate) =>
+    hydrate(snapshot('A', true)),
+  )
+  await useConversationStore.getState().connect('A', 'A.jsonl', { sessionId: 'A' })
+  expect(useConversationStore.getState().pendingSettings).toEqual({ permissionMode: 'auto' })
+  expect(setPiPermission).not.toHaveBeenCalled()
+  await useConversationStore.getState().connect('B', 'B.jsonl', { sessionId: 'B' })
+  useConversationStore
+    .getState()
+    .receive([{ ...delta(3, ''), data: { type: 'run_finished', status: 'complete', error: null } }])
+  expect(setPiPermission).not.toHaveBeenCalled()
+  expect(
+    findCachedSession(useConversationStore.getState().sessionCache, 'A')?.[1].display
+      .pendingSettings,
+  ).toEqual({ permissionMode: 'auto' })
+  expect(useConversationStore.getState().permissionMode).toBe('ask')
+  vi.mocked(setPiPermission).mockImplementation(async () => ({
+    ...snapshot('A'),
+    permissionMode: 'auto',
+  }))
+  vi.mocked(setPiThinkingLevel).mockImplementation(async () => ({
+    ...snapshot('A'),
+    permissionMode: 'auto',
+  }))
+  await useConversationStore.getState().connect('A', 'A.jsonl', { sessionId: 'A' })
+  expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-A', 'auto')
+  expect(useConversationStore.getState()).toMatchObject({
+    sessionId: 'A',
+    permissionMode: 'auto',
+    pendingSettings: null,
+  })
+})
 
 test('switching retains queued streaming events and background completion without changing the visible chat', async () => {
   const receive = await startA()

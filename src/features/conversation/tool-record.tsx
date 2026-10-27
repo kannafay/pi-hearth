@@ -54,8 +54,12 @@ function useOutputPage(instanceId: string | null, toolId: string, section: 'argu
 }
 
 export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall }) {
-  const { instanceId, status } = useConversationStore(
-    useShallow((state) => ({ instanceId: state.instanceId, status: state.status })),
+  const { instanceId, status, permissionMode } = useConversationStore(
+    useShallow((state) => ({
+      instanceId: state.instanceId,
+      status: state.status,
+      permissionMode: state.permissionMode,
+    })),
   )
   const awaiting = tool.status === 'awaiting_approval'
   const running = tool.status === 'running' || tool.status === 'queued'
@@ -73,7 +77,6 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
   const [error, setError] = useState('')
   const args = useOutputPage(instanceId, tool.id, 'arguments')
   const output = useOutputPage(instanceId, tool.id, 'output')
-  const reviewed = !tool.argumentsTruncated || (args.page !== null && args.page.nextOffset === null)
   const Icon = ['bash', 'powershell'].includes(tool.name)
     ? Terminal
     : tool.name === 'read'
@@ -174,11 +177,12 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
                 : ['write', 'edit'].includes(tool.name)
                   ? '此操作会修改本地文件。'
                   : '此命令将在当前项目目录执行。'}
-              确认有效期为 2 分钟。{!reviewed && '请先加载完整参数。'}
+              确认有效期为 2 分钟。
+              {permissionMode === 'auto' && '自动判断未能确认此操作的风险，需要你确认本次执行。'}
             </p>
             <Button
               size="sm"
-              disabled={!instanceId || status === 'stopping' || deciding || !reviewed}
+              disabled={!instanceId || status === 'stopping' || deciding}
               onClick={() => void decide(true)}
             >
               <Check />

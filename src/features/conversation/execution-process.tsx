@@ -133,10 +133,13 @@ export function ExecutionProcess({
     stateKey ? `process:${stateKey}` : undefined,
     null,
   )
+  useEffect(() => {
+    if (active && choice) setChoice(null)
+  }, [active, choice, setChoice])
   const tools = items.flatMap((item) => (item.kind === 'tool' ? [item.tool] : []))
   const awaiting = tools.some((tool) => tool.status === 'awaiting_approval')
-  // A manual choice applies to this phase only; finishing always collapses the process.
-  const open = awaiting || (choice?.active === active ? choice.open : active)
+  // Keep the whole process visible throughout the reply; finishing collapses it.
+  const open = active || awaiting || (choice?.active === active && choice.open)
   const failures = tools.filter((tool) => tool.status === 'failed').length
   const elapsed =
     startedAt !== undefined && finishedAt !== undefined
@@ -149,7 +152,7 @@ export function ExecutionProcess({
     <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
       <CollapsibleTrigger
         aria-label="执行过程"
-        disabled={awaiting || !items.length}
+        disabled={active || awaiting || !items.length}
         className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
         <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />

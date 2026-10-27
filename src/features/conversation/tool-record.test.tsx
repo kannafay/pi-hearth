@@ -44,7 +44,19 @@ test('approval shows parameters and allows exactly one decision before the order
   expect(screen.getByText('成功写入')).toBeVisible()
 })
 
-test('truncated arguments must be fully loaded before approval; refusal is always available', async () => {
+test('truncated arguments can be approved immediately without loading the full payload', async () => {
+  vi.mocked(decidePiTool).mockResolvedValue()
+  const user = userEvent.setup()
+  render(<ToolRecord tool={{ ...tool, argumentsTruncated: true }} />)
+  const allow = await screen.findByRole('button', { name: '允许本次' })
+  expect(allow).toBeEnabled()
+  expect(screen.getByRole('button', { name: '拒绝' })).toBeEnabled()
+  await user.click(allow)
+  expect(decidePiTool).toHaveBeenCalledExactlyOnceWith('pi-1', 'approve-1', true)
+  expect(loadPiToolOutput).not.toHaveBeenCalled()
+})
+
+test('full arguments remain optional to inspect and the request can still be refused', async () => {
   vi.mocked(loadPiToolOutput).mockResolvedValue({
     content: '完整参数',
     nextOffset: null,
@@ -53,13 +65,22 @@ test('truncated arguments must be fully loaded before approval; refusal is alway
   vi.mocked(decidePiTool).mockResolvedValue()
   const user = userEvent.setup()
   render(<ToolRecord tool={{ ...tool, argumentsTruncated: true }} />)
-  expect(await screen.findByRole('button', { name: '允许本次' })).toBeDisabled()
+  expect(await screen.findByRole('button', { name: '允许本次' })).toBeEnabled()
   expect(screen.getByRole('button', { name: '拒绝' })).toBeEnabled()
   await user.click(screen.getByRole('button', { name: '加载完整参数' }))
   await waitFor(() => expect(screen.getByRole('button', { name: '允许本次' })).toBeEnabled())
   expect(screen.getByText('完整参数')).toBeVisible()
   await user.click(screen.getByRole('button', { name: '拒绝' }))
   expect(decidePiTool).toHaveBeenCalledExactlyOnceWith('pi-1', 'approve-1', false)
+})
+
+test('auto mode explains why a confirmation can still be required, using this run’s actual mode', async () => {
+  useConversationStore.setState({
+    permissionMode: 'auto',
+    pendingSettings: { permissionMode: 'full' },
+  })
+  render(<ToolRecord tool={tool} />)
+  expect(await screen.findByText(/自动判断未能确认此操作的风险/)).toBeVisible()
 })
 
 test('expanded command output updates live and displays errors as plain text', async () => {

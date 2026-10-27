@@ -117,15 +117,24 @@ test('the model picker supports keyboard selection and Escape without changing m
   expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
 })
 
-test('model selection remains visible while a running turn prevents a mid-request change', () => {
+test('model selection remains usable while the current reply is running', async () => {
+  const model = { provider: 'p', id: 'a', name: 'Alpha' }
+  const next = { provider: 'p', id: 'b', name: 'Beta' }
+  const changeModel = vi.fn()
   useConversationStore.setState({
     status: 'running',
-    model: { provider: 'p', id: 'a', name: 'Alpha' },
-    models: [{ provider: 'p', id: 'a', name: 'Alpha' }],
+    model,
+    models: [model, next],
+    changeModel,
   })
+  const user = userEvent.setup()
   render(<ModelPicker />)
-  expect(screen.getByRole('combobox', { name: '切换模型' })).toBeDisabled()
+  expect(screen.getByRole('combobox', { name: '切换模型' })).toBeEnabled()
   expect(screen.getByText(/Alpha/)).toBeVisible()
+  await user.tab()
+  await user.keyboard(' ')
+  await user.click(screen.getByRole('option', { name: 'Beta' }))
+  expect(changeModel).toHaveBeenCalledExactlyOnceWith(next)
 })
 
 test('models remain selectable through connection and settings acknowledgements show the latest choice', async () => {

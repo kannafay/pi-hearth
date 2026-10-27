@@ -185,7 +185,7 @@ test('a late permission acknowledgement cannot overwrite another session or its 
   })
 })
 
-test('failed permission writes retain the acknowledged mode and busy or read-only sessions cannot change it', async () => {
+test('failed permission writes retain the acknowledged mode and read-only sessions cannot change it', async () => {
   useConversationStore.setState({ ...snapshot, status: 'ready' })
   vi.mocked(setPiPermission).mockRejectedValueOnce(new Error('write failed'))
   await useConversationStore.getState().changePermission('full')
@@ -194,15 +194,81 @@ test('failed permission writes retain the acknowledged mode and busy or read-onl
     pendingSettings: null,
     error: 'Error: write failed',
   })
-  for (const state of [
-    { status: 'running' as const },
-    { status: 'stopping' as const },
-    { status: 'ready' as const, readOnly: 'missing directory' },
-  ]) {
-    useConversationStore.setState(state)
-    await useConversationStore.getState().changePermission('auto')
-  }
+  useConversationStore.setState({ readOnly: 'missing directory' })
+  await useConversationStore.getState().changePermission('auto')
   expect(setPiPermission).toHaveBeenCalledTimes(1)
+})
+
+test.each(['running', 'stopping'] as const)(
+  '%s replies retain their settings while the latest model, effort and permission choices wait for completion',
+  async (status) => {
+    const nextModel = { provider: 'next', id: 'model', name: 'Next' }
+    useConversationStore.setState({ ...snapshot, status, activeRunId: 'run-1' })
+    await useConversationStore.getState().changeModel({ ...nextModel, id: 'superseded' })
+    await useConversationStore.getState().changePermission('full')
+    await useConversationStore.getState().changeModel(nextModel)
+    await useConversationStore.getState().changeThinkingLevel('high')
+    await useConversationStore.getState().changePermission('auto')
+    expect(useConversationStore.getState()).toMatchObject({
+      status,
+      model: snapshot.model,
+      permissionMode: 'ask',
+      thinkingLevel: 'medium',
+      settingsPending: null,
+      pendingSettings: { model: nextModel, permissionMode: 'auto', thinkingLevel: 'high' },
+    })
+    expect(setPiModel).not.toHaveBeenCalled()
+    expect(setPiPermission).not.toHaveBeenCalled()
+    expect(setPiThinkingLevel).not.toHaveBeenCalled()
+
+    const permission = deferred<RuntimeSnapshot>()
+    vi.mocked(setPiPermission).mockReturnValueOnce(permission.promise)
+    vi.mocked(setPiModel).mockResolvedValue({
+      ...snapshot,
+      model: nextModel,
+      permissionMode: 'auto',
+    })
+    vi.mocked(setPiThinkingLevel).mockResolvedValue({
+      ...snapshot,
+      model: nextModel,
+      permissionMode: 'auto',
+      thinkingLevel: 'high',
+    })
+    useConversationStore
+      .getState()
+      .receive([event(1, { type: 'run_finished', status: 'complete', error: null })])
+    expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-1', 'auto')
+    expect(await useConversationStore.getState().send('too early')).toBe(false)
+    permission.resolve({ ...snapshot, permissionMode: 'auto' })
+    await vi.waitFor(() => expect(useConversationStore.getState().pendingSettings).toBeNull())
+    expect(setPiModel).toHaveBeenCalledExactlyOnceWith('pi-1', nextModel.provider, nextModel.id)
+    expect(setPiThinkingLevel).toHaveBeenCalledExactlyOnceWith('pi-1', 'high')
+    vi.mocked(sendPiMessage).mockResolvedValue()
+    expect(await useConversationStore.getState().send('next turn')).toBe(true)
+    expect(useConversationStore.getState()).toMatchObject({
+      model: nextModel,
+      permissionMode: 'auto',
+      thinkingLevel: 'high',
+    })
+  },
+)
+
+test('queued choices are applied even if the send fails before a terminal event arrives', async () => {
+  useConversationStore.setState({ ...snapshot, status: 'ready' })
+  const prompt = deferred<void>()
+  vi.mocked(sendPiMessage).mockReturnValueOnce(prompt.promise)
+  const sending = useConversationStore.getState().send('start')
+  await useConversationStore.getState().changePermission('auto')
+  expect(setPiPermission).not.toHaveBeenCalled()
+  prompt.reject(new Error('request failed'))
+  expect(await sending).toBe(false)
+  await vi.waitFor(() => expect(useConversationStore.getState().pendingSettings).toBeNull())
+  expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-1', 'auto')
+  expect(useConversationStore.getState()).toMatchObject({
+    status: 'ready',
+    permissionMode: 'auto',
+    settingsPending: null,
+  })
 })
 
 test('rewrites retain the current transcript until the authoritative branch event and prevent duplicate sends', async () => {
