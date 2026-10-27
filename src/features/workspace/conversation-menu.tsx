@@ -41,7 +41,7 @@ export function ConversationMenu({
             size="icon-sm"
             aria-label="会话更多操作"
             disabled={disabled}
-            className="shrink-0 text-muted-foreground hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:text-muted-foreground aria-expanded:text-muted-foreground"
           />
         }
       >

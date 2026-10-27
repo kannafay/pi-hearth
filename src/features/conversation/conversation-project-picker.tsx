@@ -85,7 +85,7 @@ export function ConversationProjectPicker({
             variant="ghost"
             size="sm"
             aria-label="选择对话项目"
-            className="h-7 max-w-full gap-2 px-2 text-xs font-normal text-muted-foreground hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
+            className="h-7 max-w-full gap-2 px-2 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground dark:hover:bg-transparent"
           />
         }
       >
@@ -132,10 +132,7 @@ export function ConversationProjectPicker({
                       aria-label={item.path ? `${item.name} ${item.path}` : item.name}
                       className={cn(menuItemStyles, 'min-h-8 gap-2 px-2 py-1.5 pr-8')}
                     >
-                      <Icon
-                        aria-hidden
-                        className="size-4 shrink-0 stroke-[1.5] text-muted-foreground"
-                      />
+                      <Icon aria-hidden className="size-4 shrink-0 stroke-[1.5]" />
                       <span className="min-w-0 flex-1 text-left">
                         <span className="block truncate text-[13px] leading-5">{item.name}</span>
                         {item.path && (
