@@ -2,6 +2,11 @@ import { toast as toastManager } from '@/components/ui/toast'
 
 export { toastManager }
 
+const compactionNotices = new Map([
+  ['Nothing to compact (session too small)', '当前会话内容较少，暂时无需压缩。'],
+  ['Already compacted', '当前上下文已压缩，暂时无需重复压缩。'],
+])
+
 function notify(type: 'success' | 'error' | 'info', message: string) {
   const title = message.trim()
   if (!title) return
@@ -20,6 +25,8 @@ export const toast = {
   info: (message: string) => notify('info', message),
   error: (reason: unknown) => {
     const message = reason instanceof Error ? reason.message : String(reason ?? '')
-    return notify('error', message.replace(/^(?:Error:\s*)+/, '') || '操作未完成，请重试。')
+    const title = message.trim().replace(/^(?:Error:\s*)+/, '')
+    const notice = compactionNotices.get(title)
+    return notice ? notify('info', notice) : notify('error', title || '操作未完成，请重试。')
   },
 }

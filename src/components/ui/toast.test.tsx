@@ -23,6 +23,7 @@ test('operation errors are portalled, deduplicated, and dismissible without taki
     toast.error('Error: 执行失败，请重试。')
   })
   const notice = screen.getByRole('dialog', { name: '执行失败，请重试。' })
+  expect(notice).toHaveAttribute('data-type', 'error')
   expect(within(notice).queryByText('操作失败')).not.toBeInTheDocument()
   expect(within(notice).queryByRole('button', { name: '复制' })).not.toBeInTheDocument()
   expect(screen.getAllByRole('dialog')).toHaveLength(1)
@@ -34,6 +35,20 @@ test('operation errors are portalled, deduplicated, and dismissible without taki
   expect(within(notice).getAllByRole('button')).toHaveLength(1)
   await user.click(within(notice).getByRole('button', { name: '关闭通知' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test.each([
+  ['Nothing to compact (session too small)', '当前会话内容较少，暂时无需压缩。'],
+  ['Already compacted', '当前上下文已压缩，暂时无需重复压缩。'],
+])('compaction no-op %s becomes a friendly information notice', (reason, message) => {
+  render(<Toaster />)
+  act(() => {
+    toast.error(reason)
+    toast.error(new Error(`Error: ${reason}`))
+  })
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  expect(screen.getByRole('dialog', { name: message })).toHaveAttribute('data-type', 'info')
+  expect(screen.queryByText(reason)).not.toBeInTheDocument()
 })
 
 test('successful results disappear automatically and can be shown again', async () => {
