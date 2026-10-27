@@ -54,9 +54,7 @@ impl WorkspaceManager {
 }
 
 fn app_data(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。".into())
+    crate::app_data::directory(app)
 }
 
 async fn preferences(data: &Path) -> Result<Preferences, String> {

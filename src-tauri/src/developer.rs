@@ -269,9 +269,8 @@ impl Terminal {
 
 #[tauri::command]
 pub async fn developer_console_open(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
     let _gate = SETTINGS_GATE.lock().await;
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = crate::app_data::directory(&app)?;
     if !crate::pi::storage::settings(&data).await?.developer_mode {
         return Err("请先开启开发者模式。".into());
     }

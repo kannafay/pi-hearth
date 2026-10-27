@@ -9,7 +9,6 @@ use std::{
     path::Path,
     time::{Duration, UNIX_EPOCH},
 };
-use tauri::Manager;
 
 const SCHEMA_VERSION: i64 = 1;
 
@@ -146,52 +145,136 @@ pub(super) async fn preferences(data: &Path) -> Result<Preferences, String> {
     with_database(data, |connection| {
         // Keep the three tables in one snapshot when a save runs concurrently.
         let transaction = connection.transaction().map_err(database_error)?;
-        let projects = transaction
-            .prepare("SELECT path, name FROM projects ORDER BY position")
-            .map_err(database_error)?
-            .query_map([], |row| {
-                Ok(ProjectInfo {
-                    path: row.get(0)?,
-                    name: row.get(1)?,
-                })
-            })
-            .map_err(database_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(database_error)?;
-        let selection = transaction
-            .query_row(
-                "SELECT project_path, session_path FROM workspace_selection WHERE id=1",
-                [],
-                |row| {
-                    Ok(Selection {
-                        project_path: row.get(0)?,
-                        session_path: row.get(1)?,
-                    })
-                },
-            )
-            .map_err(database_error)?;
-        let session_preferences = transaction
-            .prepare("SELECT path, pinned, archived FROM session_preferences")
-            .map_err(database_error)?
-            .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    SessionPreference {
-                        pinned: row.get(1)?,
-                        archived: row.get(2)?,
-                    },
-                ))
-            })
-            .map_err(database_error)?
-            .collect::<Result<HashMap<_, _>, _>>()
-            .map_err(database_error)?;
-        Ok(Preferences {
-            projects,
-            selection,
-            session_preferences,
-        })
+        read_preferences(&transaction)
     })
     .await
+}
+
+fn read_preferences(connection: &Connection) -> Result<Preferences, String> {
+    let projects = connection
+        .prepare("SELECT path, name FROM projects ORDER BY position")
+        .map_err(database_error)?
+        .query_map([], |row| {
+            Ok(ProjectInfo {
+                path: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(database_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(database_error)?;
+    let selection = connection
+        .query_row(
+            "SELECT project_path, session_path FROM workspace_selection WHERE id=1",
+            [],
+            |row| {
+                Ok(Selection {
+                    project_path: row.get(0)?,
+                    session_path: row.get(1)?,
+                })
+            },
+        )
+        .map_err(database_error)?;
+    let session_preferences = connection
+        .prepare("SELECT path, pinned, archived FROM session_preferences")
+        .map_err(database_error)?
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                SessionPreference {
+                    pinned: row.get(1)?,
+                    archived: row.get(2)?,
+                },
+            ))
+        })
+        .map_err(database_error)?
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(database_error)?;
+    Ok(Preferences {
+        projects,
+        selection,
+        session_preferences,
+    })
+}
+
+pub(crate) fn relocate_data_paths(
+    data: &Path,
+    legacy: &Path,
+    destination: &Path,
+) -> Result<(), String> {
+    if !data.join("app.db").exists() && !data.join("workspace.json").exists() {
+        return Ok(());
+    }
+    let relocate = |path: &str| crate::app_data::relocate_path(path, legacy, destination);
+    let mut connection = open(data)?;
+    let transaction = connection.transaction().map_err(database_error)?;
+    let mut preferences = read_preferences(&transaction)?;
+    for project in &mut preferences.projects {
+        project.path = relocate(&project.path);
+    }
+    preferences.selection.project_path = preferences
+        .selection
+        .project_path
+        .map(|path| relocate(&path));
+    preferences.selection.session_path = preferences
+        .selection
+        .session_path
+        .map(|path| relocate(&path));
+    let old_preferences = std::mem::take(&mut preferences.session_preferences);
+    for (path, preference) in old_preferences {
+        let path = super::catalog::session_key(&relocate(&path));
+        let entry = preferences.session_preferences.entry(path).or_default();
+        entry.pinned |= preference.pinned;
+        entry.archived |= preference.archived;
+    }
+    write_preferences(&transaction, &preferences)?;
+
+    let rows = transaction
+        .prepare("SELECT key, value FROM app_settings")
+        .map_err(database_error)?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(database_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(database_error)?;
+    let mut settings = serde_json::Map::new();
+    for (key, value) in rows {
+        let mut value: serde_json::Value = serde_json::from_str(&value).map_err(database_error)?;
+        relocate_json_paths(&mut value, &relocate);
+        if key == "expandedProjects"
+            && let Some(projects) = value.as_object_mut()
+        {
+            *projects = std::mem::take(projects)
+                .into_iter()
+                .map(|(path, expanded)| (super::catalog::session_key(&relocate(&path)), expanded))
+                .collect();
+        }
+        settings.insert(key, value);
+    }
+    write_settings(&transaction, &settings.into())?;
+    // Rebuild the derived search index against the renamed native history files.
+    transaction
+        .execute("DELETE FROM search_documents", [])
+        .map_err(database_error)?;
+    transaction.commit().map_err(database_error)
+}
+
+fn relocate_json_paths(value: &mut serde_json::Value, relocate: &impl Fn(&str) -> String) {
+    match value {
+        serde_json::Value::String(path) => *path = relocate(path),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                relocate_json_paths(value, relocate);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            for value in values.values_mut() {
+                relocate_json_paths(value, relocate);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(super) async fn save_preferences(data: &Path, preferences: &Preferences) -> Result<(), String> {
@@ -327,7 +410,7 @@ pub(super) async fn update_settings(
 
 #[tauri::command]
 pub async fn app_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
-    let data = app.path().app_local_data_dir().map_err(database_error)?;
+    let data = crate::app_data::directory(&app)?;
     settings(&data).await
 }
 
@@ -337,7 +420,7 @@ pub async fn app_update_settings(
     manager: tauri::State<'_, super::client::PiManager>,
     patch: AppSettingsPatch,
 ) -> Result<AppSettings, String> {
-    let data = app.path().app_local_data_dir().map_err(database_error)?;
+    let data = crate::app_data::directory(&app)?;
     let Some(enabled) = patch.developer_mode else {
         return if patch.proxy.is_some() {
             manager.update_proxy(&data, patch).await
@@ -453,6 +536,123 @@ mod tests {
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[tokio::test]
+    async fn renamed_data_preserves_selection_pins_order_and_external_project_settings() {
+        let root = fixture();
+        let legacy = root.join("io.github.kannafay.pi-hearth");
+        let data = root.join("Pi Hearth");
+        let old_session = legacy
+            .join("sessions/history.jsonl")
+            .to_string_lossy()
+            .into_owned();
+        let new_session = data
+            .join("sessions/history.jsonl")
+            .to_string_lossy()
+            .into_owned();
+        let old_project = legacy
+            .join("workspace/project")
+            .to_string_lossy()
+            .into_owned();
+        let new_project = data
+            .join("workspace/project")
+            .to_string_lossy()
+            .into_owned();
+        let outside = root.join("external-project").to_string_lossy().into_owned();
+        let prefs = Preferences {
+            projects: vec![ProjectInfo {
+                path: outside.clone(),
+                name: "外部项目".into(),
+            }],
+            selection: Selection {
+                project_path: None,
+                session_path: Some(old_session.clone()),
+            },
+            session_preferences: HashMap::from([(
+                super::super::catalog::session_key(&old_session),
+                SessionPreference {
+                    pinned: true,
+                    archived: true,
+                },
+            )]),
+        };
+        save_preferences(&data, &prefs).await.unwrap();
+        update_settings(
+            &data,
+            AppSettingsPatch {
+                theme: Some(AppTheme::Dark),
+                session_order: Some(vec![old_session]),
+                expanded_projects: Some(HashMap::from([(
+                    super::super::catalog::session_key(&old_project),
+                    false,
+                )])),
+                pinned_projects: Some(vec![old_project]),
+                projects_directory: Some(outside.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        relocate_data_paths(&data, &legacy, &data).unwrap();
+        let saved = preferences(&data).await.unwrap();
+        assert_eq!(
+            saved.selection.session_path.as_deref(),
+            Some(new_session.as_str())
+        );
+        assert!(saved.selection.project_path.is_none());
+        assert_eq!(saved.projects[0].path, outside);
+        let flags = &saved.session_preferences[&super::super::catalog::session_key(&new_session)];
+        assert!(flags.pinned && flags.archived);
+        let saved = settings(&data).await.unwrap();
+        assert!(matches!(saved.theme, AppTheme::Dark));
+        assert_eq!(saved.session_order, vec![new_session]);
+        assert_eq!(saved.pinned_projects, vec![new_project.clone()]);
+        assert_eq!(
+            saved.expanded_projects[&super::super::catalog::session_key(&new_project)],
+            false
+        );
+        assert_eq!(saved.projects_directory, outside);
+    }
+
+    #[tokio::test]
+    async fn invalid_settings_do_not_partially_rewrite_migrated_session_preferences() {
+        let root = fixture();
+        let legacy = root.join("legacy");
+        let data = root.join("Pi Hearth");
+        let original = legacy
+            .join("sessions/history.jsonl")
+            .to_string_lossy()
+            .into_owned();
+        save_preferences(
+            &data,
+            &Preferences {
+                selection: Selection {
+                    project_path: None,
+                    session_path: Some(original.clone()),
+                },
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        open(&data)
+            .unwrap()
+            .execute(
+                "UPDATE app_settings SET value='invalid-json' WHERE key='theme'",
+                [],
+            )
+            .unwrap();
+        assert!(relocate_data_paths(&data, &legacy, &data).is_err());
+        assert_eq!(
+            preferences(&data)
+                .await
+                .unwrap()
+                .selection
+                .session_path
+                .as_deref(),
+            Some(original.as_str())
+        );
     }
 
     #[tokio::test]

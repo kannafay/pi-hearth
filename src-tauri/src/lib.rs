@@ -1,3 +1,4 @@
+mod app_data;
 mod desktop;
 mod developer;
 mod pi;
@@ -59,6 +60,7 @@ pub fn run() {
                 let _ = desktop::show_window(app);
             }
         }))
+        .plugin(app_data::plugin())
         .manage(desktop::Lifecycle::default())
         .manage(window_state::Persistence::default())
         .manage(pi::PiManager::default())

@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tauri::{Manager, State};
+use tauri::State;
 use tokio::sync::Mutex;
 
 pub(super) async fn preferences(data: &Path) -> Result<HashMap<String, bool>, String> {
@@ -112,10 +112,7 @@ pub async fn pi_resources(
     app: tauri::AppHandle,
     project_path: Option<String>,
 ) -> Result<ResourceCatalog, String> {
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     list(&data, project_path).await
 }
 
@@ -131,10 +128,7 @@ pub async fn pi_resource_toggle(
 ) -> Result<ResourceCatalog, String> {
     static UPDATE: Mutex<()> = Mutex::const_new(());
     let _gate = UPDATE.lock().await;
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     let catalog = list(&data, project_path.clone()).await?;
     let source = find(&catalog, &kind, &source, &name)?;
     let mut settings = preferences(&data).await?;
@@ -151,10 +145,7 @@ pub async fn pi_resource_open(
     source: String,
     name: String,
 ) -> Result<(), String> {
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     let source = find(&list(&data, project_path).await?, &kind, &source, &name)?;
     let target = open_target(&kind, &source)?;
     if kind == "mcp" {
@@ -185,10 +176,7 @@ fn open_target(kind: &str, source: &str) -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub async fn pi_models(app: tauri::AppHandle) -> Result<Vec<ModelInfo>, String> {
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     let preview = data
         .join("runtime")
         .join(format!("model-catalog-{}", uuid::Uuid::new_v4()));

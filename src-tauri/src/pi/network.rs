@@ -6,7 +6,7 @@ use super::{
 use base64::Engine;
 use serde_json::{Value, json};
 use std::{collections::HashMap, path::Path, process::Stdio, time::Duration};
-use tauri::{Manager, Url};
+use tauri::Url;
 use tokio::{io::AsyncWriteExt, process::Command, sync::Mutex, time::timeout};
 
 const PROXY_KEYS: [&str; 6] = [
@@ -188,10 +188,7 @@ pub async fn network_test_proxy(
     proxy: ProxySettings,
     target: String,
 ) -> Result<ProxyTestResult, String> {
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     test(&data, &local_agent_directory()?, &proxy, &target).await
 }
 

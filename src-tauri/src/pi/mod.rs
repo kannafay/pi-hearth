@@ -20,7 +20,7 @@ mod types;
 pub use catalog::WorkspaceManager;
 pub use client::PiManager;
 use serde_json::json;
-use tauri::{Manager, State, ipc::Channel};
+use tauri::{State, ipc::Channel};
 use types::{PiEvent, RuntimeSnapshot, ToolLogPage};
 
 #[tauri::command]
@@ -57,10 +57,7 @@ pub async fn pi_connect(
     project_path: String,
     on_event: Channel<PiEvent>,
 ) -> Result<RuntimeSnapshot, String> {
-    let data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "无法定位应用数据目录。")?;
+    let data = crate::app_data::directory(&app)?;
     manager.connect(project_path, &data, on_event).await
 }
 

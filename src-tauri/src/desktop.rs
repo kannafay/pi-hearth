@@ -35,7 +35,7 @@ pub fn shutdown(app: &AppHandle, action: Shutdown) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         app.state::<PiManager>().disconnect().await;
-        if let Ok(data) = app.path().app_local_data_dir() {
+        if let Ok(data) = crate::app_data::directory(&app) {
             let _ = crate::developer::set_enabled(&data, false);
         }
         match action {
@@ -69,10 +69,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
     let _ = tauri::async_runtime::block_on(async {
         let _gate = crate::developer::SETTINGS_GATE.lock().await;
-        let data = handle
-            .path()
-            .app_local_data_dir()
-            .map_err(|e| e.to_string())?;
+        let data = crate::app_data::directory(handle)?;
         let settings = crate::pi::storage::settings(&data).await?;
         crate::developer::set_enabled(&data, settings.developer_mode)
     });

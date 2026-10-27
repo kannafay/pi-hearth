@@ -1,7 +1,6 @@
 use super::{catalog::default_projects_directory, storage, types::AppSettings};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 
 pub(super) fn default_files_directory(projects: &Path) -> PathBuf {
     let parent = projects.parent().unwrap_or(projects);
@@ -21,7 +20,7 @@ fn resolve_directory(default_projects: &Path, settings: &AppSettings) -> PathBuf
 }
 
 pub(super) async fn directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = crate::app_data::directory(app)?;
     Ok(resolve_directory(
         &default_projects_directory(app)?,
         &storage::settings(&data).await?,
@@ -50,7 +49,7 @@ pub fn workspace_files_directory(
 }
 
 pub(super) async fn prepare_runtime(app: &tauri::AppHandle) -> Result<(), String> {
-    let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let data = crate::app_data::directory(app)?;
     let directory = directory(app).await?;
     tokio::fs::create_dir_all(directory.join("Generated"))
         .await
