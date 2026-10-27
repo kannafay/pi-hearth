@@ -1201,9 +1201,17 @@ select {
     color 160ms ease-out;
 }
 
-.caption-button svg {
-  width: 14px;
-  height: 14px;
+.caption-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets', sans-serif;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+  font-synthesis: none;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .caption-button:hover {
