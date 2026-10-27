@@ -109,6 +109,7 @@ pub fn run() {
             #[cfg(not(windows))]
             tray_menu::tray_action,
             pi::attachments::attachment_paths,
+            pi::attachments::attachment_restore,
             pi::attachments::attachment_bytes,
             pi::attachments::attachment_clipboard,
             pi::attachments::attachment_clipboard_available,

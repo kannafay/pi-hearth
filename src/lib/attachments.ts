@@ -41,6 +41,10 @@ export function stagePaths(paths: string[]) {
   return invoke<Attachment[]>('attachment_paths', { paths })
 }
 
+export function restoreAttachments(files: Attachment[]) {
+  return invoke<Attachment[]>('attachment_restore', { files })
+}
+
 export async function stageFiles(files: File[]) {
   if (files.length > MAX_ATTACHMENTS) throw new Error('每条消息最多添加 10 个附件。')
   const added: Attachment[] = []

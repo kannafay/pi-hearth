@@ -13,8 +13,10 @@ import {
   releaseAttachments,
   stageFiles,
   stagePaths,
+  restoreAttachments,
 } from '@/lib/attachments'
 import type { Attachment } from '@/lib/generated/pi'
+import { loadComposerDraft, saveComposerDraft } from '@/lib/composer-drafts'
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 vi.mock('@/lib/attachments', () => ({
@@ -24,6 +26,7 @@ vi.mock('@/lib/attachments', () => ({
   releaseAttachments: vi.fn(),
   stageFiles: vi.fn(),
   stagePaths: vi.fn(),
+  restoreAttachments: vi.fn(),
   MAX_ATTACHMENTS: 10,
   prepareAttachmentPicker: vi.fn().mockResolvedValue('D:/Downloads'),
   listenForAttachmentDrop: vi.fn().mockResolvedValue(() => {}),
@@ -50,6 +53,7 @@ beforeEach(() => {
   vi.mocked(clipboardAttachments).mockResolvedValue([])
   vi.mocked(hasClipboardAttachments).mockResolvedValue(false)
   vi.mocked(stageFiles).mockResolvedValue([file])
+  vi.mocked(restoreAttachments).mockImplementation(async (files) => files)
 })
 
 test('clicking composer padding and toolbar gaps focuses the draft without moving the caret', async () => {
@@ -213,6 +217,54 @@ test('selected files are sent with the draft and cleared only after acceptance',
   expect(useConversationStore.getState().send).toHaveBeenCalledWith('总结附件', ['file-1'])
   expect(screen.queryByText('notes.txt')).not.toBeInTheDocument()
   expect(useWorkspaceStore.getState().draft).toBe('')
+})
+
+test('restored drafts and attachments survive a rejected send and clear after acceptance', async () => {
+  saveComposerDraft('session:restored', {
+    id: 'restored-draft',
+    text: '总结附件',
+    attachments: [file],
+  })
+  await useWorkspaceStore.getState().activateDraft('session:restored')
+  const send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  useConversationStore.setState({ send })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveValue('总结附件')
+  expect(screen.getByText('notes.txt')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '发送消息' }))
+  expect(loadComposerDraft('session:restored')).toMatchObject({
+    text: '总结附件',
+    attachments: [{ id: file.id }],
+  })
+  await user.click(screen.getByRole('button', { name: '发送消息' }))
+  expect(send).toHaveBeenLastCalledWith('总结附件', [file.id])
+  expect(loadComposerDraft('session:restored')).toMatchObject({ text: '', attachments: [] })
+})
+
+test('send acknowledgement after navigation clears the submitted draft without clearing the new input', async () => {
+  await useWorkspaceStore.getState().activateDraft('session:before')
+  useWorkspaceStore.getState().setDraft('发送这份草稿')
+  let accept!: (accepted: boolean) => void
+  const send = vi.fn().mockReturnValue(
+    new Promise((resolve) => {
+      accept = resolve
+    }),
+  )
+  useConversationStore.setState({ send })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  await user.click(screen.getByRole('button', { name: '发送消息' }))
+  expect(send).toHaveBeenCalledOnce()
+  await act(async () => {
+    await useWorkspaceStore.getState().activateDraft('session:after')
+    useConversationStore.setState({ instanceId: 'another-runtime' })
+    useWorkspaceStore.getState().setDraft('新会话的草稿')
+    accept(true)
+  })
+  expect(loadComposerDraft('session:before').text).toBe('')
+  expect(loadComposerDraft('session:after').text).toBe('新会话的草稿')
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveValue('新会话的草稿')
 })
 
 test('the picker does not show an import spinner until files are selected', async () => {

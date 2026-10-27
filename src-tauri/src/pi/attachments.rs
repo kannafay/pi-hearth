@@ -12,7 +12,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{Cursor, Read},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 use tauri::State;
 use uuid::Uuid;
@@ -29,8 +29,8 @@ pub struct PreparedAttachment {
     image: Option<Value>,
 }
 
-#[derive(Default)]
-pub struct AttachmentManager(Mutex<HashMap<String, PreparedAttachment>>);
+#[derive(Clone, Default)]
+pub struct AttachmentManager(Arc<Mutex<HashMap<String, PreparedAttachment>>>);
 
 fn escaped(value: &str) -> String {
     value
@@ -308,7 +308,13 @@ pub async fn attachment_preview(path: String) -> Result<AttachmentPreview, Strin
 impl AttachmentManager {
     fn insert(&self, files: Vec<PreparedAttachment>) -> Result<Vec<Attachment>, String> {
         let mut stored = self.0.lock().map_err(|_| "附件暂不可用。")?;
-        if stored.len() + files.len() > 50 {
+        if stored.len()
+            + files
+                .iter()
+                .filter(|file| !stored.contains_key(&file.view.id))
+                .count()
+            > 50
+        {
             return Err("待发送附件过多，请移除部分附件。".into());
         }
         let views = files.iter().map(|file| file.view.clone()).collect();
@@ -316,6 +322,50 @@ impl AttachmentManager {
             stored.insert(file.view.id.clone(), file);
         }
         Ok(views)
+    }
+
+    fn restore(&self, files: Vec<Attachment>) -> Result<Vec<Attachment>, String> {
+        if files.len() > MAX_ATTACHMENTS {
+            return Err("每条消息最多添加 10 个附件。".into());
+        }
+        let existing: HashSet<String> = self
+            .0
+            .lock()
+            .map_err(|_| "附件暂不可用。")?
+            .keys()
+            .cloned()
+            .collect();
+        let mut prepared = vec![];
+        for view in &files {
+            if existing.contains(&view.id) {
+                continue;
+            }
+            if Uuid::parse_str(&view.id).is_err() {
+                return Err("附件标识无法恢复，请重新添加。".into());
+            }
+            let path = view
+                .source_path
+                .as_deref()
+                .ok_or_else(|| format!("无法恢复附件“{}”，请移除后重新添加。", view.name))?;
+            let (path, bytes) = read_file(path)
+                .map_err(|_| format!("无法恢复附件“{}”，请移除后重新添加。", view.name))?;
+            let mut file = prepare(&view.name, &bytes)?;
+            file.view.id = view.id.clone();
+            file.name = path.to_string_lossy().into();
+            file.view.source_path = Some(file.name.clone());
+            prepared.push(file);
+        }
+        self.insert(prepared)?;
+        let stored = self.0.lock().map_err(|_| "附件暂不可用。")?;
+        files
+            .iter()
+            .map(|view| {
+                stored
+                    .get(&view.id)
+                    .map(|file| file.view.clone())
+                    .ok_or_else(|| "附件已移除。".into())
+            })
+            .collect()
     }
 
     pub fn prompt(&self, message: &str, ids: &[String]) -> Result<Value, String> {
@@ -372,6 +422,18 @@ impl AttachmentManager {
             }
         }
     }
+}
+
+#[tauri::command]
+pub async fn attachment_restore(
+    manager: State<'_, AttachmentManager>,
+    files: Vec<Attachment>,
+) -> Result<Vec<Attachment>, String> {
+    // Rebuild sendable payloads from the existing upload copies without copying them again.
+    let manager = manager.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || manager.restore(files))
+        .await
+        .map_err(|_| "无法恢复附件。")?
 }
 
 #[tauri::command]
@@ -607,6 +669,50 @@ pub fn restored_user(raw: &Value) -> (String, Option<Vec<Attachment>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draft_attachments_restore_after_restart_without_duplicate_uploads() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/draft-attachments")
+            .join(Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root).unwrap();
+        let original = root.join("notes.txt");
+        std::fs::write(&original, "original attachment content").unwrap();
+        let uploads = root.join("Uploads");
+        let text = prepare_path(original.to_str().unwrap(), &uploads).unwrap();
+        let image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            8,
+            8,
+            image::Rgba([17, 64, 128, 255]),
+        ));
+        let image = cached_image("clipboard.png", &encode_png(&image).unwrap(), &uploads).unwrap();
+        let manager = AttachmentManager::default();
+        let mut files = manager.insert(vec![text, image]).unwrap();
+        let ids = files.iter().map(|file| file.id.clone()).collect::<Vec<_>>();
+        let before = manager.prompt("check", &ids).unwrap();
+        for view in &mut files {
+            view.preview = None;
+            view.text = None;
+        }
+        let saved = serde_json::to_vec(&files).unwrap();
+        drop(manager);
+        std::fs::remove_file(&original).unwrap();
+        let manager = AttachmentManager::default();
+        let files: Vec<Attachment> = serde_json::from_slice(&saved).unwrap();
+        let restored = manager.restore(files.clone()).unwrap();
+        assert_eq!(restored[0].id, ids[0]);
+        assert_eq!(restored[1].id, ids[1]);
+        assert!(restored[1].preview.is_some());
+        assert_eq!(manager.prompt("check", &ids).unwrap(), before);
+        manager.restore(files.clone()).unwrap();
+        assert_eq!(manager.0.lock().unwrap().len(), 2);
+        assert_eq!(std::fs::read_dir(&uploads).unwrap().count(), 2);
+        manager.release(&ids);
+        std::fs::remove_file(restored[0].source_path.as_ref().unwrap()).unwrap();
+        assert!(manager.restore(files).unwrap_err().contains("notes.txt"));
+        assert!(manager.0.lock().unwrap().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn uploads_keep_durable_copies_unique_names_and_stable_ids_after_history_reload() {

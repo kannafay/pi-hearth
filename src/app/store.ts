@@ -15,7 +15,15 @@ import { loadAppSettings, updateAppSettings } from '@/lib/app-settings'
 import { defaultProxySettings } from '@/lib/network'
 import { isDesktop } from '@/lib/desktop'
 import { loadThinkingPreference } from '@/features/conversation/thinking-preference'
-import { releaseAttachments } from '@/lib/attachments'
+import { releaseAttachments, restoreAttachments } from '@/lib/attachments'
+import {
+  acceptedComposerDraft,
+  composerDraftKey,
+  completeStoredComposerDraft,
+  loadComposerDraft,
+  removeComposerDraft,
+  saveComposerDraft,
+} from '@/lib/composer-drafts'
 import {
   loadCatalog,
   addProject,
@@ -85,6 +93,13 @@ interface WorkspaceState {
   projectPath: string | null
   draft: string
   draftAttachments: Attachment[]
+  draftKey: string | null
+  draftId: string
+  draftRestoring: boolean
+  draftNeedsRestore: boolean
+  activateDraft: (key: string, preserve?: boolean) => Promise<void>
+  restoreDraftAttachments: () => Promise<boolean>
+  completeDraft: (id: string, text: string, ids: string[]) => void
   attachmentPreview: Attachment | null
   setAttachmentPreview: (file: Attachment | null) => void
   addAttachments: (files: Attachment[]) => void
@@ -141,6 +156,21 @@ const samePath = (a: string | null | undefined, b: string | null | undefined) =>
 const busy = () => ['running', 'stopping'].includes(useConversationStore.getState().status)
 let navigation = 0
 let sessionRevision = 0
+let draftRestoreTask: { id: string; files: Attachment[]; promise: Promise<boolean> } | null = null
+
+function currentDraft(state: WorkspaceState) {
+  return { id: state.draftId, text: state.draft, attachments: state.draftAttachments }
+}
+
+function persistDraft() {
+  const state = useWorkspaceStore.getState()
+  if (!state.draftKey) return
+  try {
+    saveComposerDraft(state.draftKey, currentDraft(state))
+  } catch (reason) {
+    useWorkspaceStore.setState({ error: `无法自动保存草稿：${String(reason)}` })
+  }
+}
 function catalogState(catalog: WorkspaceCatalog) {
   const previous = useWorkspaceStore.getState()
   const reuse = <T>(before: T[], next: T[]) =>
@@ -386,16 +416,102 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   projectPath: null,
   draft: '',
   draftAttachments: [],
+  draftKey: null,
+  draftId: crypto.randomUUID(),
+  draftRestoring: false,
+  draftNeedsRestore: false,
+  activateDraft: async (key, preserve = false) => {
+    const before = get()
+    if (before.draftKey === key) return
+    persistDraft()
+    const carry =
+      preserve || (!before.draftKey && Boolean(before.draft || before.draftAttachments.length))
+    try {
+      const draft = carry ? currentDraft(before) : loadComposerDraft(key)
+      if (carry) {
+        saveComposerDraft(key, draft)
+        if (before.draftKey) removeComposerDraft(before.draftKey)
+      }
+      set({
+        draftKey: key,
+        draftId: draft.id,
+        draft: draft.text,
+        draftAttachments: draft.attachments,
+        draftRestoring: false,
+        draftNeedsRestore: carry ? before.draftNeedsRestore : draft.attachments.length > 0,
+      })
+      if (!carry) releaseAttachments(before.draftAttachments.map((file) => file.id))
+      await get().restoreDraftAttachments()
+    } catch (reason) {
+      // Keep the current input intact if storage itself is unavailable.
+      set({ error: `无法恢复草稿：${String(reason)}` })
+    }
+  },
+  restoreDraftAttachments: async () => {
+    const state = get()
+    if (!state.draftNeedsRestore || !state.draftAttachments.length) return true
+    if (draftRestoreTask?.id === state.draftId && draftRestoreTask.files === state.draftAttachments)
+      return draftRestoreTask.promise
+    const task = {
+      id: state.draftId,
+      files: state.draftAttachments,
+      promise: Promise.resolve(false),
+    }
+    draftRestoreTask = task
+    set({ draftRestoring: true, error: null })
+    const current = () => get().draftId === task.id && get().draftAttachments === task.files
+    task.promise = (async () => {
+      try {
+        const files = await restoreAttachments(task.files)
+        if (!current()) {
+          releaseAttachments(
+            files
+              .filter((file) => !get().draftAttachments.some((kept) => kept.id === file.id))
+              .map((file) => file.id),
+          )
+          return false
+        }
+        set({ draftAttachments: files, draftNeedsRestore: false })
+        persistDraft()
+        return true
+      } catch (reason) {
+        if (current()) set({ error: String(reason) })
+        return false
+      } finally {
+        if (draftRestoreTask === task) {
+          if (get().draftId === task.id) set({ draftRestoring: false })
+          draftRestoreTask = null
+        }
+      }
+    })()
+    return task.promise
+  },
+  completeDraft: (id, text, ids) => {
+    try {
+      if (get().draftId === id) {
+        const next = acceptedComposerDraft(currentDraft(get()), text, ids)
+        set({ draft: next.text, draftAttachments: next.attachments })
+        persistDraft()
+      } else completeStoredComposerDraft(id, text, ids)
+    } catch (reason) {
+      set({ error: `无法清除已发送的草稿：${String(reason)}` })
+    }
+    releaseAttachments(ids)
+  },
   attachmentPreview: null,
   setAttachmentPreview: (attachmentPreview) => set({ attachmentPreview }),
-  addAttachments: (files) =>
-    set((state) => ({ draftAttachments: [...state.draftAttachments, ...files] })),
+  addAttachments: (files) => {
+    set((state) => ({ draftAttachments: [...state.draftAttachments, ...files] }))
+    persistDraft()
+  },
   clearAttachments: (ids) => {
     const removed = ids ?? get().draftAttachments.map((file) => file.id)
     releaseAttachments(removed)
     set((state) => ({
       draftAttachments: state.draftAttachments.filter((file) => !removed.includes(file.id)),
     }))
+    persistDraft()
+    if (get().draftNeedsRestore) void get().restoreDraftAttachments()
   },
   sidebarOpen: true,
   inspectorOpen: false,
@@ -529,7 +645,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       projectPath,
       expandedProjects: expandProject(state.expandedProjects, projectPath),
     })),
-  setDraft: (draft) => set({ draft }),
+  setDraft: (draft) => {
+    set({ draft })
+    persistDraft()
+  },
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setTheme: (theme) => set({ theme }),
@@ -570,6 +689,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedSessionPath: session?.path ?? null,
         initialized: true,
       })
+      const draftRestored = get().activateDraft(composerDraftKey(projectPath, session?.id))
       if (session)
         await useConversationStore
           .getState()
@@ -579,6 +699,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           defaultModel: get().defaultModel,
           defaultPermission: get().defaultPermission,
         })
+      await draftRestored
       if (request === navigation)
         set({ selectedSessionPath: useConversationStore.getState().sessionFile })
     } catch (reason) {
@@ -593,6 +714,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!instanceId || !sessionId || !sessionFile || conversation.status === 'connecting') return
     const firstUserMessage = messages.find((message) => message.role === 'user')
     if (!firstUserMessage) return
+    if (get().draftKey?.startsWith('new:'))
+      void get().activateDraft(composerDraftKey(get().projectPath, sessionId), true)
     const cwd = connectionTarget
       ? (connectionTarget.projectPath ?? get().generalCwd)
       : (get().projectPath ?? get().generalCwd)
@@ -757,27 +880,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     )
       return
     navigation++
-    get().clearAttachments()
     const projectPath = samePath(session.cwd, get().generalCwd) ? null : session.cwd
+    const draftRestored = get().activateDraft(composerDraftKey(projectPath, session.id))
     set({
       projectPath,
       selectedSessionPath: session.path,
-      draft: '',
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
     await useConversationStore
       .getState()
       .connect(projectPath, session.path, { sessionId: session.id })
+    await draftRestored
   },
   newConversation: async (projectPath, options) => {
     if (canReuseNewConversation(useConversationStore.getState(), projectPath)) return
     const request = ++navigation
-    if (!options?.preserveDraft) get().clearAttachments()
+    const draftRestored = get().activateDraft(composerDraftKey(projectPath), options?.preserveDraft)
     set({
       projectPath,
       selectedSessionPath: null,
-      ...(options?.preserveDraft ? {} : { draft: '' }),
       error: null,
       expandedProjects: expandProject(get().expandedProjects, projectPath),
     })
@@ -785,6 +907,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       defaultModel: get().defaultModel,
       defaultPermission: get().defaultPermission,
     })
+    await draftRestored
     if (request === navigation)
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },

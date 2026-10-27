@@ -43,8 +43,14 @@ export function Composer({
   onSendStart: () => void
   onCreateProject?: () => void
 } & ComposerActions) {
-  const { draft, setDraft, draftAttachments, clearAttachments, sessionActionPending } =
-    useWorkspaceStore()
+  const {
+    draft,
+    setDraft,
+    draftAttachments,
+    draftRestoring,
+    clearAttachments,
+    sessionActionPending,
+  } = useWorkspaceStore()
   const {
     status,
     instanceId,
@@ -200,6 +206,12 @@ export function Composer({
     try {
       if (nativePaste.current) await nativePaste.current
       if (useConversationStore.getState().instanceId !== submittedInstance) return
+      if (
+        useWorkspaceStore.getState().draftNeedsRestore &&
+        !(await useWorkspaceStore.getState().restoreDraftAttachments())
+      )
+        return
+      if (useConversationStore.getState().instanceId !== submittedInstance) return
       const latest = useWorkspaceStore.getState()
       const text = latest.draft.trim()
       const ids = latest.draftAttachments.map((file) => file.id)
@@ -226,6 +238,10 @@ export function Composer({
       if (useConversationStore.getState().instanceId !== instanceId) return
       if (command === null) onSendStart()
       if (command === true || (command === null && (await send(text, ids)))) {
+        if (latest.draftKey) {
+          useWorkspaceStore.getState().completeDraft(latest.draftId, text, ids)
+          return
+        }
         if (
           useConversationStore.getState().instanceId === instanceId &&
           useWorkspaceStore.getState().draft.trim() === text
@@ -374,6 +390,7 @@ export function Composer({
                   !sessionUpdating &&
                   !selecting &&
                   !pending &&
+                  !draftRestoring &&
                   (draft.trim() || draftAttachments.length)
                 )
                   void submit()
@@ -388,11 +405,13 @@ export function Composer({
                 title="添加附件（也可粘贴或拖入）"
                 variant="ghost"
                 size="icon-sm"
-                disabled={!desktop || Boolean(readOnly) || selecting || pending > 0}
+                disabled={
+                  !desktop || Boolean(readOnly) || selecting || pending > 0 || draftRestoring
+                }
                 className="shrink-0 text-foreground/70"
                 onClick={() => void choose()}
               >
-                {pending ? (
+                {pending || draftRestoring ? (
                   <LoaderCircle className="size-3.5 animate-spin" />
                 ) : (
                   <Paperclip className="size-4 stroke-[1.6]" />
@@ -437,6 +456,7 @@ export function Composer({
                     sessionUpdating ||
                     selecting ||
                     pending > 0 ||
+                    draftRestoring ||
                     (!draft.trim() && !draftAttachments.length)
                   }
                   onClick={() => void submit()}
