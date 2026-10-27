@@ -80,6 +80,9 @@ pub struct ToolCall {
     pub output_truncated: bool,
     pub status: String,
     pub approval_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub approval_reason: Option<String>,
     pub duration_ms: Option<u32>,
 }
 

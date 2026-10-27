@@ -27,6 +27,14 @@ const toolLabels: Record<string, string> = {
   bash: '执行命令',
   powershell: '执行命令',
 }
+const approvalReasons: Record<string, string> = {
+  review: '自动评估认为此操作需要你确认。',
+  timeout: '自动评估超时，需要你确认本次执行。',
+  unavailable: '自动评估暂不可用，需要你确认本次执行。',
+  invalid_response: '自动评估未返回有效结果，需要你确认本次执行。',
+  arguments_too_large: '操作参数较长，无法完成自动评估，需要你确认本次执行。',
+  outside_project: '此操作超出项目范围，需要你确认本次执行。',
+}
 
 function useOutputPage(instanceId: string | null, toolId: string, section: 'arguments' | 'output') {
   const runtimeToolId = useConversationStore((state) => state.runtimeToolIds[toolId] ?? toolId)
@@ -106,7 +114,8 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
       onOpenChange={setExpanded}
       headerRef={headerRef}
       disabled={awaiting}
-      follow={running}
+      follow={running || awaiting}
+      revealEnd={awaiting}
       aria-label={`${toolLabels[tool.name] ?? tool.name}：${statusLabels[tool.status] ?? tool.status}`}
       summary={
         <Tooltip>
@@ -178,7 +187,9 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
                   ? '此操作会修改本地文件。'
                   : '此命令将在当前项目目录执行。'}
               确认有效期为 2 分钟。
-              {permissionMode === 'auto' && '自动判断未能确认此操作的风险，需要你确认本次执行。'}
+              {permissionMode === 'auto' &&
+                (approvalReasons[tool.approvalReason ?? ''] ??
+                  '自动评估无法确定此操作的风险，需要你确认本次执行。')}
             </p>
             <Button
               size="sm"

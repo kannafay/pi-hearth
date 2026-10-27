@@ -1028,7 +1028,7 @@ fn approval_record(record: &Value) -> Option<(String, Value)> {
     let id = record["id"].as_str()?.to_owned();
     Some((
         id.clone(),
-        json!({"type":"tool_approval","toolCallId":payload["toolCallId"],"toolName":payload["toolName"],"args":payload["args"],"approvalId":id}),
+        json!({"type":"tool_approval","toolCallId":payload["toolCallId"],"toolName":payload["toolName"],"args":payload["args"],"approvalId":id,"approvalReason":payload["approvalReason"]}),
     ))
 }
 
@@ -1863,7 +1863,7 @@ mod tests {
         let id = "11111111-1111-4111-a111-111111111111";
         let request = json!({"type":"extension_ui_request","method":"confirm","id":id,"message":json!({
             "kind":"pi-hearth-tool-approval-v1", "toolCallId":"call-1", "toolName":"powershell",
-            "args":{"command":"Write-Output private-token"}
+            "args":{"command":"Write-Output private-token"}, "approvalReason":"timeout"
         }).to_string()});
         let (pending_id, mut approval) = approval_record(&request).unwrap();
         let secrets = vec![
@@ -1879,6 +1879,7 @@ mod tests {
         );
         assert_eq!(approval["toolCallId"], "call-1");
         assert_eq!(approval["toolName"], "powershell");
+        assert_eq!(approval["approvalReason"], "timeout");
         assert_eq!(approval["args"]["command"], "Write-Output [REDACTED]");
 
         let mut conversation = Conversation::new("instance".into(), "cwd".into());
@@ -1890,7 +1891,12 @@ mod tests {
             conversation.snapshot.tools[0].approval_id.as_deref(),
             Some(id)
         );
+        assert_eq!(
+            conversation.snapshot.tools[0].approval_reason.as_deref(),
+            Some("timeout")
+        );
         conversation.approval_decided("call-1", true);
+        assert!(conversation.snapshot.tools[0].approval_reason.is_none());
         let mut end = json!({"type":"tool_execution_end", "toolCallId":"call-1", "toolName":"powershell", "result":{"content":[{"type":"text","text":"private-token"}]}, "isError":false});
         mask_tool_record(&mut end, &secrets);
         conversation.record(&end);

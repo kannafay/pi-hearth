@@ -11,7 +11,7 @@ export type AttachmentPreview = { kind: string, source: string | null, text: str
 
 export type ChatMessage = { id: string, role: string, text: string, thinking: string, status: string, error: string | null, timestamp?: number, attachments?: Array<Attachment>, startedAt?: number, finishedAt?: number, };
 
-export type ToolCall = { id: string, toolCallId: string, runId: string, name: string, summary: string, arguments: string, argumentsTruncated: boolean, output: string, outputTruncated: boolean, status: string, approvalId: string | null, durationMs: number | null, };
+export type ToolCall = { id: string, toolCallId: string, runId: string, name: string, summary: string, arguments: string, argumentsTruncated: boolean, output: string, outputTruncated: boolean, status: string, approvalId: string | null, approvalReason?: string, durationMs: number | null, };
 
 export type TimelineEntry = { kind: string, id: string, };
 

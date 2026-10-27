@@ -337,6 +337,7 @@ impl Conversation {
         };
         let tool = &mut self.snapshot.tools[index];
         tool.approval_id = None;
+        tool.approval_reason = None;
         tool.status = if self.cancelled {
             "cancelled"
         } else if allow {
@@ -373,6 +374,7 @@ impl Conversation {
                 output_truncated: false,
                 status: "running".into(),
                 approval_id: None,
+                approval_reason: None,
                 duration_ms: None,
             });
             self.snapshot.tools.len() - 1
@@ -394,6 +396,7 @@ impl Conversation {
             "tool_approval" => {
                 tool.status = "awaiting_approval".into();
                 tool.approval_id = record["approvalId"].as_str().map(str::to_owned);
+                tool.approval_reason = record["approvalReason"].as_str().map(str::to_owned);
             }
             "tool_execution_start" => {
                 if !matches!(tool.status.as_str(), "denied" | "cancelled") {
@@ -423,6 +426,7 @@ impl Conversation {
                     .as_u64()
                     .map(|duration| duration.min(u32::MAX as u64) as u32);
                 tool.approval_id = None;
+                tool.approval_reason = None;
             }
             _ => {}
         }

@@ -31,11 +31,13 @@ const riskPrompt = `你是独立的工具调用风险审核器，只评估风险
 export async function evaluateToolRisk(
   event,
   ctx,
-  complete = (model, context, options) => ctx.modelRegistry.complete(model, context, options),
+  complete = (model, context, options) =>
+    ctx.modelRegistry.streamSimple(model, context, options).result(),
 ) {
-  if (!ctx.model || ctx.signal?.aborted) return false
+  const ask = (reason) => ({ decision: 'ask', reason })
+  if (!ctx.model || ctx.signal?.aborted) return ask('unavailable')
   const args = JSON.stringify(event.input)
-  if (args.length > 12_000) return false
+  if (args.length > 12_000) return ask('arguments_too_large')
   const latestUser = ctx.sessionManager
     ?.getBranch()
     .findLast((entry) => entry.type === 'message' && entry.message?.role === 'user')
@@ -47,36 +49,50 @@ export async function evaluateToolRisk(
           .filter((block) => block.type === 'text')
           .map((block) => block.text)
           .join('\n')
-  const signal = ctx.signal
-    ? AbortSignal.any([ctx.signal, AbortSignal.timeout(12_000)])
-    : AbortSignal.timeout(12_000)
-  const response = await complete(
-    ctx.model,
-    {
-      systemPrompt: riskPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: JSON.stringify({
-            task: task.slice(-4000),
-            cwd: ctx.cwd,
-            tool: event.toolName,
-            args: event.input,
-          }),
-          timestamp: Date.now(),
-        },
-      ],
-    },
-    { signal, maxTokens: 128, temperature: 0, cacheRetention: 'none' },
-  )
-  if (signal.aborted || response.stopReason !== 'stop') return false
+  const timeout = AbortSignal.timeout(30_000)
+  const signal = ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout
+  let response
+  try {
+    response = await complete(
+      ctx.model,
+      {
+        systemPrompt: riskPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify({
+              task: task.slice(-4000),
+              cwd: ctx.cwd,
+              tool: event.toolName,
+              args: event.input,
+            }),
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      // Use Pi's provider-neutral path to disable thinking (or choose its minimum),
+      // rather than leaving Gemini's default thinking to consume a 128-token reply.
+      { signal, maxTokens: 1024, cacheRetention: 'none' },
+    )
+  } catch {
+    return ask(timeout.aborted ? 'timeout' : 'unavailable')
+  }
+  if (signal.aborted) return ask(timeout.aborted ? 'timeout' : 'unavailable')
+  if (response.stopReason !== 'stop')
+    return ask(response.stopReason === 'length' ? 'invalid_response' : 'unavailable')
   const text = response.content
     .filter((block) => block.type === 'text')
     .map((block) => block.text)
     .join('')
+    .trim()
   try {
-    return JSON.parse(text).decision === 'allow'
+    // Accept one complete JSON document, optionally wrapped in a JSON code fence.
+    const json = text.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i)?.[1] ?? text
+    const verdict = JSON.parse(json)
+    if (verdict?.decision === 'allow') return { decision: 'allow' }
+    if (verdict?.decision === 'ask') return ask('review')
+    return ask('invalid_response')
   } catch {
-    return false
+    return ask('invalid_response')
   }
 }

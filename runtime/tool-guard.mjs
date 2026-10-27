@@ -97,15 +97,17 @@ export async function guardTool(event, ctx, assessRisk, enabledMcpTools = new Se
         ['bash', 'powershell'].includes(event.toolName) ||
         (typeof event.input.path === 'string' &&
           (await isProjectTarget(event.input.path, ctx.cwd))))
+    let approvalReason = canAssess ? 'unavailable' : 'outside_project'
     if (canAssess && assessRisk) {
-      let allowed = false
       try {
-        allowed = await assessRisk(event, ctx)
+        const assessment = await assessRisk(event, ctx)
+        if (ctx.signal?.aborted) return { block: true, reason: '任务已停止。' }
+        if (assessment === true || assessment?.decision === 'allow') return
+        approvalReason = assessment?.reason ?? 'review'
       } catch {
         /* Ask when assessment fails. */
       }
       if (ctx.signal?.aborted) return { block: true, reason: '任务已停止。' }
-      if (allowed) return
     }
     if (!ctx.hasUI || ctx.signal?.aborted)
       return { block: true, reason: '工具确认不可用或任务已停止。' }
@@ -117,6 +119,7 @@ export async function guardTool(event, ctx, assessRisk, enabledMcpTools = new Se
         toolName: event.toolName,
         args: event.input,
         cwd: ctx.cwd,
+        ...(permission === 'auto' && { approvalReason }),
       }),
       { timeout: 120_000, signal: ctx.signal },
     )

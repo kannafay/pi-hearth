@@ -11,6 +11,7 @@ export function ExecutionRecord({
   headerRef,
   disabled,
   follow = false,
+  revealEnd = false,
   summary,
   status,
   children,
@@ -23,30 +24,43 @@ export function ExecutionRecord({
   headerRef: Ref<HTMLButtonElement>
   disabled?: boolean
   follow?: boolean
+  revealEnd?: boolean
   summary?: ReactNode
   status?: ReactNode
   children: ReactNode
   'aria-label'?: string
 }) {
   const viewport = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLDivElement>(null)
   const atEnd = useRef(true)
   const frame = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!open || !follow || !atEnd.current || frame.current !== null) return
-    frame.current = requestAnimationFrame(() => {
-      frame.current = null
-      const element = viewport.current
-      if (element && atEnd.current) element.scrollTop = element.scrollHeight
-    })
-  }, [children, follow, open])
+    // A new approval must reveal its actions even if the previous output was read above.
+    if (revealEnd) atEnd.current = true
+  }, [revealEnd])
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    if (!open || !follow) return
+    const schedule = () => {
+      if (!atEnd.current || frame.current !== null) return
+      frame.current = requestAnimationFrame(() => {
+        frame.current = null
+        const element = viewport.current
+        if (element && atEnd.current) element.scrollTop = element.scrollHeight
+      })
+    }
+    schedule()
+    // Follow layout changes too, including opening animations and wrapped long parameters.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
+    if (viewport.current) observer?.observe(viewport.current)
+    if (content.current) observer?.observe(content.current)
+    return () => {
+      observer?.disconnect()
       if (frame.current !== null) cancelAnimationFrame(frame.current)
-    },
-    [],
-  )
+      frame.current = null
+    }
+  }, [children, follow, open, revealEnd])
 
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} className="min-w-0" aria-label={label}>
@@ -77,7 +91,9 @@ export function ExecutionRecord({
                 atEnd.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48
             }}
           >
-            {children}
+            <div ref={content} className="pb-0.5">
+              {children}
+            </div>
           </ScrollArea>
         </div>
       </CollapsibleContent>

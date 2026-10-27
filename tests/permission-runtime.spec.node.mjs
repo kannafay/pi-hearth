@@ -7,6 +7,111 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
+import { evaluateToolRisk } from '../runtime/permissions.mjs'
+import { guardTool } from '../runtime/tool-guard.mjs'
+
+test(
+  'Gemini risk assessment disables default thinking, preserves JSON, and skips manual approval for an allow verdict',
+  { timeout: 15_000 },
+  async () => {
+    await mkdir('work', { recursive: true })
+    const root = await mkdtemp(path.resolve('work', 'permission-google-'))
+    const requests = []
+    const server = createServer(async (request, response) => {
+      let text = ''
+      for await (const chunk of request) text += chunk
+      const body = JSON.parse(text)
+      requests.push(body)
+      const configured =
+        body.generationConfig?.thinkingConfig?.thinkingBudget === 0 &&
+        body.generationConfig?.maxOutputTokens >= 1024
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      response.end(
+        `data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts: [configured ? { text: '```json\n{"decision":"allow"}\n```' } : { text: 'Checking risk', thought: true }] }, finishReason: configured ? 'STOP' : 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, totalTokenCount: 120 } })}\n\n`,
+      )
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const modelsPath = path.join(root, 'models.json')
+    await writeFile(
+      modelsPath,
+      JSON.stringify({
+        providers: {
+          'permission-google-test': {
+            api: 'google-generative-ai',
+            baseUrl: `http://127.0.0.1:${server.address().port}/v1beta`,
+            apiKey: 'isolated-google-test-key',
+            models: [
+              {
+                id: 'gemini-2.5-flash',
+                name: 'Risk model',
+                reasoning: true,
+                input: ['text'],
+                contextWindow: 1048576,
+                maxTokens: 65536,
+              },
+            ],
+          },
+        },
+      }),
+    )
+    try {
+      const runtime = await ModelRuntime.create({
+        modelsPath,
+        authPath: path.join(root, 'auth.json'),
+        modelsStorePath: path.join(root, 'models-store.json'),
+      })
+      const registry = new ModelRegistry(runtime)
+      const model = registry.find('permission-google-test', 'gemini-2.5-flash')
+      assert(model)
+      const legacy = await registry.complete(
+        model,
+        { messages: [{ role: 'user', content: 'Assess this tool call', timestamp: Date.now() }] },
+        { maxTokens: 128, signal: AbortSignal.timeout(5000) },
+      )
+      assert.equal(legacy.stopReason, 'length')
+      let approvals = 0
+      const ctx = {
+        cwd: root,
+        model,
+        modelRegistry: registry,
+        hasUI: true,
+        sessionManager: {
+          getEntries: () => [
+            { type: 'custom', customType: 'hearth-permission', data: { mode: 'auto' } },
+          ],
+          getBranch: () => [
+            { type: 'message', message: { role: 'user', content: '检查项目状态' } },
+          ],
+        },
+        ui: {
+          confirm: async () => {
+            approvals++
+            return false
+          },
+        },
+      }
+      const result = await guardTool(
+        {
+          toolName: 'powershell',
+          toolCallId: 'routine-command',
+          input: { command: 'git status --short' },
+        },
+        ctx,
+        evaluateToolRisk,
+      )
+      assert.equal(result, undefined)
+      assert.equal(approvals, 0)
+      assert.equal(requests.length, 2)
+      assert.equal(requests[1].generationConfig.thinkingConfig.thinkingBudget, 0)
+      assert.equal(requests[1].generationConfig.maxOutputTokens, 1024)
+      assert.equal(requests[1].generationConfig.temperature, undefined)
+    } finally {
+      server.closeAllConnections()
+      await new Promise((resolve) => server.close(resolve))
+    }
+  },
+)
 
 test(
   'the real Pi extension assesses auto calls with the current model and enforces all three modes',
@@ -40,6 +145,7 @@ test(
       if (reviewing) {
         const review = JSON.parse(contentText(body.messages.at(-1)))
         assessments.push(review)
+        assert(body.max_tokens >= 1024 || body.max_completion_tokens >= 1024)
         delta = {
           content: JSON.stringify({
             decision: review.args.content === 'uncertain' ? 'ask' : 'allow',

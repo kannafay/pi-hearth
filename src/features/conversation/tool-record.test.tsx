@@ -80,7 +80,21 @@ test('auto mode explains why a confirmation can still be required, using this ru
     pendingSettings: { permissionMode: 'full' },
   })
   render(<ToolRecord tool={tool} />)
-  expect(await screen.findByText(/自动判断未能确认此操作的风险/)).toBeVisible()
+  expect(await screen.findByText(/自动评估无法确定此操作的风险/)).toBeVisible()
+})
+
+test.each([
+  ['review', '自动评估认为此操作需要你确认。'],
+  ['timeout', '自动评估超时，需要你确认本次执行。'],
+  ['unavailable', '自动评估暂不可用，需要你确认本次执行。'],
+  ['invalid_response', '自动评估未返回有效结果，需要你确认本次执行。'],
+  ['arguments_too_large', '操作参数较长，无法完成自动评估，需要你确认本次执行。'],
+  ['outside_project', '此操作超出项目范围，需要你确认本次执行。'],
+])('auto confirmation distinguishes the %s assessment result', async (approvalReason, message) => {
+  useConversationStore.setState({ permissionMode: 'auto' })
+  render(<ToolRecord tool={{ ...tool, approvalReason }} />)
+  expect(await screen.findByText((text) => text.includes(message))).toBeVisible()
+  expect(screen.getByRole('button', { name: '允许本次' })).toBeEnabled()
 })
 
 test('expanded command output updates live and displays errors as plain text', async () => {

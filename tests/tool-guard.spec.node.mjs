@@ -299,41 +299,116 @@ test('risk assessment uses the current model and task and accepts only a complet
     request = args
     return { stopReason: 'stop', content: [{ type: 'text', text: '{"decision":"allow"}' }] }
   }
-  ctx.modelRegistry.complete = complete
-  assert.equal(await evaluateToolRisk(event, ctx), true)
+  ctx.modelRegistry.streamSimple = (...args) => ({ result: () => complete(...args) })
+  assert.deepEqual(await evaluateToolRisk(event, ctx), { decision: 'allow' })
   assert.equal(request[0], model)
   assert.equal(request[2].signal.aborted, false)
+  assert.equal(request[2].maxTokens, 1024)
+  assert.equal(request[2].temperature, undefined)
+  assert.equal(request[2].reasoning, undefined)
   assert.deepEqual(JSON.parse(request[1].messages[0].content), {
     task: '修复项目并运行测试',
     cwd: project,
     tool: 'bash',
     args: event.input,
   })
-  for (const [stopReason, text] of [
-    ['length', '{"decision":"allow"}'],
-    ['stop', 'allow'],
-    ['stop', '{"decision":"ask"}'],
-    ['error', '{"decision":"allow"}'],
+  for (const [stopReason, text, reason] of [
+    ['length', '{"decision":"allow"}', 'invalid_response'],
+    ['stop', 'allow', 'invalid_response'],
+    ['stop', '{"decision":"ask"}', 'review'],
+    ['stop', '{"decision":"unknown"}', 'invalid_response'],
+    ['stop', '{"decision":"allow"} extra text', 'invalid_response'],
+    ['error', '{"decision":"allow"}', 'unavailable'],
   ]) {
-    assert.equal(
+    assert.deepEqual(
       await evaluateToolRisk(event, ctx, async () => ({
         stopReason,
         content: [{ type: 'text', text }],
       })),
-      false,
+      { decision: 'ask', reason },
     )
   }
-  assert.equal(await evaluateToolRisk(event, { ...ctx, model: null }, complete), false)
-  assert.equal(
+  assert.deepEqual(await evaluateToolRisk(event, { ...ctx, model: null }, complete), {
+    decision: 'ask',
+    reason: 'unavailable',
+  })
+  assert.deepEqual(
     await evaluateToolRisk({ ...event, input: { command: 'x'.repeat(12_001) } }, ctx, complete),
-    false,
+    { decision: 'ask', reason: 'arguments_too_large' },
   )
   const controller = new AbortController()
-  assert.equal(
+  assert.deepEqual(
     await evaluateToolRisk(event, { ...ctx, signal: controller.signal }, async () => {
       controller.abort()
       return { stopReason: 'stop', content: [{ type: 'text', text: '{"decision":"allow"}' }] }
     }),
-    false,
+    { decision: 'ask', reason: 'unavailable' },
+  )
+  assert.deepEqual(
+    await evaluateToolRisk(event, ctx, async () => ({
+      stopReason: 'stop',
+      content: [{ type: 'text', text: '```json\n{"decision":"allow"}\n```' }],
+    })),
+    { decision: 'allow' },
+  )
+  assert.deepEqual(
+    await evaluateToolRisk(event, ctx, async () => {
+      throw new Error('provider rejected the request')
+    }),
+    { decision: 'ask', reason: 'unavailable' },
+  )
+})
+
+test('automatic assessment records why approval is required without confusing provider failures with risk', async () => {
+  for (const reason of [
+    'review',
+    'timeout',
+    'invalid_response',
+    'unavailable',
+    'arguments_too_large',
+  ]) {
+    let payload
+    const ctx = permissionContext('auto', async (_title, message) => {
+      payload = JSON.parse(message)
+      return true
+    })
+    assert.equal(
+      await guardTool(
+        { toolName: 'powershell', input: { command: 'pnpm test' }, toolCallId: 'test' },
+        ctx,
+        async () => ({ decision: 'ask', reason }),
+      ),
+      undefined,
+    )
+    assert.equal(payload.approvalReason, reason)
+  }
+  let prompted = false
+  assert.equal(
+    await guardTool(
+      { toolName: 'powershell', input: { command: 'pnpm test' } },
+      permissionContext('auto', async () => {
+        prompted = true
+      }),
+      async () => ({ decision: 'allow' }),
+    ),
+    undefined,
+  )
+  assert.equal(prompted, false)
+})
+
+test('an expired assessment remains a confirmation instead of allowing an incomplete response', async (t) => {
+  t.mock.method(AbortSignal, 'timeout', () =>
+    AbortSignal.abort(new DOMException('timed out', 'TimeoutError')),
+  )
+  assert.deepEqual(
+    await evaluateToolRisk(
+      { toolName: 'powershell', input: { command: 'pnpm test' } },
+      { ...permissionContext('auto'), model: { id: 'model' } },
+      async () => ({
+        stopReason: 'stop',
+        content: [{ type: 'text', text: '{"decision":"allow"}' }],
+      }),
+    ),
+    { decision: 'ask', reason: 'timeout' },
   )
 })

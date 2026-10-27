@@ -23,7 +23,7 @@ test('permission options are ordered by risk and the current conversation alone 
   const options = await screen.findAllByRole('option')
   expect(options.map((option) => option.textContent)).toEqual([
     expect.stringContaining('询问模式'),
-    expect.stringContaining('自动判断'),
+    expect.stringContaining('自动评估'),
     expect.stringContaining('完全访问'),
   ])
   await user.click(options[1])
@@ -35,7 +35,7 @@ test('connecting and pending selections stay usable and display the latest choic
   render(<PermissionPicker />)
   const picker = screen.getByRole('combobox', { name: '会话权限' })
   expect(picker).toBeEnabled()
-  expect(picker).toHaveTextContent('自动判断')
+  expect(picker).toHaveTextContent('自动评估')
   act(() =>
     useConversationStore.setState({
       status: 'ready',
