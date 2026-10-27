@@ -542,6 +542,31 @@ pub fn workspace_project_directory(
     Ok(directory.to_string_lossy().into())
 }
 
+#[tauri::command]
+pub async fn workspace_change_projects_directory(
+    app: tauri::AppHandle,
+    workspace: State<'_, WorkspaceManager>,
+    manager: State<'_, PiManager>,
+    directory: String,
+) -> Result<ProjectLocationChange, String> {
+    // Match pi_open's lock order, keeping selection and project mutations out
+    // of the interval in which filesystem paths and persisted paths differ.
+    let _open = workspace.open_gate.lock().await;
+    let _gate = workspace.gate.lock().await;
+    let data = app_data(&app)?;
+    let settings = storage::settings(&data).await?;
+    let catalog = load_catalog(&data).await?;
+    let default = default_projects_directory(&app)?;
+    let migration = tokio::task::spawn_blocking(move || {
+        super::project_location::Migration::prepare(data, default, directory, settings, catalog)
+    })
+    .await
+    .map_err(|_| "无法准备项目迁移。")??;
+    let result = manager.migrate_projects(migration).await;
+    workspace.search.lock().await.catalog = None;
+    result
+}
+
 pub(super) fn default_projects_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .document_dir()

@@ -101,7 +101,8 @@ export function Composer({
   const choosingProject = !hasMessages && !busy && !readOnly && !openingSession
   const desktop = isDesktop()
   const sessionUpdating = Boolean(
-    sessionActionPending && sessionKey(sessionActionPending) === sessionKey(sessionFile),
+    sessionActionPending === 'project-location' ||
+    (sessionActionPending && sessionKey(sessionActionPending) === sessionKey(sessionFile)),
   )
   const completion = useComposerCompletion({
     draft,

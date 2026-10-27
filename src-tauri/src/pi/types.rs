@@ -130,6 +130,20 @@ pub struct ProjectInfo {
     pub name: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, TS)]
+pub struct PathRelocation {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+pub struct ProjectLocationChange {
+    pub settings: AppSettings,
+    pub catalog: WorkspaceCatalog,
+    pub paths: Vec<PathRelocation>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Selection {
@@ -488,6 +502,8 @@ fn export_frontend_types() {
         SessionInfo::decl(),
         SessionSearchResult::decl(),
         ProjectInfo::decl(),
+        PathRelocation::decl(),
+        ProjectLocationChange::decl(),
         Selection::decl(),
         SessionPreference::decl(),
         AppTheme::decl(),

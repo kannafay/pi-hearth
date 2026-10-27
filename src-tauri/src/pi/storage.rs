@@ -208,6 +208,14 @@ pub(crate) fn relocate_data_paths(
     let relocate = |path: &str| crate::app_data::relocate_path(path, legacy, destination);
     let mut connection = open(data)?;
     let transaction = connection.transaction().map_err(database_error)?;
+    relocate_references(&transaction, &relocate)?;
+    transaction.commit().map_err(database_error)
+}
+
+fn relocate_references(
+    transaction: &Connection,
+    relocate: &impl Fn(&str) -> String,
+) -> Result<(), String> {
     let mut preferences = read_preferences(&transaction)?;
     for project in &mut preferences.projects {
         project.path = relocate(&project.path);
@@ -257,7 +265,29 @@ pub(crate) fn relocate_data_paths(
     transaction
         .execute("DELETE FROM search_documents", [])
         .map_err(database_error)?;
-    transaction.commit().map_err(database_error)
+    Ok(())
+}
+
+pub(super) fn save_project_location(
+    data: &Path,
+    patch: AppSettingsPatch,
+    paths: &[super::types::PathRelocation],
+) -> Result<(AppSettings, Preferences), String> {
+    let mut connection = open(data)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(database_error)?;
+    relocate_references(&transaction, &|path| {
+        super::project_location::relocate(path, paths)
+    })?;
+    write_settings(
+        &transaction,
+        &serde_json::to_value(patch).map_err(database_error)?,
+    )?;
+    let settings = read_settings(&transaction)?;
+    let preferences = read_preferences(&transaction)?;
+    transaction.commit().map_err(database_error)?;
+    Ok((settings, preferences))
 }
 
 fn relocate_json_paths(value: &mut serde_json::Value, relocate: &impl Fn(&str) -> String) {

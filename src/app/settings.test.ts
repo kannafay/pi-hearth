@@ -1,10 +1,15 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from './store'
 import { useConversationStore } from '@/features/conversation/store'
-import { loadAppSettings, updateAppSettings } from '@/lib/app-settings'
+import { changeProjectsDirectory, loadAppSettings, updateAppSettings } from '@/lib/app-settings'
 import type { AppSettings } from '@/lib/generated/pi'
+import { projectLocationChange } from '@/test/project-location'
 
-vi.mock('@/lib/app-settings', () => ({ loadAppSettings: vi.fn(), updateAppSettings: vi.fn() }))
+vi.mock('@/lib/app-settings', () => ({
+  changeProjectsDirectory: vi.fn(),
+  loadAppSettings: vi.fn(),
+  updateAppSettings: vi.fn(),
+}))
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 
 const saved: AppSettings = {
@@ -36,6 +41,9 @@ beforeEach(() => {
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   vi.mocked(loadAppSettings).mockResolvedValue(structuredClone(saved))
   vi.mocked(updateAppSettings).mockResolvedValue(structuredClone(saved))
+  vi.mocked(changeProjectsDirectory)
+    .mockReset()
+    .mockImplementation(async (path) => projectLocationChange(path))
 })
 
 test('startup restores SQL preferences before the workspace becomes ready', async () => {
@@ -78,16 +86,15 @@ test('UI changes save only changed fields and never overwrite startup settings',
   workspace.toggleSidebar()
   workspace.setNavigationWidth(326.4)
   workspace.setProjectExpanded('D:\\project', true)
-  workspace.setProjectsDirectory('D:/new-projects')
-  workspace.setProjectsDirectory('')
+  await workspace.setProjectsDirectory('D:/new-projects')
+  await workspace.setProjectsDirectory('')
   expect(vi.mocked(updateAppSettings).mock.calls.map(([patch]) => patch)).toEqual([
     { theme: 'light' },
     { sidebarOpen: true },
     { navigationWidth: 326 },
     { expandedProjects: { 'd:/project': true } },
-    { projectsDirectory: 'D:/new-projects', customProjectsDirectory: 'D:/new-projects' },
-    { projectsDirectory: '' },
   ])
+  expect(vi.mocked(changeProjectsDirectory).mock.calls).toEqual([['D:/new-projects'], ['']])
 })
 
 test('recent session activity saves its new position and restores it on the next startup', async () => {
@@ -123,10 +130,9 @@ test('the saved custom directory survives startup while the default directory is
     customProjectsDirectory: 'D:/saved-projects',
   })
   expect(updateAppSettings).not.toHaveBeenCalled()
-  useWorkspaceStore.getState().setProjectsDirectory('D:/saved-projects')
-  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
-    projectsDirectory: 'D:/saved-projects',
-  })
+  await useWorkspaceStore.getState().setProjectsDirectory('D:/saved-projects')
+  expect(changeProjectsDirectory).toHaveBeenCalledExactlyOnceWith('D:/saved-projects')
+  expect(updateAppSettings).not.toHaveBeenCalled()
 })
 
 test('an existing custom directory is imported before switching back to the default', async () => {
@@ -135,12 +141,12 @@ test('an existing custom directory is imported before switching back to the defa
   expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
     customProjectsDirectory: 'D:/saved-projects',
   })
-  useWorkspaceStore.getState().setProjectsDirectory('')
+  await useWorkspaceStore.getState().setProjectsDirectory('')
   expect(useWorkspaceStore.getState()).toMatchObject({
     projectsDirectory: '',
     customProjectsDirectory: 'D:/saved-projects',
   })
-  expect(updateAppSettings).toHaveBeenLastCalledWith({ projectsDirectory: '' })
+  expect(changeProjectsDirectory).toHaveBeenCalledExactlyOnceWith('')
 })
 
 test('file locations remember their custom choice across defaults and startup independently of projects', async () => {
@@ -166,16 +172,15 @@ test('file locations remember their custom choice across defaults and startup in
 test('changing either storage location persists only its own directory and custom choice', async () => {
   await useWorkspaceStore.getState().hydrateSettings()
   const workspace = useWorkspaceStore.getState()
-  workspace.setProjectsDirectory('D:/New Projects')
+  await workspace.setProjectsDirectory('D:/New Projects')
   workspace.setFilesDirectory('E:/New Files')
-  workspace.setProjectsDirectory('')
+  await workspace.setProjectsDirectory('')
   workspace.setFilesDirectory('')
   expect(vi.mocked(updateAppSettings).mock.calls.map(([patch]) => patch)).toEqual([
-    { projectsDirectory: 'D:/New Projects', customProjectsDirectory: 'D:/New Projects' },
     { filesDirectory: 'E:/New Files', customFilesDirectory: 'E:/New Files' },
-    { projectsDirectory: '' },
     { filesDirectory: '' },
   ])
+  expect(vi.mocked(changeProjectsDirectory).mock.calls).toEqual([['D:/New Projects'], ['']])
   expect(useWorkspaceStore.getState()).toMatchObject({
     projectsDirectory: '',
     filesDirectory: '',

@@ -8,6 +8,7 @@ pub mod files;
 pub mod network;
 pub mod open_with;
 pub(crate) mod process_tree;
+mod project_location;
 mod protocol;
 pub mod resources;
 mod rewrite;

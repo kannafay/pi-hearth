@@ -128,6 +128,7 @@ pub fn run() {
             pi::catalog::workspace_update_project,
             pi::catalog::workspace_remove_project,
             pi::catalog::workspace_project_directory,
+            pi::catalog::workspace_change_projects_directory,
             pi::files::workspace_files_directory,
             pi::resources::pi_config_directory,
             pi::resources::pi_cli_version,

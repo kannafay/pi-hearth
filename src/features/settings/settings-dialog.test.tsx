@@ -57,7 +57,7 @@ test('browser preview shows its limits without invoking the desktop bridge', asy
   render(<SettingsHarness />)
   await user.click(screen.getByRole('tab', { name: '存储' }))
   expect(screen.getByRole('heading', { name: '存储' })).toBeVisible()
-  expect(screen.getByText('新项目保存位置')).toBeVisible()
+  expect(screen.getByText('项目保存位置')).toBeVisible()
   expect(screen.getByRole('combobox', { name: '文件保存位置' })).toBeVisible()
   expect(screen.getByRole('combobox', { name: '文件保存位置' })).toBeDisabled()
   await user.click(screen.getByRole('tab', { name: '运行诊断' }))

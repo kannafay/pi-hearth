@@ -23,7 +23,7 @@ const locations = [
 
 export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }) {
   const files = kind === 'files'
-  const title = files ? '文件保存位置' : '新项目保存位置'
+  const title = files ? '文件保存位置' : '项目保存位置'
   const id = files ? 'file-location' : 'project-location'
   const directory = useWorkspaceStore((state) =>
     files ? state.filesDirectory : state.projectsDirectory,
@@ -33,11 +33,14 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
       ? state.customFilesDirectory || state.filesDirectory
       : state.customProjectsDirectory || state.projectsDirectory,
   )
+  const relocating = useWorkspaceStore((state) => state.projectsDirectoryPending)
+  const migrating = !files && relocating
   const [defaultDirectory, setDefaultDirectory] = useState(
     files ? '文档\\Pi Hearth\\Files' : '文档\\Pi Hearth\\Projects',
   )
   const [selecting, setSelecting] = useState(false)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const desktop = isDesktop()
   const { label: locationLabel, icon: LocationIcon } = locations[directory ? 1 : 0]
   const displayedDirectory = directory || defaultDirectory
@@ -59,14 +62,20 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
     }
   }, [desktop, files])
 
-  function setDirectory(path: string) {
-    const store = useWorkspaceStore.getState()
-    if (files) store.setFilesDirectory(path)
-    else store.setProjectsDirectory(path)
+  async function setDirectory(path: string) {
+    setError('')
+    setWarning('')
+    try {
+      const store = useWorkspaceStore.getState()
+      if (files) store.setFilesDirectory(path)
+      else setWarning((await store.setProjectsDirectory(path)).join('；'))
+    } catch (reason) {
+      setError(String(reason))
+    }
   }
 
   async function chooseDirectory() {
-    if (selecting) return
+    if (selecting || relocating) return
     setSelecting(true)
     setError('')
     try {
@@ -75,7 +84,8 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
         const path = files
           ? await resolveFilesDirectory(selected)
           : await resolveProjectDirectory(selected)
-        setDirectory(path)
+        setSelecting(false)
+        await setDirectory(path)
       }
     } catch (reason) {
       setError(String(reason))
@@ -98,11 +108,11 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
         <Select
           items={locations}
           value={directory ? 'custom' : 'default'}
-          disabled={!desktop || selecting}
+          disabled={!desktop || selecting || relocating}
           onValueChange={(value) => {
-            if (value === 'default') setDirectory('')
+            if (value === 'default') void setDirectory('')
             else if (value === 'custom') {
-              if (customDirectory) setDirectory(customDirectory)
+              if (customDirectory) void setDirectory(customDirectory)
               else void chooseDirectory()
             }
           }}
@@ -140,7 +150,7 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
             variant="outline"
             size="sm"
             aria-label={files ? '更改文件目录' : '更改项目目录'}
-            disabled={!desktop || selecting}
+            disabled={!desktop || selecting || relocating}
             onClick={() => void chooseDirectory()}
           >
             <FolderOpen aria-hidden data-icon="inline-start" />
@@ -148,12 +158,17 @@ export function StorageLocationSettings({ kind }: { kind: 'projects' | 'files' }
           </Button>
         )}
       </div>
-      {files && <FieldDescription>更改位置仅影响新文件，已有文件保留在原位置。</FieldDescription>}
-      {selecting && (
+      <FieldDescription>
+        {files
+          ? '更改位置仅影响新文件，已有文件保留在原位置。'
+          : '更改目录或切回默认目录时，会自动迁移原目录内的项目并更新路径。'}
+      </FieldDescription>
+      {(selecting || migrating) && (
         <p role="status" className="text-xs text-muted-foreground">
-          正在选择目录…
+          {migrating ? '正在迁移项目…' : '正在选择目录…'}
         </p>
       )}
+      {warning && <FieldDescription role="status">{warning}</FieldDescription>}
       <FieldError>{error}</FieldError>
     </SettingsRow>
   )

@@ -34,6 +34,18 @@ type CachedSession = {
 }
 export type SessionCache = ReadonlyMap<string, CachedSession>
 
+export function relocateSessionCache(
+  cache: SessionCache,
+  relocate: (path: string) => string,
+): SessionCache {
+  return new Map(
+    [...cache].map(([key, entry]) => [
+      key.startsWith('path:') ? `path:${sessionKey(relocate(key.slice(5)))}` : key,
+      { ...entry, paths: entry.paths.map((path) => sessionKey(relocate(path))!) },
+    ]),
+  )
+}
+
 const MAX_SESSIONS = 8
 // Bound retained text and inline media as well as the number of conversations.
 const MAX_CHARACTERS = 16_000_000

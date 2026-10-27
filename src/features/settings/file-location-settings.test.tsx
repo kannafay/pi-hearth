@@ -5,6 +5,13 @@ import { useWorkspaceStore } from '@/app/store'
 import { selectProjectDirectory } from '@/lib/desktop'
 import { resolveFilesDirectory } from '@/lib/file-directory'
 import { StorageLocationSettings } from './storage-location-settings'
+import { changeProjectsDirectory } from '@/lib/app-settings'
+import { projectLocationChange } from '@/test/project-location'
+
+vi.mock('@/lib/app-settings', async (original) => ({
+  ...(await original<typeof import('@/lib/app-settings')>()),
+  changeProjectsDirectory: vi.fn(),
+}))
 
 vi.mock('@/lib/desktop', () => ({ isDesktop: () => true, selectProjectDirectory: vi.fn() }))
 vi.mock('@/lib/file-directory', () => ({ resolveFilesDirectory: vi.fn() }))
@@ -19,13 +26,21 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (path) => path ?? 'C:/Documents/Pi Hearth/Files')
   vi.mocked(selectProjectDirectory).mockReset().mockResolvedValue(null)
+  vi.mocked(changeProjectsDirectory)
+    .mockReset()
+    .mockImplementation(async (path) => projectLocationChange(path))
 })
 
 test('the file default stays fixed and its custom directory is remembered independently', async () => {
   const user = userEvent.setup()
   render(<StorageLocationSettings kind="files" />)
   expect(await screen.findByText('C:/Documents/Pi Hearth/Files')).toBeVisible()
-  act(() => useWorkspaceStore.getState().setProjectsDirectory('D:/Workspace/Projects'))
+  act(() =>
+    useWorkspaceStore.setState({
+      projectsDirectory: 'D:/Workspace/Projects',
+      customProjectsDirectory: 'D:/Workspace/Projects',
+    }),
+  )
   expect(screen.getByText('C:/Documents/Pi Hearth/Files')).toBeVisible()
   expect(resolveFilesDirectory).toHaveBeenCalledExactlyOnceWith()
   vi.mocked(selectProjectDirectory).mockResolvedValueOnce('E:/个人文件')
@@ -61,7 +76,7 @@ test.each(['projects', 'files'] as const)(
     )
     await screen.findByText('C:/Documents/Pi Hearth/Projects')
     await screen.findByText('C:/Documents/Pi Hearth/Files')
-    const titles = { projects: '新项目保存位置', files: '文件保存位置' }
+    const titles = { projects: '项目保存位置', files: '文件保存位置' }
     const paths = { projects: 'D:/Projects', files: 'E:/Files' }
     const other = first === 'projects' ? 'files' : 'projects'
     const choose = async (kind: 'projects' | 'files', mode: '默认目录' | '自定义目录') => {

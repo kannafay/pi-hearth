@@ -11,7 +11,9 @@ import type {
   SessionInfo,
   WorkspaceCatalog,
 } from '@/lib/generated/pi'
-import { loadAppSettings, updateAppSettings } from '@/lib/app-settings'
+import { changeProjectsDirectory, loadAppSettings, updateAppSettings } from '@/lib/app-settings'
+import { relocatePath } from '@/lib/path-relocation'
+import { relocateSessionCache } from '@/features/conversation/session-cache'
 import { defaultProxySettings } from '@/lib/network'
 import { isDesktop } from '@/lib/desktop'
 import { loadThinkingPreference } from '@/features/conversation/thinking-preference'
@@ -22,6 +24,7 @@ import {
   completeStoredComposerDraft,
   loadComposerDraft,
   removeComposerDraft,
+  relocateComposerDrafts,
   saveComposerDraft,
 } from '@/lib/composer-drafts'
 import {
@@ -122,6 +125,7 @@ interface WorkspaceState {
   setDefaultPermission: (mode: PermissionMode) => Promise<void>
   projectsDirectory: string
   customProjectsDirectory: string
+  projectsDirectoryPending: boolean
   filesDirectory: string
   customFilesDirectory: string
   developerMode: boolean
@@ -130,7 +134,7 @@ interface WorkspaceState {
   proxyPending: boolean
   setProxy: (proxy: ProxySettings) => Promise<void>
   setDeveloperMode: (enabled: boolean) => Promise<void>
-  setProjectsDirectory: (directory: string) => void
+  setProjectsDirectory: (directory: string) => Promise<string[]>
   setFilesDirectory: (directory: string) => void
   setProject: (path: string) => void
   setDraft: (draft: string) => void
@@ -156,6 +160,7 @@ const samePath = (a: string | null | undefined, b: string | null | undefined) =>
 const busy = () => ['running', 'stopping'].includes(useConversationStore.getState().status)
 let navigation = 0
 let sessionRevision = 0
+let applyingProjectLocation = false
 let draftRestoreTask: { id: string; files: Attachment[]; promise: Promise<boolean> } | null = null
 
 function currentDraft(state: WorkspaceState) {
@@ -257,6 +262,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   pinnedProjects: [],
   archivedProjects: [],
   toggleProjectPinned: (project) => {
+    if (get().projectsDirectoryPending) return
     const key = sessionKey(project.path)!
     set((state) => ({
       pinnedProjects: hasPath(state.pinnedProjects, key)
@@ -265,6 +271,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }))
   },
   setProjectArchived: async (project, archived) => {
+    if (get().projectsDirectoryPending) return
     if (archived && isProjectBusy(project.path)) return
     const key = sessionKey(project.path)!
     set((state) => ({
@@ -343,10 +350,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     return true
   },
-  setProjectExpanded: (path, open) =>
+  setProjectExpanded: (path, open) => {
+    if (get().projectsDirectoryPending) return
     set((state) => ({
       expandedProjects: { ...state.expandedProjects, [sessionKey(path)!]: open },
-    })),
+    }))
+  },
   toggleSessionPinned: async (session) => {
     const preference = sessionPreference(get().sessionPreferences, session.path)
     await changeSessionPreference(session, { pinned: !preference.pinned })
@@ -627,24 +636,117 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   projectsDirectory: '',
   customProjectsDirectory: '',
-  setProjectsDirectory: (projectsDirectory) =>
-    set((state) => ({
-      projectsDirectory,
-      customProjectsDirectory:
-        projectsDirectory || state.customProjectsDirectory || state.projectsDirectory,
-    })),
+  projectsDirectoryPending: false,
+  setProjectsDirectory: async (directory) => {
+    if (samePath(directory, get().projectsDirectory)) return []
+    const conversation = useConversationStore.getState()
+    if (
+      get().sessionActionPending ||
+      get().loading ||
+      conversation.status === 'connecting' ||
+      conversation.settingsPending
+    )
+      throw new Error('请等待当前操作完成。')
+    if (
+      busy() ||
+      [...conversation.backgroundSessions.values()].some(({ data }) =>
+        ['running', 'stopping'].includes(data.status),
+      )
+    )
+      throw new Error('请等待所有会话的任务结束后再迁移项目。')
+    navigation++
+    sessionRevision++
+    set({ projectsDirectoryPending: true, sessionActionPending: 'project-location', error: null })
+    const reconnect = Boolean(
+      conversation.instanceId || conversation.sessionFile || conversation.connectionTarget,
+    )
+    try {
+      const { settings, catalog, paths, warnings } = await changeProjectsDirectory(directory)
+      const relocate = (path: string) => relocatePath(path, paths)
+      const projectPath = get().projectPath ? relocate(get().projectPath!) : null
+      const current = useConversationStore.getState()
+      useConversationStore.setState({
+        sessionFile: current.sessionFile ? relocate(current.sessionFile) : null,
+        connectionTarget: current.connectionTarget
+          ? {
+              projectPath,
+              sessionPath: current.connectionTarget.sessionPath
+                ? relocate(current.connectionTarget.sessionPath)
+                : null,
+            }
+          : null,
+        sessionCache: relocateSessionCache(current.sessionCache, relocate),
+        instanceId: null,
+        status: 'disconnected',
+        backgroundSessions: new Map(),
+      })
+      applyingProjectLocation = true
+      try {
+        set({
+          ...catalogState(catalog),
+          projectPath,
+          selectedSessionPath: get().selectedSessionPath
+            ? relocate(get().selectedSessionPath!)
+            : null,
+          projectsDirectory: settings.projectsDirectory,
+          customProjectsDirectory: settings.customProjectsDirectory,
+          filesDirectory: settings.filesDirectory,
+          customFilesDirectory: settings.customFilesDirectory,
+          expandedProjects: settings.expandedProjects,
+          projectOrder: settings.projectOrder,
+          sessionOrder: settings.sessionOrder,
+          pinnedProjects: settings.pinnedProjects,
+          archivedProjects: settings.archivedProjects,
+          draftKey: get().draftKey?.startsWith('new:')
+            ? composerDraftKey(projectPath)
+            : get().draftKey,
+        })
+      } finally {
+        applyingProjectLocation = false
+      }
+      try {
+        relocateComposerDrafts(relocate)
+        persistDraft()
+      } catch (reason) {
+        warnings.push(String(reason))
+      }
+      return warnings
+    } catch (reason) {
+      set({ error: String(reason) })
+      throw reason
+    } finally {
+      try {
+        if (reconnect && !busy()) {
+          const current = useConversationStore.getState()
+          const session = get().sessions.find((item) => isCurrentSession(item, current))
+          await current.connect(get().projectPath, session?.path ?? null, {
+            force: true,
+            sessionId: session?.id,
+            defaultModel: get().defaultModel,
+            defaultPermission: get().defaultPermission,
+          })
+        }
+      } finally {
+        set({ projectsDirectoryPending: false, sessionActionPending: null })
+      }
+    }
+  },
   filesDirectory: '',
   customFilesDirectory: '',
-  setFilesDirectory: (filesDirectory) =>
+  setFilesDirectory: (filesDirectory) => {
+    if (get().projectsDirectoryPending) return
     set((state) => ({
       filesDirectory,
       customFilesDirectory: filesDirectory || state.customFilesDirectory || state.filesDirectory,
-    })),
-  setProject: (projectPath) =>
+    }))
+  },
+  setProject: (projectPath) => {
+    if (get().projectsDirectoryPending) return
     set((state) => ({
       projectPath,
       expandedProjects: expandProject(state.expandedProjects, projectPath),
-    })),
+    }))
+  },
   setDraft: (draft) => {
     set({ draft })
     persistDraft()
@@ -709,6 +811,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   syncActiveSession: () => {
+    if (get().projectsDirectoryPending) return
     const conversation = useConversationStore.getState()
     const { instanceId, sessionId, sessionFile, connectionTarget, messages } = conversation
     if (!instanceId || !sessionId || !sessionFile || conversation.status === 'connecting') return
@@ -873,6 +976,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   openSession: async (session) => {
+    if (get().projectsDirectoryPending) return
     const conversation = useConversationStore.getState()
     if (
       isCurrentSession(session, conversation) &&
@@ -894,6 +998,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await draftRestored
   },
   newConversation: async (projectPath, options) => {
+    if (get().projectsDirectoryPending) return
     if (canReuseNewConversation(useConversationStore.getState(), projectPath)) return
     const request = ++navigation
     const draftRestored = get().activateDraft(composerDraftKey(projectPath), options?.preserveDraft)
@@ -912,6 +1017,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ selectedSessionPath: useConversationStore.getState().sessionFile })
   },
   addProject: async (options) => {
+    if (get().projectsDirectoryPending) throw new Error('请等待项目迁移完成。')
     const preserveDraft = canReuseNewConversation(
       useConversationStore.getState(),
       get().projectPath,
@@ -945,7 +1051,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   reloadCurrent: async () => {
-    if (busy()) return
+    if (busy() || get().projectsDirectoryPending) return
     const conversation = useConversationStore.getState()
     const session = get().sessions.find((session) => isCurrentSession(session, conversation))
     await useConversationStore
@@ -972,6 +1078,7 @@ const persistedKeys = [
 ] as const
 
 useWorkspaceStore.subscribe((state, previous) => {
+  if (applyingProjectLocation) return
   if (!state.settingsReady || !previous.settingsReady || !isDesktop()) return
   const entries = persistedKeys
     .filter((key) => state[key] !== previous[key])

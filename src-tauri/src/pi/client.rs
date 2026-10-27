@@ -1784,6 +1784,46 @@ impl PiManager {
         Ok(settings)
     }
 
+    pub(super) async fn migrate_projects(
+        &self,
+        migration: super::project_location::Migration,
+    ) -> Result<super::types::ProjectLocationChange, String> {
+        let mut runtime = self.runtime.lock().await;
+        let mut retained = self.retained.lock().await;
+        let clients: Vec<_> = runtime
+            .iter()
+            .cloned()
+            .chain(retained.iter().map(|entry| entry.client.clone()))
+            .collect();
+        let mut actions = Vec::new();
+        for client in &clients {
+            actions.push(
+                client
+                    .actions
+                    .try_lock()
+                    .map_err(|_| "请等待所有会话的任务结束后再迁移项目。")?,
+            );
+            if client
+                .snapshot()
+                .await
+                .is_ok_and(|state| state.active_run_id.is_some())
+            {
+                return Err("请等待所有会话的任务结束后再迁移项目。".into());
+            }
+        }
+        // Windows holds working directories open while Pi is alive. Release idle
+        // processes before moving their directories and keep sends/opens gated.
+        for client in &clients {
+            client.shutdown().await;
+        }
+        *runtime = None;
+        retained.clear();
+        *self.read_only.lock().await = None;
+        tokio::task::spawn_blocking(move || migration.run())
+            .await
+            .map_err(|_| "项目迁移任务未能完成。")?
+    }
+
     pub async fn disconnect(&self) {
         let mut runtime = self.runtime.lock().await;
         if let Some(client) = runtime.take() {
@@ -2443,6 +2483,123 @@ mod tests {
                 .process_id,
             old_pid
         );
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn project_migration_waits_for_actions_releases_idle_processes_and_reopens_native_history()
+     {
+        let fixture = ResidentFixture::new().await;
+        let second = fixture.open(1).await;
+        let active = fixture.manager.client(&second.instance_id).await.unwrap();
+        let parked = fixture.manager.retained.lock().await[0].client.clone();
+        let data = fixture.root.join("data");
+        let projects: Vec<_> = fixture
+            .projects
+            .iter()
+            .map(|path| ProjectInfo {
+                path: path.clone(),
+                name: Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            })
+            .collect();
+        storage::save_preferences(
+            &data,
+            &storage::Preferences {
+                projects: projects.clone(),
+                selection: Selection {
+                    project_path: Some(fixture.projects[1].clone()),
+                    session_path: Some(fixture.files[1].to_string_lossy().into_owned()),
+                },
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let catalog = WorkspaceCatalog {
+            projects,
+            sessions: fixture
+                .files
+                .iter()
+                .enumerate()
+                .map(|(index, file)| SessionInfo {
+                    path: file.to_string_lossy().into_owned(),
+                    cwd: fixture.projects[index].clone(),
+                    id: index.to_string(),
+                    title: index.to_string(),
+                    modified: 1,
+                    message_count: 4,
+                })
+                .collect(),
+            general_cwd: data.join("workspace").to_string_lossy().into_owned(),
+            selection: Selection::default(),
+            session_preferences: HashMap::new(),
+        };
+        let target = fixture
+            .root
+            .with_file_name(format!("{}-moved", Uuid::new_v4()));
+        let prepare = || {
+            super::super::project_location::Migration::prepare(
+                data.clone(),
+                fixture.root.clone(),
+                target.to_string_lossy().into_owned(),
+                AppSettings::default(),
+                catalog.clone(),
+            )
+            .unwrap()
+        };
+        for client in [&active, &parked] {
+            let _action = client.actions.lock().await;
+            assert!(
+                fixture
+                    .manager
+                    .migrate_projects(prepare())
+                    .await
+                    .unwrap_err()
+                    .contains("请等待所有会话")
+            );
+            assert!(Path::new(&fixture.projects[0]).is_dir());
+            assert!(active.snapshot().await.is_ok() && parked.snapshot().await.is_ok());
+        }
+        let result = fixture.manager.migrate_projects(prepare()).await.unwrap();
+        assert!(active.snapshot().await.is_err() && parked.snapshot().await.is_err());
+        assert!(fixture.manager.retained.lock().await.is_empty());
+        assert!(!Path::new(&fixture.projects[0]).exists());
+        let history: Vec<Value> = serde_json::from_value(
+            super::super::catalog::helper(
+                &data,
+                json!({"action":"history", "path":fixture.files[0]}),
+            )
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+        let reopened = PiClient::spawn_with_source(
+            result.catalog.projects[0].path.clone(),
+            &data,
+            Channel::new(|_| Ok(())),
+            Some(&OpenOptions {
+                session_directory: fixture.files[0].parent().unwrap().to_owned(),
+                session_file: Some(fixture.files[0].to_string_lossy().into_owned()),
+                history: history.clone(),
+            }),
+            &fixture.source,
+        )
+        .await
+        .unwrap();
+        reopened.check_guard().await.unwrap();
+        reopened
+            .request(json!({"type":"get_state"}), None)
+            .await
+            .unwrap();
+        let restored = reopened.restore(history).await.unwrap();
+        assert_eq!(restored.session_id, fixture.initial.session_id);
+        assert_eq!(restored.messages.len(), fixture.initial.messages.len());
+        assert_ne!(reopened.process_id, fixture.initial_pid);
+        reopened.shutdown().await;
         fixture.manager.disconnect().await;
     }
 

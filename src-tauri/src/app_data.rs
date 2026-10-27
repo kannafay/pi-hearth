@@ -176,7 +176,7 @@ fn is_link(metadata: &std::fs::Metadata) -> bool {
     }
 }
 
-fn directory_alias(target: &Path, alias: &Path) -> Result<(), String> {
+pub(crate) fn directory_alias(target: &Path, alias: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

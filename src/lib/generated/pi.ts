@@ -23,6 +23,10 @@ export type SessionSearchResult = { session: SessionInfo, projectName: string, s
 
 export type ProjectInfo = { path: string, name: string, };
 
+export type PathRelocation = { from: string, to: string, };
+
+export type ProjectLocationChange = { settings: AppSettings, catalog: WorkspaceCatalog, paths: Array<PathRelocation>, warnings: Array<string>, };
+
 export type Selection = { projectPath: string | null, sessionPath: string | null, };
 
 export type SessionPreference = { pinned: boolean, archived: boolean, };

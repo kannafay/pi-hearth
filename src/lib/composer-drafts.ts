@@ -63,6 +63,21 @@ export function removeComposerDraft(key: string) {
   localStorage.removeItem(prefix + key)
 }
 
+export function relocateComposerDrafts(relocate: (path: string) => string) {
+  const keys = Object.keys(localStorage).filter((key) => key.startsWith(`${prefix}new:`))
+  for (const key of keys) {
+    const path = key.slice(`${prefix}new:`.length)
+    const updated = `${prefix}new:${sessionKey(relocate(path))}`
+    if (key === updated) continue
+    const value = localStorage.getItem(key)
+    if (value === null) continue
+    if (localStorage.getItem(updated) !== null)
+      throw new Error('项目已迁移，但新位置存在另一份草稿，原草稿已保留。')
+    localStorage.setItem(updated, value)
+    localStorage.removeItem(key)
+  }
+}
+
 export function acceptedComposerDraft(draft: ComposerDraft, text: string, ids: string[]) {
   return {
     ...draft,
