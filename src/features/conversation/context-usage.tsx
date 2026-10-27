@@ -2,6 +2,7 @@ import { Popover } from '@base-ui/react/popover'
 import { useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { cn } from 'cn'
+import { ListCollapse } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { thinkingCapabilitiesPending, useConversationStore } from './store'
 
@@ -114,10 +115,11 @@ function ContextCompactionButton({ onConfirm }: { onConfirm: () => void }) {
         disabled={disabled}
         render={<Button variant="outline" size="sm" className="mt-3 w-full" />}
       >
+        <ListCollapse aria-hidden="true" />
         {activity === '正在压缩上下文…' ? '正在压缩…' : '压缩上下文'}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner side="top" align="end" sideOffset={8} className="z-60">
+        <Popover.Positioner side="top" align="center" sideOffset={8} className="z-60">
           <Popover.Popup className="w-64 max-w-[calc(100vw-2rem)] rounded-xl bg-popover p-3 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-opacity duration-150 outline-none data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none">
             <Popover.Title className="font-medium">压缩当前会话？</Popover.Title>
             <Popover.Description className="mt-2 leading-relaxed text-muted-foreground">
