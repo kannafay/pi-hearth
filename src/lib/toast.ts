@@ -14,7 +14,7 @@ function notify(type: 'success' | 'error' | 'info', message: string) {
     id: `${type}:${title}`,
     title,
     type,
-    // Operation results expire by elapsed time, including while the window is inactive.
+    // The renderer pauses remaining time on hover, but still expires inactive-window notices.
     timeout: 0,
     data: { dismissAfter: type === 'error' ? 6500 : 3500 },
   })

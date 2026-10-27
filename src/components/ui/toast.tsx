@@ -176,17 +176,34 @@ type OperationToastData = { dismissAfter?: number }
 
 function ToastNotice({
   toastItem,
+  paused,
 }: {
   toastItem: ToastPrimitive.Root.ToastObject<OperationToastData>
+  paused: boolean
 }) {
   const { close } = ToastPrimitive.useToastManager<OperationToastData>()
   const dismissAfter = toastItem.data?.dismissAfter
   const ending = toastItem.transitionStatus === 'ending'
+  const countdown = React.useRef({
+    updateKey: toastItem.updateKey,
+    duration: dismissAfter,
+    remaining: dismissAfter ?? 0,
+  })
   React.useEffect(() => {
-    if (!dismissAfter || ending) return
-    const timer = window.setTimeout(() => close(toastItem.id), dismissAfter)
-    return () => window.clearTimeout(timer)
-  }, [close, dismissAfter, ending, toastItem.id, toastItem.updateKey])
+    const clock = countdown.current
+    if (clock.updateKey !== toastItem.updateKey || clock.duration !== dismissAfter) {
+      clock.updateKey = toastItem.updateKey
+      clock.duration = dismissAfter
+      clock.remaining = dismissAfter ?? 0
+    }
+    if (!dismissAfter || ending || paused) return
+    const startedAt = Date.now()
+    const timer = window.setTimeout(() => close(toastItem.id), clock.remaining)
+    return () => {
+      window.clearTimeout(timer)
+      clock.remaining = Math.max(0, clock.remaining - (Date.now() - startedAt))
+    }
+  }, [close, dismissAfter, ending, paused, toastItem.id, toastItem.updateKey])
 
   const message = toastItem.title ?? toastItem.description
   return (
@@ -207,7 +224,29 @@ function ToastNotice({
 
 function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager<OperationToastData>()
-  return toasts.map((toastItem) => <ToastNotice key={toastItem.id} toastItem={toastItem} />)
+  // A fresh stack must not inherit a removed notice's hover state.
+  return <ToastStack key={toasts.length ? 'active' : 'empty'} toasts={toasts} />
+}
+
+function ToastStack({ toasts }: { toasts: ToastPrimitive.Root.ToastObject<OperationToastData>[] }) {
+  const [hovered, setHovered] = React.useState(false)
+  React.useEffect(() => {
+    // An inactive window must not retain a stale hover and leave notices stuck.
+    const resume = () => setHovered(false)
+    window.addEventListener('blur', resume)
+    return () => window.removeEventListener('blur', resume)
+  }, [])
+  return (
+    <ToastViewport
+      aria-label="操作通知"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {toasts.map((toastItem) => (
+        <ToastNotice key={toastItem.id} toastItem={toastItem} paused={hovered} />
+      ))}
+    </ToastViewport>
+  )
 }
 
 function Toaster({ children, toastManager = toast, ...props }: ToastPrimitive.Provider.Props) {
@@ -215,9 +254,7 @@ function Toaster({ children, toastManager = toast, ...props }: ToastPrimitive.Pr
     <ToastProvider toastManager={toastManager} {...props}>
       {children}
       <ToastPortal>
-        <ToastViewport aria-label="操作通知">
-          <ToastList />
-        </ToastViewport>
+        <ToastList />
       </ToastPortal>
     </ToastProvider>
   )

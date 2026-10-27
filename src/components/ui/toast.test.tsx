@@ -62,7 +62,7 @@ test('successful results disappear automatically and can be shown again', async 
   expect(screen.getByRole('dialog', { name: '上下文已压缩' })).toBeVisible()
 })
 
-test.each(['window blur', 'hover', 'keyboard focus'])(
+test.each(['window blur', 'keyboard focus'])(
   'operation results still expire after their timeout during %s',
   async (interaction) => {
     vi.useFakeTimers()
@@ -70,7 +70,6 @@ test.each(['window blur', 'hover', 'keyboard focus'])(
     act(() => toast.error('操作失败，需要重试'))
     const notice = screen.getByRole('dialog', { name: '操作失败，需要重试' })
     if (interaction === 'window blur') fireEvent.blur(window)
-    if (interaction === 'hover') fireEvent.mouseEnter(notice)
     if (interaction === 'keyboard focus') fireEvent.keyDown(window, { key: 'F6' })
     await act(() => vi.advanceTimersByTimeAsync(6400))
     expect(notice).toBeInTheDocument()
@@ -78,6 +77,80 @@ test.each(['window blur', 'hover', 'keyboard focus'])(
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   },
 )
+
+test('hover pauses the entire stack and leaving resumes each notice with its remaining time', async () => {
+  vi.useFakeTimers()
+  render(<Toaster />)
+  act(() => {
+    toast.error('操作失败')
+    toast.info('结果已更新')
+  })
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  const notice = screen.getByRole('dialog', { name: '结果已更新' })
+  fireEvent.mouseOver(notice, { relatedTarget: document.body })
+  await act(() => vi.advanceTimersByTimeAsync(10000))
+  expect(screen.getAllByRole('dialog')).toHaveLength(2)
+  const close = within(notice).getByRole('button', { name: '关闭通知' })
+  fireEvent.mouseOut(notice, { relatedTarget: close })
+  fireEvent.mouseOver(close, { relatedTarget: notice })
+  await act(() => vi.advanceTimersByTimeAsync(10000))
+  expect(screen.getAllByRole('dialog')).toHaveLength(2)
+  fireEvent.mouseOut(close, { relatedTarget: document.body })
+  await act(() => vi.advanceTimersByTimeAsync(2499))
+  expect(screen.getAllByRole('dialog')).toHaveLength(2)
+  await act(() => vi.advanceTimersByTimeAsync(2))
+  expect(screen.queryByRole('dialog', { name: '结果已更新' })).not.toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: '操作失败' })).toBeVisible()
+  await act(() => vi.advanceTimersByTimeAsync(3000))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('repeating a hovered notice refreshes its time without resuming before the pointer leaves', async () => {
+  vi.useFakeTimers()
+  render(<Toaster />)
+  act(() => toast.info('结果已更新'))
+  await act(() => vi.advanceTimersByTimeAsync(3000))
+  const notice = screen.getByRole('dialog', { name: '结果已更新' })
+  fireEvent.mouseOver(notice, { relatedTarget: document.body })
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  act(() => toast.info('结果已更新'))
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  fireEvent.mouseOut(notice, { relatedTarget: document.body })
+  await act(() => vi.advanceTimersByTimeAsync(3499))
+  expect(notice).toBeVisible()
+  await act(() => vi.advanceTimersByTimeAsync(2))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('leaving the window clears a stale hover so the notice can still expire', async () => {
+  vi.useFakeTimers()
+  render(<Toaster />)
+  act(() => toast.info('结果已更新'))
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  const notice = screen.getByRole('dialog', { name: '结果已更新' })
+  fireEvent.mouseOver(notice, { relatedTarget: document.body })
+  await act(() => vi.advanceTimersByTimeAsync(5000))
+  expect(notice).toBeVisible()
+  fireEvent.blur(window)
+  await act(() => vi.advanceTimersByTimeAsync(2499))
+  expect(notice).toBeVisible()
+  await act(() => vi.advanceTimersByTimeAsync(2))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('dismissing the last hovered notice does not pause the next notification', async () => {
+  vi.useFakeTimers()
+  render(<Toaster />)
+  act(() => toast.info('结果已更新'))
+  const notice = screen.getByRole('dialog', { name: '结果已更新' })
+  fireEvent.mouseOver(notice, { relatedTarget: document.body })
+  fireEvent.click(within(notice).getByRole('button', { name: '关闭通知' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  act(() => toast.info('结果已更新'))
+  await act(() => vi.advanceTimersByTimeAsync(3501))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
 
 test('repeating the same result refreshes its timeout without an older timer dismissing it', async () => {
   vi.useFakeTimers()
