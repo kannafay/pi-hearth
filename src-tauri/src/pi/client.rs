@@ -456,6 +456,9 @@ impl PiClient {
                                     if let Some(error) = record.pointer_mut("/message/errorMessage").filter(|value| value.is_string()) {
                                         *error = redact(error.as_str().unwrap().into(), &config.secrets).into();
                                     }
+                                    if let Some(error) = record.get_mut("errorMessage").filter(|value| value.is_string()) {
+                                        *error = redact(error.as_str().unwrap().into(), &config.secrets).into();
+                                    }
                                     if record["type"] == "response" {
                                         if let Some(usage) = context_usage.response(&record, &conversation.snapshot) {
                                             if usage != conversation.snapshot.context_usage {
@@ -521,11 +524,11 @@ impl PiClient {
                                         }
                                     } else {
                                         match record["type"].as_str() {
-                                            Some("auto_compaction_start") => {
+                                            Some("compaction_start" | "auto_compaction_start") => {
                                                 context_usage.suspend();
                                                 invalidate_context_usage(&mut conversation, &channel);
                                             }
-                                            Some("auto_compaction_end") => context_usage.resume(),
+                                            Some("compaction_end" | "auto_compaction_end") => context_usage.resume(),
                                             Some("agent_settled") => context_usage.resume(),
                                             Some("message_end" | "tool_execution_end") => context_usage.invalidate(),
                                             _ => {}

@@ -717,9 +717,39 @@ impl Conversation {
             "auto_retry_start" => vec![self.event(EventData::Status {
                 text: "连接中断，Pi 正在重试…".into(),
             })],
-            "auto_compaction_start" => vec![self.event(EventData::Status {
-                text: "Pi 正在整理上下文…".into(),
-            })],
+            "compaction_start" | "auto_compaction_start" => vec![
+                self.event(EventData::Status {
+                    text: if self.cancelled {
+                        "正在停止…"
+                    } else if self.compacting {
+                        "正在压缩上下文…"
+                    } else {
+                        "正在自动压缩上下文…"
+                    }
+                    .into(),
+                }),
+            ],
+            "compaction_end" | "auto_compaction_end" => {
+                // Manual compaction is finalized by its RPC acknowledgement. Automatic
+                // compaction stays in this run until Pi resumes or emits agent_settled.
+                if self.compacting {
+                    return vec![];
+                }
+                let text = if self.cancelled {
+                    "正在停止…"
+                } else if record["aborted"] == true {
+                    "已取消上下文压缩"
+                } else if let Some(error) = record["errorMessage"]
+                    .as_str()
+                    .filter(|text| !text.is_empty())
+                {
+                    self.last_error = Some(format!("上下文压缩失败：{error}"));
+                    "上下文压缩失败"
+                } else {
+                    "等待回复…"
+                };
+                vec![self.event(EventData::Status { text: text.into() })]
+            }
             _ => vec![],
         }
     }
@@ -757,6 +787,15 @@ mod tests {
                 .begin("other".into(), "Cannot race".into())
                 .is_err()
         );
+        let started = conversation.record(&json!({"type":"compaction_start","reason":"manual"}));
+        assert!(
+            matches!(&started[0].data, EventData::Status { text } if text == "正在压缩上下文…")
+        );
+        assert!(conversation.record(&json!({"type":"compaction_end","reason":"manual","result":{"summary":"summary"},"aborted":false,"willRetry":false})).is_empty());
+        assert_eq!(
+            conversation.snapshot.active_run_id.as_deref(),
+            Some("compact")
+        );
         conversation.mark_cancelling();
         let finished = conversation.finish("cancelled", None);
         assert_eq!(finished.len(), 1);
@@ -764,6 +803,85 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&conversation.snapshot.messages).unwrap(),
             before
+        );
+    }
+
+    #[test]
+    fn automatic_compaction_keeps_the_same_run_until_pi_resumes_and_settles() {
+        for (start, end, reason, overflow) in [
+            ("compaction_start", "compaction_end", "threshold", false),
+            ("compaction_start", "compaction_end", "overflow", true),
+            (
+                "auto_compaction_start",
+                "auto_compaction_end",
+                "overflow",
+                true,
+            ),
+        ] {
+            let mut conversation = Conversation::new("instance".into(), "cwd".into());
+            conversation
+                .begin("run".into(), "Continue my task".into())
+                .unwrap();
+            conversation.record(&json!({"type":"message_start","message":{"role":"assistant"}}));
+            conversation.record(&json!({"type":"message_end","message":{"role":"assistant","content":[],"stopReason":if overflow {"error"} else {"toolUse"},"errorMessage":if overflow {Some("context length exceeded")} else {None}}}));
+            assert!(
+                conversation
+                    .record(&json!({"type":"agent_end","willRetry":true}))
+                    .is_empty()
+            );
+            let started = conversation.record(&json!({"type":start,"reason":reason}));
+            assert!(
+                matches!(&started[0].data, EventData::Status { text } if text == "正在自动压缩上下文…")
+            );
+            let ended = conversation.record(&json!({"type":end,"reason":reason,"result":{"summary":"Preserve the current task","estimatedTokensAfter":6000},"aborted":false,"willRetry":overflow}));
+            assert!(matches!(&ended[0].data, EventData::Status { text } if text == "等待回复…"));
+            assert_eq!(conversation.snapshot.active_run_id.as_deref(), Some("run"));
+            assert_eq!(conversation.snapshot.messages.len(), 2);
+            assert!(conversation.snapshot.messages[0].finished_at.is_none());
+            conversation.record(&json!({"type":"message_start","message":{"role":"assistant"}}));
+            let delta = conversation.record(&json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Resumed answer"}}));
+            assert!(
+                matches!(&delta[0].data, EventData::MessageDelta { delta, .. } if delta == "Resumed answer")
+            );
+            conversation.record(&json!({"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Resumed answer"}],"stopReason":"stop"}}));
+            let finished = conversation.record(&json!({"type":"agent_settled","aborted":false}));
+            assert!(
+                matches!(&finished[0].data, EventData::RunFinished { status, error:None, .. } if status == "complete")
+            );
+            assert_eq!(
+                conversation.snapshot.messages.last().unwrap().text,
+                "Resumed answer"
+            );
+            assert!(conversation.snapshot.active_run_id.is_none());
+        }
+    }
+
+    #[test]
+    fn failed_or_cancelled_compaction_never_finishes_the_run_before_settlement() {
+        let mut conversation = Conversation::new("instance".into(), "cwd".into());
+        conversation.begin("run".into(), "Task".into()).unwrap();
+        conversation.record(&json!({"type":"compaction_start","reason":"threshold"}));
+        let failed = conversation.record(&json!({"type":"compaction_end","reason":"threshold","aborted":false,"willRetry":false,"errorMessage":"summary request failed"}));
+        assert!(matches!(&failed[0].data, EventData::Status { text } if text == "上下文压缩失败"));
+        assert!(conversation.snapshot.active_run_id.is_some());
+        let finished = conversation.record(&json!({"type":"agent_settled","aborted":false}));
+        assert!(
+            matches!(&finished[0].data, EventData::RunFinished { status, error:Some(error), .. } if status == "failed" && error == "上下文压缩失败：summary request failed")
+        );
+        conversation
+            .begin("next".into(), "Next task".into())
+            .unwrap();
+        conversation.mark_cancelling();
+        let started = conversation.record(&json!({"type":"compaction_start","reason":"overflow"}));
+        assert!(matches!(&started[0].data, EventData::Status { text } if text == "正在停止…"));
+        let cancelled = conversation.record(
+            &json!({"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false}),
+        );
+        assert!(matches!(&cancelled[0].data, EventData::Status { text } if text == "正在停止…"));
+        assert!(conversation.snapshot.active_run_id.is_some());
+        let finished = conversation.record(&json!({"type":"agent_settled","aborted":true}));
+        assert!(
+            matches!(&finished[0].data, EventData::RunFinished { status, error:None, .. } if status == "cancelled")
         );
     }
 

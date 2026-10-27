@@ -149,6 +149,32 @@ mod tests {
     }
 
     #[test]
+    fn compaction_suspends_reads_and_rejects_usage_from_before_the_summary() {
+        let conversation = conversation();
+        let mut reader = ContextUsageReader::default();
+        reader.invalidate();
+        let stale = reader.request(&conversation.snapshot).unwrap();
+        reader.suspend();
+        assert!(reader.request(&conversation.snapshot).is_none());
+        reader.resume();
+        assert!(
+            reader
+                .response(&response(&stale), &conversation.snapshot)
+                .is_none()
+        );
+        let fresh = reader.request(&conversation.snapshot).unwrap();
+        let mut record = response(&fresh);
+        record["data"]["contextUsage"]["tokens"] = json!(6000);
+        record["data"]["contextUsage"]["percent"] = json!(3);
+        let usage = reader
+            .response(&record, &conversation.snapshot)
+            .unwrap()
+            .unwrap();
+        assert_eq!(usage.tokens, Some(6000));
+        assert_eq!(usage.percent, Some(3.0));
+    }
+
+    #[test]
     fn reads_current_context_not_cumulative_tokens_and_preserves_unknown_after_compaction() {
         let conversation = conversation();
         let mut reader = ContextUsageReader::default();

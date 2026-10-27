@@ -422,6 +422,55 @@ test('waiting is shown before output and hidden while thinking or answer content
   expect(reply.queryByRole('status')).not.toBeInTheDocument()
 })
 
+test('automatic compaction shows progress and keeps the same request running until resumed output finishes', () => {
+  const { user, progress, answer } = processFixture()
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
+  render(<ConversationPanel />)
+  receive(1, { type: 'run_started', message: user })
+  receive(2, {
+    type: 'message_started',
+    message: { ...progress, text: '', thinking: '', status: 'streaming' },
+  })
+  receive(3, {
+    type: 'message_delta',
+    messageId: progress.id,
+    contentIndex: 0,
+    kind: 'thinking',
+    delta: progress.thinking,
+  })
+  receive(4, { type: 'message_completed', message: progress })
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  receive(5, { type: 'status', text: '正在自动压缩上下文…' })
+  expect(screen.getByRole('status')).toHaveTextContent('正在自动压缩上下文')
+  expect(screen.getByRole('button', { name: '停止生成' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'true')
+  receive(6, {
+    type: 'context_usage_changed',
+    usage: { tokens: null, contextWindow: 200000, percent: null },
+  })
+  receive(7, { type: 'status', text: '等待回复…' })
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复')
+  expect(useConversationStore.getState()).toMatchObject({ status: 'running', activeRunId: 'run-1' })
+  receive(8, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  receive(9, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 0,
+    kind: 'text',
+    delta: answer.text,
+  })
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByText(answer.text)).toBeVisible()
+  receive(10, { type: 'message_completed', message: answer })
+  receive(11, { type: 'run_finished', status: 'complete', error: null })
+  expect(useConversationStore.getState()).toMatchObject({ status: 'ready', activeRunId: null })
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+})
+
 test('streaming deltas do not keep inserting a waiting indicator below the output', () => {
   const { user, answer } = processFixture()
   useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
