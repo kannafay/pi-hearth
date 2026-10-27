@@ -234,11 +234,41 @@ fn protect_secret(
     Ok(())
 }
 
-pub fn redact(mut text: String, secrets: &[String]) -> String {
+pub(super) fn mask_secrets(mut text: String, secrets: &[String], replacement: &str) -> String {
+    let mut secrets: Vec<_> = secrets.iter().filter(|secret| !secret.is_empty()).collect();
+    // Hide complete credentials before a shorter value can replace part of them.
+    secrets.sort_unstable_by_key(|secret| std::cmp::Reverse(secret.len()));
     for secret in secrets {
-        text = text.replace(secret, "[已隐藏密钥]");
+        if !secret.bytes().all(|byte| byte.is_ascii_digit()) {
+            text = text.replace(secret, replacement);
+            continue;
+        }
+        // MCP environment flags such as "0" must not match inside HTTP 400/404.
+        // Numeric credentials are still hidden when they occur as complete values.
+        let mut masked = String::with_capacity(text.len());
+        let mut copied = 0;
+        for (start, value) in text.match_indices(secret.as_str()) {
+            let end = start + value.len();
+            if (start > 0 && text.as_bytes()[start - 1].is_ascii_digit())
+                || text.as_bytes().get(end).is_some_and(u8::is_ascii_digit)
+            {
+                continue;
+            }
+            masked.push_str(&text[copied..start]);
+            masked.push_str(replacement);
+            copied = end;
+        }
+        masked.push_str(&text[copied..]);
+        text = masked;
     }
-    text.chars().take(1500).collect()
+    text
+}
+
+pub fn redact(text: String, secrets: &[String]) -> String {
+    mask_secrets(text, secrets, "[已隐藏密钥]")
+        .chars()
+        .take(1500)
+        .collect()
 }
 
 #[cfg(test)]
@@ -287,6 +317,48 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(root.join("mcp.json")).unwrap(),
             text
+        );
+    }
+
+    #[test]
+    fn numeric_mcp_flags_do_not_corrupt_http_errors_or_nested_error_payloads() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/mcp-status-redaction-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("mcp.json"),
+            json!({"mcpServers":{"fixture":{"env":{
+                "NODE_TLS_REJECT_UNAUTHORIZED":"0", "RETRIES":"1", "TOKEN":"private-101-token"
+            }}}})
+            .to_string(),
+        )
+        .unwrap();
+        let secrets = mcp_secrets(&root, &root);
+        let nested = json!({"error":{"code":400,"status":"FAILED_PRECONDITION","token":"private-101-token"}}).to_string();
+        let error = json!({"error":{"code":404,"status":"Not Found","message":nested}});
+        let redacted: Value = serde_json::from_str(&redact(error.to_string(), &secrets)).unwrap();
+        assert_eq!(redacted["error"]["code"], 404);
+        assert_eq!(redacted["error"]["status"], "Not Found");
+        let nested: Value =
+            serde_json::from_str(redacted["error"]["message"].as_str().unwrap()).unwrap();
+        assert_eq!(nested["error"]["code"], 400);
+        assert_eq!(nested["error"]["token"], "[已隐藏密钥]");
+        for status in [400, 401, 403, 404, 408, 429, 500, 502, 503, 504] {
+            let error = format!("HTTP {status}");
+            assert_eq!(redact(error.clone(), &secrets), error);
+        }
+    }
+
+    #[test]
+    fn numeric_credentials_are_still_hidden_when_they_are_complete_values() {
+        let secrets = vec!["0".into(), "1".into(), "7359".into(), String::new()];
+        assert_eq!(
+            redact(
+                "密钥=0，PIN:1，password=7359，HTTP 404 400 401".into(),
+                &secrets
+            ),
+            "密钥=[已隐藏密钥]，PIN:[已隐藏密钥]，password=[已隐藏密钥]，HTTP 404 400 401"
         );
     }
 

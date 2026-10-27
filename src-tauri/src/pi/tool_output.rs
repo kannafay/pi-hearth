@@ -48,11 +48,7 @@ pub fn result_text(result: &Value) -> String {
 }
 
 pub fn mask(text: &str, secrets: &[String]) -> String {
-    let mut text = text.to_owned();
-    for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
-        text = text.replace(secret, "[REDACTED]");
-    }
-    text
+    super::config::mask_secrets(text.to_owned(), secrets, "[REDACTED]")
 }
 
 pub struct ToolOutput {
@@ -137,6 +133,17 @@ mod tests {
                 &serde_json::json!({"content":[{"type":"image","data":"secret blob"},{"type":"text","text":"ok"}]})
             ),
             "[图片结果，暂不预览]\nok"
+        );
+    }
+
+    #[test]
+    fn numeric_flags_preserve_status_codes_in_tool_output() {
+        assert_eq!(
+            mask(
+                "HTTP 404 400 401; 密钥=0; token=private-101-token",
+                &["0".into(), "1".into(), "private-101-token".into()],
+            ),
+            "HTTP 404 400 401; 密钥=[REDACTED]; token=[REDACTED]"
         );
     }
 

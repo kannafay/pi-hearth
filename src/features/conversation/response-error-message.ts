@@ -11,6 +11,11 @@ const failures = [
     hint: '请检查当前模型的 API Key、服务地址及访问权限。',
   },
   {
+    pattern: /\b404\b|\b(?:model[_ -])?not[_ -]found\b/i,
+    message: '未找到模型或接口，请检查模型名称和服务地址。',
+    hint: '请核对模型 ID、服务地址和 API 版本路径是否正确。',
+  },
+  {
     pattern: /\b429\b|rate[_ -]?limit|too many requests|resource[_ -]exhausted|quota.{0,20}exceed/i,
     message: '模型服务暂时受限，请稍后重试或检查配额。',
     hint: '请求频率限制或账户额度不足都可能导致此错误。',
