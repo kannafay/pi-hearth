@@ -122,7 +122,7 @@ function DropdownMenuSubTrigger({
       data-inset={inset}
       className={cn(
         menuItemStyles,
-        'data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground',
+        'data-inset:pl-7 data-popup-open:bg-accent data-open:bg-accent',
         className,
       )}
       {...props}
@@ -230,10 +230,7 @@ function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<'spa
   return (
     <span
       data-slot="dropdown-menu-shortcut"
-      className={cn(
-        'ml-auto text-xs tracking-widest text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground',
-        className,
-      )}
+      className={cn('ml-auto text-xs tracking-widest text-muted-foreground', className)}
       {...props}
     />
   )
