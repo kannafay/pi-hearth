@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useConversationLocalState } from './conversation-local-state'
 import { getResponseStatus } from './response-status'
 import { ResponseError } from './response-error'
+import { ResponseWaiting } from './response-waiting'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/scroll-area'
 
@@ -235,22 +236,7 @@ export const ConversationTurn = memo(function ConversationTurn({
               />
             ) : null}
             {active && waiting && (
-              <div
-                role="status"
-                aria-atomic="true"
-                className="flex min-h-5 items-center gap-2 text-[14px] text-muted-foreground/70"
-              >
-                <span aria-hidden className="flex h-5 shrink-0 items-center gap-1">
-                  {[0, 160, 320].map((delay) => (
-                    <span
-                      key={delay}
-                      className="size-1 rounded-full bg-current motion-safe:animate-pulse"
-                      style={{ animationDelay: `${delay}ms`, animationDuration: '1.2s' }}
-                    />
-                  ))}
-                </span>
-                <span>{responseStatus.replace(/(?:…|\.{3})$/, '')}</span>
-              </div>
+              <ResponseWaiting text={responseStatus.replace(/(?:…|\.{3})$/, '')} />
             )}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
             {error && !cancelled && !active && (

@@ -603,6 +603,97 @@ select {
   transition-property: opacity, color, background-color;
 }
 
+@property --response-waiting-sweep {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: -96px;
+}
+
+.response-waiting {
+  --response-waiting-width: 80px;
+  --response-waiting-stripe: 44px;
+  --response-waiting-base: color-mix(in srgb, var(--muted-foreground) 75%, var(--background));
+  --response-waiting-highlight: color-mix(in srgb, var(--muted-foreground), var(--foreground) 35%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 20px;
+  color: var(--response-waiting-base);
+  font-size: 14px;
+  line-height: 20px;
+  animation: response-waiting-shimmer 2400ms ease-in-out infinite;
+}
+
+.dark .response-waiting {
+  --response-waiting-base: color-mix(in srgb, var(--muted-foreground) 90%, var(--background));
+  --response-waiting-highlight: color-mix(in srgb, var(--muted-foreground), var(--foreground) 70%);
+}
+
+.response-waiting-part {
+  --response-waiting-offset: 0px;
+  display: block;
+  background-color: var(--response-waiting-base);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--response-waiting-highlight),
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-size: var(--response-waiting-stripe) 100%;
+  background-position: calc(var(--response-waiting-sweep) - var(--response-waiting-offset)) 50%;
+}
+
+.response-waiting-logo {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  mask: url('/pi.svg') center / contain no-repeat;
+}
+
+.response-waiting-text {
+  --response-waiting-offset: 24px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes response-waiting-shimmer {
+  0%,
+  8% {
+    --response-waiting-sweep: calc(var(--response-waiting-stripe) * -1);
+  }
+  92%,
+  100% {
+    --response-waiting-sweep: var(--response-waiting-width);
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .response-waiting {
+    animation: none;
+  }
+  .response-waiting-part {
+    background-image: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .response-waiting-logo {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  .response-waiting-text {
+    color: CanvasText;
+    -webkit-text-fill-color: CanvasText;
+    background: none;
+  }
+}
+
 .conversation-markdown :is(h1, h2, h3, h4, h5, h6) {
   margin-block: 20px 8px;
   font-weight: 600;
