@@ -415,6 +415,7 @@ test('restoring settings after a new conversation arrives does not move the open
   const older = { ...session, modified: 1000, messageCount: 2 }
   const newer = { ...older, id: 'new', path: 'new.jsonl', title: '新会话', modified: 2000 }
   const snapshot: RuntimeSnapshot = {
+    queuedMessages: [],
     instanceId: 'restored',
     sessionId: older.id,
     sessionFile: older.path,
@@ -826,6 +827,7 @@ test('refresh after a local reply updates the sidebar without reconnecting or cl
 
 test('restoring thinking preferences does not make the catalog reconnect a resident session', async () => {
   const snapshot: RuntimeSnapshot = {
+    queuedMessages: [],
     instanceId: 'resident-pi',
     permissionMode: 'ask',
     projectPath: session.cwd,

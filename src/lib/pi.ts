@@ -2,7 +2,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
 import type { PermissionMode, PiEvent, RuntimeSnapshot, ToolLogPage } from '@/lib/generated/pi'
 
 let activeChannel: Channel<PiEvent> | null = null
-const channels = new Map<string, { channel: Channel<PiEvent>; running: boolean }>()
+const channels = new Map<string, { channel: Channel<PiEvent>; running: boolean; queued: number }>()
 let connection = 0
 
 export async function connectPi(
@@ -22,13 +22,14 @@ export async function connectPi(
     if (subscription?.channel !== channel || event.instanceId !== instanceId) return
     if (event.data.type === 'run_started') subscription.running = true
     if (event.data.type === 'run_finished') subscription.running = false
+    if (event.data.type === 'queue_changed') subscription.queued = event.data.messages.length
     onEvent(event)
     if (event.data.type === 'disconnected' && instanceId) channels.delete(instanceId)
   }
   channel.onmessage = (event) => {
     if (!subscribed && request !== connection && channels.has(event.instanceId)) {
       instanceId = event.instanceId
-      channels.set(instanceId, { channel, running: Boolean(event.runId) })
+      channels.set(instanceId, { channel, running: Boolean(event.runId), queued: 0 })
       subscribed = true
       for (const previous of pending.splice(0)) deliver(previous)
     }
@@ -46,18 +47,26 @@ export async function connectPi(
     // navigation was superseded. Keep those events routed to its background state.
     if (subscribed || !channels.has(snapshot.instanceId)) return
     instanceId = snapshot.instanceId
-    channels.set(instanceId, { channel, running: Boolean(snapshot.activeRunId) })
+    channels.set(instanceId, {
+      channel,
+      running: Boolean(snapshot.activeRunId),
+      queued: snapshot.queuedMessages?.length ?? 0,
+    })
     subscribed = true
     for (const event of pending) deliver(event)
     return
   }
   instanceId = snapshot.instanceId
-  channels.set(instanceId, { channel, running: Boolean(snapshot.activeRunId) })
+  channels.set(instanceId, {
+    channel,
+    running: Boolean(snapshot.activeRunId),
+    queued: snapshot.queuedMessages?.length ?? 0,
+  })
   // The native pool contains at most three runtimes. Never discard a running
   // channel just because another conversation became the visible one.
   for (const [id, subscription] of channels) {
     if (channels.size <= 3) break
-    if (id !== instanceId && !subscription.running) channels.delete(id)
+    if (id !== instanceId && !subscription.running && !subscription.queued) channels.delete(id)
   }
   activeChannel = channel
   onSnapshot(snapshot)
@@ -74,11 +83,15 @@ export function sendPiMessage(
   message: string,
   attachmentIds: string[] = [],
 ) {
-  return invoke<void>('pi_send', { instanceId, runId, message, attachmentIds })
+  return invoke<PiEvent | void>('pi_send', { instanceId, runId, message, attachmentIds })
 }
 
 export function stopPi(instanceId: string) {
   return invoke<void>('pi_stop', { instanceId })
+}
+
+export function removeQueuedPiMessage(instanceId: string, messageId: string) {
+  return invoke<void>('pi_remove_queued_message', { instanceId, messageId })
 }
 
 export function rewritePiMessage(

@@ -5,6 +5,7 @@ pub mod composer;
 mod config;
 mod context_usage;
 pub mod files;
+mod message_queue;
 pub mod network;
 pub mod open_with;
 pub(crate) mod process_tree;
@@ -71,7 +72,7 @@ pub async fn pi_send(
     run_id: String,
     message: String,
     attachment_ids: Option<Vec<String>>,
-) -> Result<(), String> {
+) -> Result<serde_json::Value, String> {
     let attachment_ids = attachment_ids.unwrap_or_default();
     if message.trim().is_empty() && attachment_ids.is_empty() {
         return Err("请输入消息。".into());
@@ -86,9 +87,26 @@ pub async fn pi_send(
     let client = manager.client(&instance_id).await?;
     let _action = client.actions.lock().await;
     files::prepare_runtime(&app).await?;
-    client.request(body, Some(run_id)).await?;
+    let accepted = client.request(body, Some(run_id)).await?;
     attachments.release(&attachment_ids);
-    Ok(())
+    Ok(if accepted["data"]["type"] == "queue_changed" {
+        accepted
+    } else {
+        serde_json::Value::Null
+    })
+}
+
+#[tauri::command]
+pub async fn pi_remove_queued_message(
+    manager: State<'_, PiManager>,
+    instance_id: String,
+    message_id: String,
+) -> Result<(), String> {
+    manager
+        .client(&instance_id)
+        .await?
+        .remove_queued_message(message_id)
+        .await
 }
 
 #[tauri::command]

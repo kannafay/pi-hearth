@@ -98,6 +98,7 @@ impl Conversation {
                 thinking_level: "off".into(),
                 available_thinking_levels: vec![],
                 messages: vec![],
+                queued_messages: vec![],
                 tools: vec![],
                 timeline: vec![],
                 active_run_id: None,
@@ -135,6 +136,11 @@ impl Conversation {
             sequence: self.snapshot.sequence,
             data,
         }
+    }
+
+    pub fn set_queue(&mut self, messages: Vec<QueuedMessage>) -> Vec<PiEvent> {
+        self.snapshot.queued_messages = messages.clone();
+        vec![self.event(EventData::QueueChanged { messages })]
     }
 
     #[cfg(test)]

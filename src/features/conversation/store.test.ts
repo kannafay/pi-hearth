@@ -38,6 +38,7 @@ const message: ChatMessage = {
   error: null,
 }
 const snapshot: RuntimeSnapshot = {
+  queuedMessages: [],
   instanceId: 'pi-1',
   permissionMode: 'ask',
   projectPath: 'project',

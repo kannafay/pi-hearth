@@ -911,6 +911,7 @@ test('returning to an aliased cached session restores its scroll and editor with
     },
   )
   const original: RuntimeSnapshot = {
+    queuedMessages: [],
     instanceId: 'runtime-A',
     permissionMode: 'ask',
     sessionId: 'native-A',

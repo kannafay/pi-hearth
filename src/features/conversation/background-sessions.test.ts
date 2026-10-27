@@ -24,6 +24,7 @@ const reply: ChatMessage = {
   error: null,
 }
 const snapshot = (name: string, active = false): RuntimeSnapshot => ({
+  queuedMessages: [],
   instanceId: `pi-${name}`,
   sessionId: name,
   sessionFile: `${name}.jsonl`,

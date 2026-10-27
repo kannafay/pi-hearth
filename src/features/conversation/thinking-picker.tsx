@@ -18,6 +18,7 @@ export function ThinkingPicker({
     status,
     readOnly,
     settingsPending,
+    queueBusy,
     thinkingLevel,
     availableThinkingLevels,
     capabilitiesPending,
@@ -28,6 +29,7 @@ export function ThinkingPicker({
       status: state.status,
       readOnly: state.readOnly,
       settingsPending: state.settingsPending,
+      queueBusy: state.queuedMessages.length > 0 || state.queueSubmissions > 0,
       thinkingLevel: state.thinkingLevel,
       availableThinkingLevels: state.availableThinkingLevels,
       requestedThinkingLevel: state.pendingSettings?.thinkingLevel ?? state.requestedThinkingLevel,
@@ -53,7 +55,7 @@ export function ThinkingPicker({
       onOpenChange={onOpenChange}
       items={items}
       value={value}
-      disabled={status === 'disconnected' || Boolean(readOnly)}
+      disabled={status === 'disconnected' || Boolean(readOnly) || queueBusy}
       onValueChange={(level) => {
         if (level) void changeThinkingLevel(level)
       }}
@@ -73,9 +75,11 @@ export function ThinkingPicker({
           <SelectValue placeholder="思考强度" />
         </TooltipTrigger>
         <TooltipContent showArrow={false}>
-          {value === 'default'
-            ? `跟随模型默认设置，当前使用 ${effectiveLabel}`
-            : `思考强度：${effectiveLabel}`}
+          {queueBusy
+            ? '队列处理完后可更改设置'
+            : value === 'default'
+              ? `跟随模型默认设置，当前使用 ${effectiveLabel}`
+              : `思考强度：${effectiveLabel}`}
         </TooltipContent>
       </Tooltip>
       <SelectContent alignItemWithTrigger={false} align="start" width="content">

@@ -1,6 +1,7 @@
 use super::{
     config::{local_agent_directory, prepare_config, redact},
     context_usage::ContextUsageReader,
+    message_queue::MessageQueue,
     process_tree::ProcessTree,
     protocol::{Conversation, JsonLines},
     session_pool::{FileRevision, MAX_OPEN_SESSIONS, RetainedSession},
@@ -46,6 +47,10 @@ enum Control {
     Request {
         body: Value,
         run_id: Option<String>,
+        reply: Reply,
+    },
+    RemoveQueued {
+        message_id: String,
         reply: Reply,
     },
     Subscribe {
@@ -289,6 +294,7 @@ impl PiClient {
             let mut conversation = Conversation::new(runtime_instance_id, runtime_project_path);
             let mut channel = channel;
             let mut pending = HashMap::<String, Pending>::new();
+            let mut queue = MessageQueue::default();
             let mut context_usage = ContextUsageReader::default();
             let mut approvals = HashMap::<String, Approval>::new();
             let mut decoder = JsonLines::default();
@@ -318,7 +324,7 @@ impl PiClient {
                         };
                         match control {
                             Some(Control::Renew { instance_id, channel: next, preserve, reply }) => {
-                                if conversation.snapshot.active_run_id.is_some() {
+                                if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() {
                                     let _ = reply.send(Err("请先停止当前回复再新建聊天。".into())); continue;
                                 }
                                 if deny_approvals(&mut approvals, &mut stdin, &mut conversation, &channel).await.is_err() {
@@ -357,18 +363,29 @@ impl PiClient {
                                 let _ = reply.send(result.map(|_| conversation.snapshot.clone()));
                             }
                             Some(Control::Request { mut body, run_id, reply }) => {
-                                if matches!(body["type"].as_str(), Some("set_model" | "set_thinking_level")) && conversation.snapshot.active_run_id.is_some() {
+                                if matches!(body["type"].as_str(), Some("set_model" | "set_thinking_level")) && (conversation.snapshot.active_run_id.is_some() || !queue.is_empty()) {
                                     let _ = reply.send(Err("请先等待回复结束再修改模型设置。".into())); continue;
                                 }
+                                if body["type"] == "prompt" && let Some(run) = &run_id {
+                                    if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() {
+                                        let result = if conversation.is_cancelling() {
+                                            Err("正在停止生成，请稍后再发送消息。".into())
+                                        } else if conversation.snapshot.active_run_id.as_ref() == Some(run) {
+                                            Err("这条消息正在处理。".into())
+                                        } else {
+                                            queue.push(run.clone(), body)
+                                        };
+                                        let result = result.map(|_| {
+                                            let event = conversation.set_queue(queue.messages()).pop().unwrap();
+                                            emit(&channel, vec![event.clone()]);
+                                            serde_json::to_value(event).unwrap()
+                                        });
+                                        let _ = reply.send(result);
+                                        continue;
+                                    }
+                                }
                                 if let Some(run) = &run_id {
-                                    let display = body.as_object_mut().and_then(|body| body.remove("__hearthMessage")).and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_else(|| body["message"].as_str().unwrap_or_default().into());
-                                    let attachments = body.as_object_mut().and_then(|body| body.remove("__hearthAttachments")).and_then(|value| serde_json::from_value(value).ok());
-                                    let started = if body["type"] == "compact" {
-                                        conversation.begin_compaction(run.clone())
-                                    } else {
-                                        conversation.begin_with_attachments(run.clone(), display, attachments)
-                                    };
-                                    match started {
+                                    match begin_request(&mut conversation, &mut body, run.clone()) {
                                         Ok(events) => emit(&channel, events),
                                         Err(error) => { let _ = reply.send(Err(error)); continue; }
                                     }
@@ -383,6 +400,10 @@ impl PiClient {
                                     }
                                 }
                                 if body["type"] == "abort" || body["type"] == "clear_queue" {
+                                    if !queue.is_empty() {
+                                        queue.clear();
+                                        emit(&channel, conversation.set_queue(queue.messages()));
+                                    }
                                     conversation.mark_cancelling();
                                     if deny_approvals(&mut approvals, &mut stdin, &mut conversation, &channel).await.is_err() {
                                         let _ = reply.send(Err("无法取消工具确认，连接已关闭。".into()));
@@ -402,6 +423,11 @@ impl PiClient {
                                 let deadline = if body["type"] == "compact" { 120 } else if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
                                 let writes = matches!(body["type"].as_str(), Some("prompt" | "compact" | "set_model" | "set_thinking_level" | "set_session_name"));
                                 pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes });
+                            }
+                            Some(Control::RemoveQueued { message_id, reply }) => {
+                                let result = queue.remove(&message_id);
+                                if result.is_ok() { emit(&channel, conversation.set_queue(queue.messages())); }
+                                let _ = reply.send(result.map(|_| Value::Null));
                             }
                             Some(Control::Subscribe { channel: next, reply }) => {
                                 channel = next;
@@ -575,6 +601,45 @@ impl PiClient {
                         if pending.values().any(|request| request.deadline <= Instant::now()) {
                             exit_error = Some("Pi 命令响应超时，连接已关闭，请重新连接。".into()); break;
                         }
+                    }
+                }
+                // Start the next message only after the preceding run has settled
+                // and all its RPC acknowledgements have arrived. Each queued
+                // message receives its own run, transcript and approval scope.
+                if conversation.snapshot.active_run_id.is_none() && pending.is_empty() {
+                    if let Some(mut prompt) = queue.pop() {
+                        match begin_request(
+                            &mut conversation,
+                            &mut prompt.body,
+                            prompt.run_id.clone(),
+                        ) {
+                            Ok(events) => emit(&channel, events),
+                            Err(error) => {
+                                exit_error = Some(error);
+                                break;
+                            }
+                        }
+                        // Emit run_started first so background renderers retain
+                        // this session even when the last queued item is removed.
+                        emit(&channel, conversation.set_queue(queue.messages()));
+                        context_usage.invalidate();
+                        let id = Uuid::new_v4().to_string();
+                        prompt.body["id"] = id.clone().into();
+                        if !write_wire(&mut stdin, &prompt.body).await {
+                            exit_error = Some("Pi 输入管道已中断，请重新连接。".into());
+                            break;
+                        }
+                        let (reply, _) = oneshot::channel();
+                        pending.insert(
+                            id,
+                            Pending {
+                                reply,
+                                prompt_run: Some(prompt.run_id),
+                                deadline: Instant::now() + Duration::from_secs(20),
+                                history: false,
+                                writes: true,
+                            },
+                        );
                     }
                 }
                 // Keep optional usage reads out of the action timeout queue. Read
@@ -854,6 +919,17 @@ impl PiClient {
         result
     }
 
+    pub async fn remove_queued_message(&self, message_id: String) -> Result<(), String> {
+        let (reply, receive) = oneshot::channel();
+        self.control(Control::RemoveQueued { message_id, reply })
+            .await?;
+        timeout(Duration::from_secs(5), receive)
+            .await
+            .map_err(|_| "取消排队消息超时。")?
+            .map_err(|_| "Pi 连接已关闭。")??;
+        Ok(())
+    }
+
     pub async fn rewrite(
         &self,
         message_id: &str,
@@ -974,6 +1050,26 @@ fn invalidate_context_usage(conversation: &mut Conversation, channel: &Channel<P
         usage: conversation.snapshot.context_usage.clone(),
     });
     emit(channel, vec![event]);
+}
+
+fn begin_request(
+    conversation: &mut Conversation,
+    body: &mut Value,
+    run_id: String,
+) -> Result<Vec<PiEvent>, String> {
+    if body["type"] == "compact" {
+        return conversation.begin_compaction(run_id);
+    }
+    let display = body
+        .as_object_mut()
+        .and_then(|body| body.remove("__hearthMessage"))
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| body["message"].as_str().unwrap_or_default().into());
+    let attachments = body
+        .as_object_mut()
+        .and_then(|body| body.remove("__hearthAttachments"))
+        .and_then(|value| serde_json::from_value(value).ok());
+    conversation.begin_with_attachments(run_id, display, attachments)
 }
 
 async fn write_wire(stdin: &mut Option<tokio::process::ChildStdin>, value: &Value) -> bool {
@@ -1897,6 +1993,8 @@ impl PiManager {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    mod message_queue;
 
     #[test]
     fn tool_redaction_preserves_fresh_confirmation_ids_and_lifecycle_routing() {

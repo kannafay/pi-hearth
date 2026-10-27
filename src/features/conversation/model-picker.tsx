@@ -22,18 +22,27 @@ export function ModelPicker({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
-  const { runtimeModels, modelCatalog, model, status, readOnly, settingsPending, changeModel } =
-    useConversationStore(
-      useShallow((state) => ({
-        runtimeModels: state.models,
-        modelCatalog: state.modelCatalog,
-        model: state.pendingSettings?.model ?? state.model,
-        status: state.status,
-        readOnly: state.readOnly,
-        settingsPending: state.settingsPending,
-        changeModel: state.changeModel,
-      })),
-    )
+  const {
+    runtimeModels,
+    modelCatalog,
+    model,
+    status,
+    readOnly,
+    settingsPending,
+    queueBusy,
+    changeModel,
+  } = useConversationStore(
+    useShallow((state) => ({
+      runtimeModels: state.models,
+      modelCatalog: state.modelCatalog,
+      model: state.pendingSettings?.model ?? state.model,
+      status: state.status,
+      readOnly: state.readOnly,
+      settingsPending: state.settingsPending,
+      queueBusy: state.queuedMessages.length > 0 || state.queueSubmissions > 0,
+      changeModel: state.changeModel,
+    })),
+  )
   // Refresh display metadata without changing the runtime's selectable models.
   const models = runtimeModels.map(
     (model) => modelCatalog?.find((item) => modelKey(item) === modelKey(model)) ?? model,
@@ -49,7 +58,7 @@ export function ModelPicker({
       onOpenChange={onOpenChange}
       items={items}
       value={model ? modelKey(model) : null}
-      disabled={status === 'disconnected' || Boolean(readOnly) || !models.length}
+      disabled={status === 'disconnected' || Boolean(readOnly) || !models.length || queueBusy}
       onValueChange={(value) => {
         const selected = models.find((item) => modelKey(item) === value)
         if (selected) void changeModel(selected)
@@ -57,6 +66,7 @@ export function ModelPicker({
     >
       <SelectTrigger
         aria-label={label}
+        title={queueBusy ? '队列处理完后可更改设置' : undefined}
         data-pending={Boolean(settingsPending) || undefined}
         size="sm"
         variant={compact ? 'ghost' : 'default'}

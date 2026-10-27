@@ -381,11 +381,19 @@ pub struct RuntimeSnapshot {
     pub thinking_level: String,
     pub available_thinking_levels: Vec<String>,
     pub messages: Vec<ChatMessage>,
+    pub queued_messages: Vec<QueuedMessage>,
     pub tools: Vec<ToolCall>,
     pub timeline: Vec<TimelineEntry>,
     pub active_run_id: Option<String>,
     #[ts(type = "number")]
     pub sequence: u64,
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+pub struct QueuedMessage {
+    pub id: String,
+    pub text: String,
+    pub attachments: Vec<Attachment>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -395,6 +403,9 @@ pub struct RuntimeSnapshot {
     rename_all_fields = "camelCase"
 )]
 pub enum EventData {
+    QueueChanged {
+        messages: Vec<QueuedMessage>,
+    },
     ContextUsageChanged {
         usage: Option<ContextUsage>,
     },
@@ -517,6 +528,7 @@ fn export_frontend_types() {
         ProjectInstructions::decl(),
         ContextUsage::decl(),
         RuntimeSnapshot::decl(),
+        QueuedMessage::decl(),
         ResourceScope::decl(),
         ResourceStatus::decl(),
         ResourceInfo::decl(),

@@ -12,6 +12,7 @@ type WireMessage = { index: number; end?: true; message?: PiEvent }
 let callbacks: Map<number, (message: WireMessage) => void>
 let nextId = 0
 const snapshot: RuntimeSnapshot = {
+  queuedMessages: [],
   instanceId: 'pi-1',
   permissionMode: 'ask',
   projectPath: 'project',
@@ -173,4 +174,21 @@ test('accepted busy streams survive navigation and a superseded re-subscription 
   await disconnectPi()
   callbacks.get(opened[2].id)?.({ index: 2, message: { ...event, sequence: 4 } })
   expect(received).toHaveBeenCalledTimes(3)
+})
+
+test('a session awaiting its next queued turn keeps its event channel when more chats are opened', async () => {
+  const opened: Channel<PiEvent>[] = []
+  vi.mocked(invoke).mockImplementation(async (_command, args) => {
+    opened.push((args as { onEvent: Channel<PiEvent> }).onEvent)
+    return {
+      ...snapshot,
+      instanceId: `pi-${opened.length}`,
+      queuedMessages:
+        opened.length === 1 ? [{ id: 'second', text: '追加消息', attachments: [] }] : [],
+    }
+  })
+  const received = vi.fn()
+  for (const name of ['A', 'B', 'C', 'D']) await connectPi(name, () => {}, received, name)
+  callbacks.get(opened[0].id)?.({ index: 0, message: event })
+  expect(received).toHaveBeenCalledExactlyOnceWith(event)
 })

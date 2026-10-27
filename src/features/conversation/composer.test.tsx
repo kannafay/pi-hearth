@@ -39,6 +39,23 @@ const file: Attachment = {
   size: 48,
   preview: null,
 }
+
+function runningReply() {
+  useConversationStore.setState({
+    status: 'running',
+    activeRunId: 'first',
+    messages: [
+      {
+        id: 'first-user',
+        role: 'user',
+        text: '原问题',
+        thinking: '',
+        status: 'complete',
+        error: null,
+      },
+    ],
+  })
+}
 beforeEach(() => {
   vi.clearAllMocks()
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
@@ -78,6 +95,78 @@ test('clicking composer padding and toolbar gaps focuses the draft without movin
 
   await user.keyboard('继续')
   expect(input).toHaveValue('保留继续草稿')
+})
+
+test.each(['button', 'enter'] as const)(
+  'a %s submission queues a message during a reply and keeps stop available',
+  async (via) => {
+    runningReply()
+    useWorkspaceStore.setState({ draft: '追加内容', draftAttachments: [file] })
+    const user = userEvent.setup()
+    const onSendStart = vi.fn()
+    render(<Composer onSendStart={onSendStart} />)
+    expect(screen.getByRole('button', { name: '停止生成' })).toBeEnabled()
+    if (via === 'button') await user.click(screen.getByRole('button', { name: '加入消息队列' }))
+    else {
+      await user.click(screen.getByRole('textbox', { name: '消息草稿' }))
+      await user.keyboard('{Enter}')
+    }
+    expect(useConversationStore.getState().send).toHaveBeenCalledExactlyOnceWith('追加内容', [
+      file.id,
+    ])
+    expect(useWorkspaceStore.getState().draft).toBe('')
+    expect(useWorkspaceStore.getState().draftAttachments).toEqual([])
+    expect(useConversationStore.getState().activeRunId).toBe('first')
+    expect(onSendStart).not.toHaveBeenCalled()
+  },
+)
+
+test('the queue shows pending text and attachments and cancels only the selected item', async () => {
+  runningReply()
+  const removeQueuedMessage = vi.fn().mockResolvedValue(undefined)
+  useConversationStore.setState({
+    queuedMessages: [
+      { id: 'second', text: '追加问题', attachments: [] },
+      { id: 'third', text: '', attachments: [file] },
+    ],
+    removeQueuedMessage,
+  })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  expect(screen.getByText('待发送 2 条 · 当前回复结束后依次处理')).toBeVisible()
+  expect(screen.getByText('追加问题')).toBeVisible()
+  expect(screen.getByText('notes.txt')).toBeVisible()
+  expect(screen.getByRole('button', { name: '停止生成' })).toHaveAttribute(
+    'title',
+    '停止生成并清空队列',
+  )
+  await user.click(screen.getByRole('button', { name: '取消排队消息 2' }))
+  expect(removeQueuedMessage).toHaveBeenCalledExactlyOnceWith('third')
+})
+
+test('a rejected queue submission preserves the draft and its attachments', async () => {
+  runningReply()
+  useConversationStore.setState({ send: vi.fn().mockResolvedValue(false) })
+  useWorkspaceStore.setState({ draft: '保留追加内容', draftAttachments: [file] })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  await user.click(screen.getByRole('button', { name: '加入消息队列' }))
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveValue('保留追加内容')
+  expect(useWorkspaceStore.getState().draftAttachments).toEqual([file])
+})
+
+test('queued messages keep model, permission and effort selectors consistent until the queue drains', () => {
+  runningReply()
+  const model = { provider: 'test', id: 'model', name: 'Test model' }
+  useConversationStore.setState({
+    model,
+    models: [model],
+    queuedMessages: [{ id: 'second', text: '追加消息', attachments: [] }],
+  })
+  render(<Composer onSendStart={() => {}} />)
+  expect(screen.getByRole('combobox', { name: '切换模型' })).toBeDisabled()
+  expect(screen.getByRole('combobox', { name: '会话权限' })).toBeDisabled()
+  expect(screen.getByRole('combobox', { name: '思考强度' })).toBeDisabled()
 })
 
 test('composer attachment controls keep their own actions without focusing the draft', async () => {

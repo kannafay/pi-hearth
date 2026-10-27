@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react'
-import { ArrowUp, LoaderCircle, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, ListPlus, LoaderCircle, Paperclip, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/icon-button'
 import { Textarea } from '@/components/ui/textarea'
@@ -22,7 +22,7 @@ import { ModelPicker } from './model-picker'
 import { PermissionPicker } from './permission-picker'
 import { ThinkingPicker } from './thinking-picker'
 import { AttachmentList } from './attachment-list'
-import { useConversationStore } from './store'
+import { canQueueMessage, useConversationStore } from './store'
 import { ConnectionNotice } from './connection-notice'
 import { sessionKey } from '@/lib/session-preferences'
 import { ConversationProjectPicker } from './conversation-project-picker'
@@ -63,6 +63,10 @@ export function Composer({
     openingSession,
     send,
     stop,
+    queuedMessages,
+    removeQueuedMessage,
+    canQueue,
+    waitingForSettings,
   } = useConversationStore(
     useShallow((state) => ({
       status: state.status,
@@ -75,6 +79,10 @@ export function Composer({
       openingSession: Boolean(state.connectionTarget?.sessionPath),
       send: state.send,
       stop: state.stop,
+      queuedMessages: state.queuedMessages,
+      removeQueuedMessage: state.removeQueuedMessage,
+      canQueue: canQueueMessage(state),
+      waitingForSettings: Boolean(state.pendingSettings),
       runStarted: Boolean(
         state.activeRunId &&
         (state.activity === '正在压缩上下文…' ||
@@ -219,7 +227,8 @@ export function Composer({
       const instanceId = useConversationStore.getState().instanceId
       const state = useConversationStore.getState()
       if (
-        state.status !== 'ready' ||
+        !['ready', 'running'].includes(state.status) ||
+        (state.status === 'running' && !canQueueMessage(state)) ||
         state.readOnly ||
         state.settingsPending ||
         pending ||
@@ -227,6 +236,10 @@ export function Composer({
         sessionUpdating
       )
         return
+      if (state.status === 'running' && slashCommand(text)) {
+        toast.error('请等待当前回复结束后再使用命令。')
+        return
+      }
       setCommandInstance(submittedInstance)
       const command = slashCommand(text)
         ? await executeComposerCommand(text, ids.length, {
@@ -237,7 +250,7 @@ export function Composer({
           })
         : null
       if (useConversationStore.getState().instanceId !== instanceId) return
-      if (command === null) onSendStart()
+      if (command === null && state.status === 'ready') onSendStart()
       if (command === true || (command === null && (await send(text, ids)))) {
         if (latest.draftKey) {
           useWorkspaceStore.getState().completeDraft(latest.draftId, text, ids)
@@ -268,6 +281,47 @@ export function Composer({
         </p>
       )}
       {status === 'disconnected' && <ConnectionNotice className="mb-2 px-1" />}
+      {status === 'running' && waitingForSettings && (
+        <p role="status" className="mb-2 px-1 text-xs text-muted-foreground">
+          设置将在当前回复结束后生效，随后可继续发送。
+        </p>
+      )}
+      {queuedMessages.length > 0 && (
+        <div
+          aria-label="待发送消息"
+          className="mb-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2"
+        >
+          <p role="status" className="mb-1 text-xs text-muted-foreground">
+            待发送 {queuedMessages.length} 条 ·{' '}
+            {status === 'disconnected' ? '连接已断开，以下消息尚未发送' : '当前回复结束后依次处理'}
+          </p>
+          <ol className="max-h-32 space-y-1 overflow-y-auto">
+            {queuedMessages.map((message, index) => (
+              <li key={message.id} className="flex items-center gap-2 text-xs">
+                <span aria-hidden className="text-muted-foreground">
+                  {index + 1}.
+                </span>
+                <span
+                  className="min-w-0 flex-1 truncate"
+                  title={message.text || message.attachments.map((file) => file.name).join('、')}
+                >
+                  {message.text || message.attachments.map((file) => file.name).join('、')}
+                  {message.text &&
+                    message.attachments.length > 0 &&
+                    ` · ${message.attachments.length} 个附件`}
+                </span>
+                <IconButton
+                  label={`取消排队消息 ${index + 1}`}
+                  disabled={!instanceId}
+                  onClick={() => void removeQueuedMessage(message.id).catch(toast.error)}
+                >
+                  <X className="size-3" />
+                </IconButton>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       {busy && activity === '正在压缩上下文…' && (
         <p
           role="status"
@@ -336,7 +390,13 @@ export function Composer({
             variant="embedded"
             aria-label="消息草稿"
             rows={1}
-            placeholder={dragging ? '松开以添加附件' : '发送消息，输入 / 使用命令，@ 引用文件…'}
+            placeholder={
+              dragging
+                ? '松开以添加附件'
+                : status === 'running'
+                  ? '继续输入，发送后将在当前回复结束时处理…'
+                  : '发送消息，输入 / 使用命令，@ 引用文件…'
+            }
             value={draft}
             disabled={Boolean(readOnly)}
             aria-autocomplete="list"
@@ -385,7 +445,7 @@ export function Composer({
               ) {
                 event.preventDefault()
                 if (
-                  status === 'ready' &&
+                  (status === 'ready' || canQueue) &&
                   !settingsPending &&
                   !commandBusy &&
                   !sessionUpdating &&
@@ -431,9 +491,10 @@ export function Composer({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <ContextUsageIndicator />
-              {busy ? (
+              {busy && (
                 <Button
                   aria-label="停止生成"
+                  title={queuedMessages.length ? '停止生成并清空队列' : '停止生成'}
                   size="icon-sm"
                   variant="secondary"
                   disabled={status === 'stopping' || !runStarted}
@@ -445,26 +506,27 @@ export function Composer({
                     <Square className="size-3 fill-current" />
                   )}
                 </Button>
-              ) : (
-                <Button
-                  aria-label="发送消息"
-                  size="icon-sm"
-                  disabled={
-                    status !== 'ready' ||
-                    Boolean(readOnly) ||
-                    Boolean(settingsPending) ||
-                    commandBusy ||
-                    sessionUpdating ||
-                    selecting ||
-                    pending > 0 ||
-                    draftRestoring ||
-                    (!draft.trim() && !draftAttachments.length)
-                  }
-                  onClick={() => void submit()}
-                >
-                  <ArrowUp />
-                </Button>
               )}
+              <Button
+                aria-label={status === 'running' ? '加入消息队列' : '发送消息'}
+                title={status === 'running' ? '当前回复结束后按顺序发送' : '发送消息'}
+                size="icon-sm"
+                disabled={
+                  !['ready', 'running'].includes(status) ||
+                  (status === 'running' && !canQueue) ||
+                  Boolean(readOnly) ||
+                  Boolean(settingsPending) ||
+                  commandBusy ||
+                  sessionUpdating ||
+                  selecting ||
+                  pending > 0 ||
+                  draftRestoring ||
+                  (!draft.trim() && !draftAttachments.length)
+                }
+                onClick={() => void submit()}
+              >
+                {status === 'running' ? <ListPlus /> : <ArrowUp />}
+              </Button>
             </div>
           </div>
         </div>

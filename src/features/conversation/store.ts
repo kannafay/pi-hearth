@@ -6,6 +6,7 @@ import type {
   ModelInfo,
   PermissionMode,
   PiEvent,
+  QueuedMessage,
   RuntimeSnapshot,
   ToolCall,
   TimelineEntry,
@@ -19,6 +20,7 @@ import {
   setPiThinkingLevel,
   setPiPermission,
   stopPi,
+  removeQueuedPiMessage,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 import { compactPi } from '@/lib/composer'
@@ -46,6 +48,8 @@ export interface ConversationData {
   readOnly: string | null
   status: Status
   messages: ChatMessage[]
+  queuedMessages: QueuedMessage[]
+  queueSubmissions: number
   tools: ToolCall[]
   timeline: TimelineEntry[]
   model: ModelInfo | null
@@ -94,6 +98,7 @@ interface ConversationState extends ConversationData {
   ) => Promise<void>
   disconnect: () => Promise<void>
   send: (message: string, attachmentIds?: string[]) => Promise<boolean>
+  removeQueuedMessage: (id: string) => Promise<void>
   compact: (instructions?: string) => Promise<boolean>
   rewrite: (messageId: string, message?: string) => Promise<boolean>
   stop: () => Promise<void>
@@ -110,6 +115,8 @@ export const emptyConversation: ConversationData = {
   readOnly: null,
   status: 'disconnected',
   messages: [],
+  queuedMessages: [],
+  queueSubmissions: 0,
   tools: [],
   timeline: [],
   model: null,
@@ -143,6 +150,7 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
     sequence: snapshot.sequence,
     activeRunId: snapshot.activeRunId,
     messages: snapshot.messages,
+    queuedMessages: snapshot.queuedMessages ?? [],
     streamingBase: Object.fromEntries(
       snapshot.messages
         .filter((message) => message.status === 'streaming')
@@ -190,12 +198,28 @@ export function thinkingCapabilitiesPending(state: ConversationData) {
   )
 }
 
+export function canQueueMessage(
+  state: Pick<ConversationData, 'status' | 'activeRunId' | 'messages' | 'pendingSettings'>,
+) {
+  return (
+    state.status === 'running' &&
+    !state.pendingSettings &&
+    Boolean(
+      state.activeRunId &&
+      state.messages.some((message) => message.id === `${state.activeRunId}-user`),
+    )
+  )
+}
+
 export function reducePiEvent(state: ConversationData, event: PiEvent): ConversationData {
   if (event.instanceId !== state.instanceId || event.sequence <= state.sequence) return state
   let next = { ...state, sequence: event.sequence }
   if (event.runId && state.activeRunId && event.runId !== state.activeRunId) return next
   const data = event.data
   switch (data.type) {
+    case 'queue_changed':
+      next.queuedMessages = data.messages
+      break
     case 'context_usage_changed':
       next.contextUsage = data.usage
       break
@@ -215,6 +239,7 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
         activeRunId: event.runId,
         status: state.status === 'stopping' ? 'stopping' : 'running',
         error: null,
+        queuedMessages: state.queuedMessages.filter((message) => message.id !== event.runId),
         messages: [
           ...state.messages,
           { ...data.message, startedAt: data.message.startedAt ?? Date.now() },
@@ -356,8 +381,16 @@ let settingsTask: { connection: number; instanceId: string; promise: Promise<voi
 function applyPendingSettings(): Promise<void> {
   const get = useConversationStore.getState
   const set = useConversationStore.setState
-  const { instanceId, status, readOnly, pendingSettings } = get()
-  if (!instanceId || status !== 'ready' || readOnly || !pendingSettings) return Promise.resolve()
+  const { instanceId, status, readOnly, pendingSettings, queuedMessages, queueSubmissions } = get()
+  if (
+    !instanceId ||
+    status !== 'ready' ||
+    queuedMessages.length ||
+    queueSubmissions ||
+    readOnly ||
+    !pendingSettings
+  )
+    return Promise.resolve()
   if (settingsTask?.connection === connection && settingsTask.instanceId === instanceId)
     return settingsTask.promise
 
@@ -444,8 +477,12 @@ function flushEvents() {
   if (events.length) useConversationStore.getState().receive(events)
 }
 
-const running = (state: Pick<ConversationData, 'status'>) =>
-  ['running', 'stopping'].includes(state.status)
+const running = (
+  state: Pick<ConversationData, 'status'> &
+    Partial<Pick<ConversationData, 'queuedMessages' | 'queueSubmissions'>>,
+) =>
+  ['running', 'stopping'].includes(state.status) ||
+  Boolean(state.queuedMessages?.length || state.queueSubmissions)
 
 export function isSessionBusy(
   session: { id: string; path: string },
@@ -694,6 +731,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     queued = []
     set({
       backgroundSessions: new Map(),
+      queuedMessages: [],
       ...sessionDisplay(get()),
       instanceId: null,
       status: 'disconnected',
@@ -715,19 +753,26 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   send: async (message, attachmentIds = []) => {
-    const { instanceId, status, readOnly, settingsPending } = get()
+    const { instanceId, status, readOnly, settingsPending, queuedMessages } = get()
     if (
       !instanceId ||
-      status !== 'ready' ||
+      !['ready', 'running'].includes(status) ||
+      (status === 'running' && !canQueueMessage(get())) ||
       readOnly ||
       settingsPending ||
       (!message.trim() && !attachmentIds.length)
     )
       return false
     const runId = crypto.randomUUID()
-    set({ status: 'running', activeRunId: runId, error: null, activity: '正在发送…' })
+    const queued = status === 'running' || queuedMessages.length > 0
+    if (!queued) set({ status: 'running', activeRunId: runId, error: null, activity: '正在发送…' })
+    else set({ queueSubmissions: get().queueSubmissions + 1 })
     try {
-      await sendPiMessage(instanceId, runId, message, attachmentIds)
+      const accepted = await sendPiMessage(instanceId, runId, message, attachmentIds)
+      flushEvents()
+      // Apply the sequenced acknowledgement before enabling settings again;
+      // channel events may still be waiting for their UI batch.
+      if (accepted) get().receive([accepted])
       return true
     } catch (reason) {
       updateInstance(instanceId, (state) =>
@@ -740,10 +785,22 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               activity: '',
               lastLocalActivityAt: Date.now(),
             }
-          : state,
+          : queued
+            ? { ...state, error: String(reason) }
+            : state,
       )
       return false
+    } finally {
+      if (queued)
+        updateInstance(instanceId, (state) => ({
+          ...state,
+          queueSubmissions: Math.max(0, state.queueSubmissions - 1),
+        }))
     }
+  },
+  removeQueuedMessage: async (id) => {
+    const { instanceId } = get()
+    if (instanceId) await removeQueuedPiMessage(instanceId, id)
   },
   compact: async (instructions = '') => {
     const { instanceId, status, readOnly, settingsPending } = get()
@@ -809,6 +866,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   changeModel: async (model) => {
+    if (get().queuedMessages.length || get().queueSubmissions) return
     const { instanceId, status, readOnly, pendingSettings, requestedThinkingLevel } = get()
     if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
     set({
@@ -825,6 +883,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     await applyPendingSettings()
   },
   changeThinkingLevel: async (level) => {
+    if (get().queuedMessages.length || get().queueSubmissions) return
     const state = get()
     const { instanceId, status, readOnly, pendingSettings } = state
     if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
@@ -848,6 +907,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     await applyPendingSettings()
   },
   changePermission: async (mode) => {
+    if (get().queuedMessages.length || get().queueSubmissions) return
     const state = get()
     if (
       state.status === 'disconnected' ||
