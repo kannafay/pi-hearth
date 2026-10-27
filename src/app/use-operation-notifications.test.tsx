@@ -36,3 +36,12 @@ test('new errors notify once, retries can notify again, and old errors are not r
   act(() => useWorkspaceStore.setState({ error: '卸载后' }))
   expect(toast.error).toHaveBeenCalledTimes(3)
 })
+
+test('model connection errors use friendly notifications while the original error is preserved', () => {
+  renderHook(useOperationNotifications)
+  act(() => useConversationStore.setState({ error: 'TypeError: fetch failed' }))
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith('连接模型服务失败，请检查网络或代理后重试。')
+  expect(useConversationStore.getState().error).toBe('TypeError: fetch failed')
+  act(() => useWorkspaceStore.setState({ error: 'fetch failed' }))
+  expect(toast.error).toHaveBeenLastCalledWith('fetch failed')
+})

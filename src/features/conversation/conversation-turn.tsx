@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useConversationLocalState } from './conversation-local-state'
 import { getResponseStatus } from './response-status'
+import { ResponseError } from './response-error'
 
 const markdownComponents = { code: ConversationCode }
 const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
@@ -217,7 +218,9 @@ export const ConversationTurn = memo(function ConversationTurn({
               </div>
             )}
             {cancelled && <p className="text-xs text-muted-foreground">已停止生成</p>}
-            {error && !cancelled && <p className="text-sm text-destructive">{error}</p>}
+            {error && !cancelled && !active && (
+              <ResponseError key={error} error={error} stateKey={turn.id} />
+            )}
             {!active && (reply || cancelled || error) && (
               <MessageActions
                 text={reply?.text ?? ''}

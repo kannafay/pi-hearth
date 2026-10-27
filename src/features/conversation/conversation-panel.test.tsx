@@ -245,6 +245,7 @@ test('a confirmed stop is displayed as cancellation rather than a provider error
     within(screen.getByRole('article', { name: 'Pi 的回复' })).getByText('已停止生成'),
   ).toBeVisible()
   expect(screen.queryByText('Request was aborted')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '失败原因' })).not.toBeInTheDocument()
 })
 
 function processFixture() {
@@ -308,6 +309,36 @@ function receive(sequence: number, data: PiEvent['data']) {
     ]),
   )
 }
+
+test('retrying keeps the live status, then a terminal failure exposes a friendly summary and optional cause', async () => {
+  const { user: prompt, answer } = processFixture()
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'running',
+    activeRunId: 'run-1',
+    activity: '连接中断，Pi 正在重试…',
+    messages: [
+      prompt,
+      { ...answer, text: '', thinking: '', status: 'failed', error: 'fetch failed' },
+    ],
+    timeline: [
+      { kind: 'message', id: prompt.id },
+      { kind: 'message', id: answer.id },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<ConversationPanel />)
+  expect(screen.getByRole('status')).toHaveTextContent('连接中断，Pi 正在重试…')
+  expect(screen.queryByText('fetch failed')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '失败原因' })).not.toBeInTheDocument()
+
+  receive(1, { type: 'run_finished', status: 'failed', error: 'fetch failed' })
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent('连接模型服务失败，请检查网络或代理后重试。')
+  expect(screen.queryByText('fetch failed')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '失败原因' }))
+  expect(screen.getByText('fetch failed')).toBeVisible()
+})
 
 test('a reply waits for output before showing thinking and generation states', () => {
   const { user, answer } = processFixture()

@@ -556,6 +556,7 @@ select {
 
 .execution-process-content,
 .execution-record-content,
+.response-error-content,
 .conversation-code-content,
 .settings-model-content {
   height: var(--collapsible-panel-height);
@@ -571,6 +572,7 @@ select {
 
 .execution-process-content,
 .execution-record-content,
+.response-error-content,
 .conversation-code-content {
   /* Clip disclosure animations without introducing another scrolling ancestor. */
   overflow: clip;
@@ -582,6 +584,7 @@ select {
 :is(
   .execution-process-content,
   .execution-record-content,
+  .response-error-content,
   .conversation-code-content,
   .settings-model-content
 ):is([data-starting-style], [data-ending-style]) {
