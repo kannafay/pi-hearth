@@ -26,6 +26,6 @@ export function validateProxy(proxy: ProxySettings) {
       return '请输入有效的 HTTP、HTTPS 或 SOCKS5 代理地址。'
     return ''
   } catch {
-    return '请输入完整的代理地址，例如 http://127.0.0.1:7890。'
+    return '请输入完整的代理地址，例如 http://127.0.0.1:10808。'
   }
 }

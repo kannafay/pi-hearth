@@ -94,6 +94,53 @@ test('invalid proxy addresses cannot be saved or tested', async () => {
   expect(updateAppSettings).not.toHaveBeenCalled()
 })
 
+test.each(['', defaultProxySettings.noProxy])(
+  'default bypass %s is a placeholder and stays effective during testing',
+  async (noProxy) => {
+    useWorkspaceStore.setState({
+      proxy: { ...defaultProxySettings, mode: 'manual', url: 'http://127.0.0.1:10808', noProxy },
+    })
+    const user = userEvent.setup()
+    render(<NetworkSettings />)
+    const bypass = screen.getByRole('textbox', { name: '不使用代理的地址' })
+    expect(bypass).toHaveValue('')
+    expect(bypass).toHaveAttribute('placeholder', 'localhost,127.0.0.1,[::1]')
+    expect(screen.getByRole('textbox', { name: '代理地址' })).toHaveAttribute(
+      'placeholder',
+      'http://127.0.0.1:10808',
+    )
+    expect(screen.getByRole('button', { name: '保存并应用' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(testProxyConnection).toHaveBeenCalledExactlyOnceWith(
+      { ...defaultProxySettings, mode: 'manual', url: 'http://127.0.0.1:10808' },
+      'https://www.google.com/generate_204',
+    )
+    expect(updateAppSettings).not.toHaveBeenCalled()
+  },
+)
+
+test('clearing custom bypass addresses restores the default after saving', async () => {
+  useWorkspaceStore.setState({
+    proxy: {
+      ...defaultProxySettings,
+      mode: 'manual',
+      url: 'http://127.0.0.1:10808',
+      noProxy: 'example.local',
+    },
+  })
+  const user = userEvent.setup()
+  render(<NetworkSettings />)
+  const bypass = screen.getByRole('textbox', { name: '不使用代理的地址' })
+  expect(bypass).toHaveValue('example.local')
+  await user.clear(bypass)
+  await user.click(screen.getByRole('button', { name: '保存并应用' }))
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({
+    proxy: { ...defaultProxySettings, mode: 'manual', url: 'http://127.0.0.1:10808' },
+  })
+  expect(screen.getByRole('textbox', { name: '不使用代理的地址' })).toHaveValue('')
+  expect(screen.getByRole('button', { name: '保存并应用' })).toBeDisabled()
+})
+
 test('background tasks block applying changes but still allow testing the draft', async () => {
   useConversationStore.setState({
     backgroundSessions: new Map([

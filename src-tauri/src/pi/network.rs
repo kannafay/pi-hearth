@@ -29,7 +29,7 @@ fn proxy_url(value: &str) -> Result<Url, String> {
         return Err("代理地址过长或包含空白字符。".into());
     }
     let mut url =
-        Url::parse(value).map_err(|_| "请输入完整的代理地址，例如 http://127.0.0.1:7890。")?;
+        Url::parse(value).map_err(|_| "请输入完整的代理地址，例如 http://127.0.0.1:10808。")?;
     if matches!(url.scheme(), "socks" | "socks5h") {
         let _ = url.set_scheme("socks5");
     }
@@ -143,8 +143,13 @@ pub(super) fn environment(
             for key in PROXY_KEYS {
                 result.values.insert(key.into(), url.clone());
             }
+            let no_proxy = if proxy.no_proxy.trim().is_empty() {
+                ProxySettings::default().no_proxy
+            } else {
+                proxy.no_proxy.clone()
+            };
             for key in ["NO_PROXY", "no_proxy"] {
-                result.values.insert(key.into(), proxy.no_proxy.clone());
+                result.values.insert(key.into(), no_proxy.clone());
             }
         }
     }
@@ -309,6 +314,25 @@ mod tests {
         }
         assert_eq!(direct.values["NO_PROXY"], "*");
         assert_eq!(direct.values["no_proxy"], "*");
+    }
+
+    #[test]
+    fn empty_manual_bypass_uses_default_local_addresses() {
+        let source = root();
+        for no_proxy in ["", " \t "] {
+            let environment = environment(
+                &ProxySettings {
+                    mode: ProxyMode::Manual,
+                    url: "http://127.0.0.1:10808".into(),
+                    no_proxy: no_proxy.into(),
+                },
+                &source,
+            )
+            .unwrap();
+            for key in ["NO_PROXY", "no_proxy"] {
+                assert_eq!(environment.values[key], ProxySettings::default().no_proxy);
+            }
+        }
     }
 
     #[tokio::test]

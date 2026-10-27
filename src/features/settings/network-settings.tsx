@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { isDesktop } from '@/lib/desktop'
-import { testProxyConnection, validateProxy } from '@/lib/network'
+import { defaultProxySettings, testProxyConnection, validateProxy } from '@/lib/network'
 import { toast } from '@/lib/toast'
 import type { ProxySettings } from '@/lib/generated/pi'
 import { SettingsRow } from './settings-row'
@@ -55,14 +55,29 @@ export function NetworkSettings() {
       ),
   )
   const [edit, setEdit] = useState<{ source: ProxySettings; draft: ProxySettings } | null>(null)
-  const draft = edit?.source === proxy ? edit.draft : proxy
+  const draft =
+    edit?.source === proxy
+      ? edit.draft
+      : {
+          ...proxy,
+          noProxy: proxy.noProxy.trim() === defaultProxySettings.noProxy ? '' : proxy.noProxy,
+        }
   const setDraft = (draft: ProxySettings) => setEdit({ source: proxy, draft })
   const [target, setTarget] = useState('https://www.google.com/generate_204')
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState('')
   const unavailable = !isDesktop() || !ready || pending || testing
-  const normalized = { ...draft, url: draft.url.trim(), noProxy: draft.noProxy.trim() }
-  const changed = JSON.stringify(normalized) !== JSON.stringify(proxy)
+  const normalized = {
+    ...draft,
+    url: draft.url.trim(),
+    noProxy: draft.noProxy.trim() || defaultProxySettings.noProxy,
+  }
+  const changed =
+    JSON.stringify(normalized) !==
+    JSON.stringify({
+      ...proxy,
+      noProxy: proxy.noProxy.trim() || defaultProxySettings.noProxy,
+    })
   const invalid = validateProxy(normalized)
   const {
     label: modeLabel,
@@ -148,7 +163,7 @@ export function NetworkSettings() {
                 type="url"
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="http://127.0.0.1:7890"
+                placeholder="http://127.0.0.1:10808"
                 value={draft.url}
                 disabled={unavailable}
                 aria-invalid={Boolean(draft.url && invalid)}
@@ -159,7 +174,7 @@ export function NetworkSettings() {
                 }}
               />
               <FieldDescription id="network-proxy-url-description">
-                支持 HTTP、HTTPS 和 SOCKS5，例如 socks5://127.0.0.1:7890。
+                支持 HTTP、HTTPS 和 SOCKS5，例如 http://127.0.0.1:10808。
               </FieldDescription>
               <FieldError>{draft.url && invalid}</FieldError>
             </Field>
@@ -169,13 +184,12 @@ export function NetworkSettings() {
                 id="network-no-proxy"
                 autoComplete="off"
                 spellCheck={false}
+                placeholder={defaultProxySettings.noProxy}
                 value={draft.noProxy}
                 disabled={unavailable}
                 onChange={(event) => setDraft({ ...draft, noProxy: event.target.value })}
               />
-              <FieldDescription>
-                多个地址用英文逗号分隔。本机模型和本地回调默认直连。
-              </FieldDescription>
+              <FieldDescription>多个地址用英文逗号分隔，留空使用默认地址。</FieldDescription>
             </Field>
           </div>
         )}
