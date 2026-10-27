@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useWorkspaceStore } from '@/app/store'
 import { isSessionBusy, isProjectBusy, useConversationStore } from '@/features/conversation/store'
-import { openProjectFolder } from '@/lib/desktop'
 import type { ProjectInfo, SessionInfo } from '@/lib/generated/pi'
 import {
   isCurrentSession,
@@ -43,6 +42,7 @@ import { useNavigationSort } from './use-navigation-sort'
 import { ProjectDeleteDialog } from './project-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
 import { WorkspacePanelHeader } from './workspace-panel'
+import { ProjectOpenWithMenu } from './project-open-with-menu'
 
 const navigationFilters = [
   ['all', '全部', LayoutGrid],
@@ -548,17 +548,7 @@ export function WorkspaceNavigationContent({
                                 <SquarePen className="size-3.5" />
                                 编辑项目
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={!desktop}
-                                onClick={() => {
-                                  void openProjectFolder(project.path).catch((reason: unknown) => {
-                                    useWorkspaceStore.setState({ error: String(reason) })
-                                  })
-                                }}
-                              >
-                                <FolderOpen className="size-3.5" />
-                                在资源管理器中打开
-                              </DropdownMenuItem>
+                              <ProjectOpenWithMenu path={project.path} disabled={!desktop} />
                               <DropdownMenuItem
                                 disabled={!desktop || isProjectBusy(project.path, conversation)}
                                 onClick={() => void workspace.setProjectArchived(project, true)}

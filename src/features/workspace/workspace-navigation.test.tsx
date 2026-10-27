@@ -5,13 +5,67 @@ import { useWorkspaceStore } from '@/app/store'
 import { emptyConversation, useConversationStore } from '@/features/conversation/store'
 import { WorkspaceNavigation } from './workspace-navigation'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { DialogLayerProvider } from '@/components/dialog-layers'
+import { openDirectoryWith, type DirectoryApplication } from '@/lib/desktop'
+import { toast } from '@/lib/toast'
+
+vi.mock('@/lib/desktop', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/desktop')>()),
+  openDirectoryWith: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('@/lib/toast', () => ({ toast: { error: vi.fn() } }))
 
 const project = { path: 'D:/projects/hearth', name: 'Hearth' }
 
 beforeEach(() => {
+  vi.mocked(openDirectoryWith).mockReset().mockResolvedValue(undefined)
+  vi.mocked(toast.error).mockClear()
   useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
   useConversationStore.setState(useConversationStore.getInitialState(), true)
   useConversationStore.setState({ status: 'ready' })
+})
+
+async function openProjectApplications(user: ReturnType<typeof userEvent.setup>) {
+  useWorkspaceStore.setState({ projects: [project], projectPath: 'D:/different-project' })
+  render(
+    <DialogLayerProvider>
+      <WorkspaceNavigation
+        desktop
+        onCreate={vi.fn()}
+        onSettings={vi.fn()}
+        onInstructions={vi.fn()}
+      />
+    </DialogLayerProvider>,
+  )
+  screen.getByRole('button', { name: 'Hearth 项目菜单' }).focus()
+  await user.keyboard('{Enter}')
+  const trigger = await screen.findByRole('menuitem', { name: '打开方式' })
+  expect(screen.queryByRole('menuitem', { name: '在资源管理器中打开' })).not.toBeInTheDocument()
+  trigger.focus()
+  await user.keyboard('{ArrowRight}')
+  await screen.findByRole('menuitem', { name: 'VS Code' })
+}
+
+test.each<{ label: string; application: DirectoryApplication }>([
+  { label: 'VS Code', application: 'vscode' },
+  { label: '资源管理器', application: 'explorer' },
+  { label: 'Windows 终端', application: 'terminal' },
+])('$label opens the project whose menu was used', async ({ label, application }) => {
+  const user = userEvent.setup()
+  await openProjectApplications(user)
+  screen.getByRole('menuitem', { name: label }).focus()
+  await user.keyboard('{Enter}')
+  expect(openDirectoryWith).toHaveBeenCalledExactlyOnceWith(project.path, application)
+})
+
+test('a project application launch failure is reported through the shared toast', async () => {
+  const reason = '无法打开 Windows 终端，请确认已安装 Windows Terminal。'
+  vi.mocked(openDirectoryWith).mockRejectedValueOnce(reason)
+  const user = userEvent.setup()
+  await openProjectApplications(user)
+  screen.getByRole('menuitem', { name: 'Windows 终端' }).focus()
+  await user.keyboard('{Enter}')
+  expect(toast.error).toHaveBeenCalledExactlyOnceWith(reason)
 })
 
 test('a background reply keeps its progress badge while other sessions remain navigable', async () => {

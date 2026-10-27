@@ -4,16 +4,12 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { useWorkspaceStore } from '@/app/store'
 import { DialogLayerProvider } from '@/components/dialog-layers'
 import { useConversationStore } from '@/features/conversation/store'
-import { openDirectoryWith, type DirectoryApplication } from '@/lib/desktop'
 import { sessionKey } from '@/lib/session-preferences'
-import { toast } from '@/lib/toast'
 import { ConversationMenu } from './conversation-menu'
 
 vi.mock('@/lib/desktop', () => ({
   isDesktop: () => true,
-  openDirectoryWith: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/toast', () => ({ toast: { error: vi.fn() } }))
 
 const session = {
   id: 'active',
@@ -40,11 +36,6 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>) {
 async function choose(user: ReturnType<typeof userEvent.setup>, name: string) {
   ;(await screen.findByRole('menuitem', { name })).focus()
   await user.keyboard('{Enter}')
-}
-
-async function openApplications(user: ReturnType<typeof userEvent.setup>) {
-  screen.getByRole('menuitem', { name: '打开方式' }).focus()
-  await user.keyboard('{ArrowRight}')
 }
 
 beforeEach(() => {
@@ -82,42 +73,30 @@ test('rename, pin, and archive act on the active session and reflect its current
   expect(archive).toHaveBeenCalledExactlyOnceWith(session, true)
 })
 
-test.each<{ label: string; application: DirectoryApplication }>([
-  { label: 'VS Code', application: 'vscode' },
-  { label: '资源管理器', application: 'explorer' },
-  { label: 'Windows 终端', application: 'terminal' },
-])('$label opens the current conversation working directory', async ({ label, application }) => {
-  const user = userEvent.setup()
-  renderMenu()
-  await openMenu(user)
-  await openApplications(user)
-  await choose(user, label)
-  expect(openDirectoryWith).toHaveBeenCalledExactlyOnceWith(session.cwd, application)
-})
+test.each([null, session.cwd])(
+  'conversation menus omit directory actions (%s)',
+  async (projectPath) => {
+    useWorkspaceStore.setState({ projectPath })
+    const user = userEvent.setup()
+    renderMenu()
+    await openMenu(user)
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      '重命名',
+      '置顶',
+      '归档',
+    ])
+  },
+)
 
-test('rename and archive wait for the active reply while directory actions remain available', async () => {
+test('rename and archive wait for the active reply while pinning remains available', async () => {
   useConversationStore.setState({ status: 'running' })
   const user = userEvent.setup()
   renderMenu()
   await openMenu(user)
   expect(screen.getByRole('menuitem', { name: '重命名' })).toHaveAttribute('aria-disabled', 'true')
   expect(screen.getByRole('menuitem', { name: '归档' })).toHaveAttribute('aria-disabled', 'true')
-  expect(screen.getByRole('menuitem', { name: '打开方式' })).not.toHaveAttribute(
+  expect(screen.getByRole('menuitem', { name: '置顶' })).not.toHaveAttribute(
     'aria-disabled',
     'true',
-  )
-})
-
-test('a missing application reports the launch failure through the shared toast', async () => {
-  vi.mocked(openDirectoryWith).mockRejectedValueOnce(
-    '无法打开 Windows 终端，请确认已安装 Windows Terminal。',
-  )
-  const user = userEvent.setup()
-  renderMenu()
-  await openMenu(user)
-  await openApplications(user)
-  await choose(user, 'Windows 终端')
-  expect(toast.error).toHaveBeenCalledExactlyOnceWith(
-    '无法打开 Windows 终端，请确认已安装 Windows Terminal。',
   )
 })
