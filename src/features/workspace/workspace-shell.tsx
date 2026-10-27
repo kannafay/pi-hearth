@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, Minus, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react'
+import { ChevronRight, PanelLeft, PanelRight, Search } from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useOperationNotifications } from '@/app/use-operation-notifications'
 import { themeOptions } from '@/app/theme-options'
@@ -8,6 +8,7 @@ import { ThemeToggleIcon } from '@/app/theme-toggle-icon'
 import { useMediaQuery } from '@/app/use-media-query'
 import { useWindowResizeMotion } from '@/app/use-window-resize-motion'
 import { IconButton } from '@/components/icon-button'
+import { WindowCaptionIcon } from '@/components/window-caption-icon'
 import { DialogLayerProvider, useDialogLayers } from '@/components/dialog-layers'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDialogPresence } from '@/components/use-dialog-presence'
@@ -349,7 +350,7 @@ function WorkspaceLayout() {
               className="caption-button"
               onClick={() => windowAction('minimize')}
             >
-              <Minus />
+              <WindowCaptionIcon action="minimize" />
             </button>
             <button
               type="button"
@@ -357,7 +358,7 @@ function WorkspaceLayout() {
               className="caption-button"
               onClick={() => windowAction('maximize')}
             >
-              <Square />
+              <WindowCaptionIcon action="maximize" />
             </button>
             <button
               type="button"
@@ -365,7 +366,7 @@ function WorkspaceLayout() {
               className="caption-button caption-close"
               onClick={() => windowAction('close')}
             >
-              <X />
+              <WindowCaptionIcon action="close" />
             </button>
           </div>
         )}
