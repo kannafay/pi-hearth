@@ -17,6 +17,7 @@ mod search;
 mod session_pool;
 pub mod storage;
 mod tool_output;
+mod turn_settings;
 mod types;
 
 pub use catalog::WorkspaceManager;
@@ -106,6 +107,20 @@ pub async fn pi_remove_queued_message(
         .client(&instance_id)
         .await?
         .remove_queued_message(message_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn pi_update_next_settings(
+    manager: State<'_, PiManager>,
+    instance_id: String,
+    settings: types::NextTurnSettings,
+    preferred_thinking_level: Option<String>,
+) -> Result<serde_json::Value, String> {
+    manager
+        .client(&instance_id)
+        .await?
+        .update_next_settings(settings, preferred_thinking_level)
         .await
 }
 

@@ -18,6 +18,7 @@ type SessionDisplay = Pick<
   | 'thinkingLevel'
   | 'availableThinkingLevels'
   | 'pendingSettings'
+  | 'runtimeSettingsPending'
   | 'lastLocalActivityAt'
 >
 export interface ConversationViewState {
@@ -94,6 +95,7 @@ export function sessionDisplay(state: ConversationData): SessionDisplay {
     availableThinkingLevels: state.availableThinkingLevels,
     // Retain deferred choices, not an in-flight write belonging to an old connection.
     pendingSettings: state.settingsPending ? null : state.pendingSettings,
+    runtimeSettingsPending: state.runtimeSettingsPending,
     lastLocalActivityAt: state.lastLocalActivityAt,
   }
 }

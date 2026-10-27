@@ -51,7 +51,11 @@ export type ProjectInstructions = { path: string, content: string, };
 
 export type ContextUsage = { tokens: number | null, contextWindow: number, percent: number | null, };
 
-export type RuntimeSnapshot = { instanceId: string, projectPath: string, sessionId: string, sessionFile: string | null, readOnly: string | null, permissionMode: PermissionMode, model: ModelInfo | null, contextUsage?: ContextUsage, models: Array<ModelInfo>, thinkingLevel: string, availableThinkingLevels: Array<string>, messages: Array<ChatMessage>, queuedMessages: Array<QueuedMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, activeRunId: string | null, sequence: number, };
+export type RuntimeSnapshot = { instanceId: string, projectPath: string, sessionId: string, sessionFile: string | null, readOnly: string | null, permissionMode: PermissionMode, model: ModelInfo | null, contextUsage?: ContextUsage, models: Array<ModelInfo>, thinkingLevel: string, availableThinkingLevels: Array<string>, messages: Array<ChatMessage>, queuedMessages: Array<QueuedMessage>, pendingSettings?: NextTurnSettings, settingsApplying?: boolean, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, activeRunId: string | null, sequence: number, };
+
+export type NextTurnSettings = { model?: ModelInfo, thinkingLevel?: string, permissionMode?: PermissionMode, };
+
+export type ConversationSettings = { model: ModelInfo | null, thinkingLevel: string, availableThinkingLevels: Array<string>, permissionMode: PermissionMode, pending: NextTurnSettings | null, applying: boolean, requestedThinkingLevel: string | null, };
 
 export type QueuedMessage = { id: string, text: string, attachments: Array<Attachment>, };
 
@@ -63,6 +67,6 @@ export type ResourceInfo = { name: string, description: string, source: string, 
 
 export type ResourceCatalog = { skills: Array<ResourceInfo>, mcp: Array<ResourceInfo>, warnings: Array<string>, };
 
-export type EventData = { "type": "queue_changed", messages: Array<QueuedMessage>, } | { "type": "context_usage_changed", usage: ContextUsage | null, } | { "type": "transcript_replaced", messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, } | { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
+export type EventData = { "type": "settings_changed", settings: ConversationSettings, error: string | null, } | { "type": "queue_changed", messages: Array<QueuedMessage>, } | { "type": "context_usage_changed", usage: ContextUsage | null, } | { "type": "transcript_replaced", messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, } | { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
 
 export type PiEvent = { instanceId: string, projectPath: string, sessionId: string, runId: string | null, sequence: number, data: EventData, };

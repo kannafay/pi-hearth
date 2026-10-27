@@ -1,6 +1,219 @@
 use super::*;
 use std::io::Read;
 
+#[tokio::test]
+async fn queued_settings_apply_before_the_next_turn_without_changing_the_current_reply() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+    let (advance, phase) = std::sync::mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let mut requests = Vec::new();
+        for index in 1..=3 {
+            let (mut socket, request) = loop {
+                let (mut socket, _) = listener.accept().unwrap();
+                if let Some(request) = request_body(&mut socket) {
+                    break (socket, request);
+                }
+            };
+            requests.push(request);
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").unwrap();
+            let chunk = json!({"id":format!("settings-{index}"), "object":"chat.completion.chunk", "model":"model", "choices":[{"index":0,"delta":{"role":"assistant","content":format!("SETTINGS ANSWER {index}")},"finish_reason":null}]});
+            socket
+                .write_all(format!("data: {chunk}\n\n").as_bytes())
+                .unwrap();
+            socket.flush().unwrap();
+            phase.recv_timeout(Duration::from_secs(30)).unwrap();
+            socket.write_all(b"data: {\"id\":\"settings\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
+        }
+        requests
+    });
+    let fixture = ResidentFixture::with_models(&endpoint, "offline-test-key", json!([
+        {"id":"model","name":"Offline A","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096},
+        {"id":"next-model","name":"Offline B","reasoning":true,"input":["text"],"contextWindow":64000,"maxTokens":4096}
+    ])).await;
+    let client = fixture
+        .manager
+        .client(&fixture.initial.instance_id)
+        .await
+        .unwrap();
+    let initial = client.snapshot().await.unwrap();
+    let model_a = initial
+        .models
+        .iter()
+        .find(|model| model.id == "model")
+        .unwrap()
+        .clone();
+    let model_b = initial
+        .models
+        .iter()
+        .find(|model| model.id == "next-model")
+        .unwrap()
+        .clone();
+    let (events, mut received) = mpsc::unbounded_channel::<Value>();
+    client
+        .subscribe(Channel::new(move |body| {
+            let _ = events.send(body.deserialize().unwrap());
+            Ok(())
+        }))
+        .await
+        .unwrap();
+    client
+        .request(
+            json!({"type":"prompt","message":"FIRST SETTINGS TURN"}),
+            Some("settings-first".into()),
+        )
+        .await
+        .unwrap();
+    until_event(&mut received, |event| {
+        event["data"]["delta"] == "SETTINGS ANSWER 1"
+    })
+    .await;
+    client
+        .request(
+            json!({"type":"prompt","message":"SECOND SETTINGS TURN"}),
+            Some("settings-second".into()),
+        )
+        .await
+        .unwrap();
+    client
+        .request(
+            json!({"type":"prompt","message":"THIRD SETTINGS TURN"}),
+            Some("settings-third".into()),
+        )
+        .await
+        .unwrap();
+    client
+        .update_next_settings(
+            NextTurnSettings {
+                model: Some(model_b.clone()),
+                ..Default::default()
+            },
+            Some("off".into()),
+        )
+        .await
+        .unwrap();
+    client
+        .update_next_settings(
+            NextTurnSettings {
+                permission_mode: Some(PermissionMode::Auto),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    client
+        .update_next_settings(
+            NextTurnSettings {
+                permission_mode: Some(PermissionMode::Full),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let current = client.snapshot().await.unwrap();
+    assert_eq!(current.active_run_id.as_deref(), Some("settings-first"));
+    assert_eq!(current.model.as_ref().unwrap().id, "model");
+    assert_eq!(current.permission_mode, PermissionMode::Ask);
+    assert_eq!(current.thinking_level, initial.thinking_level);
+    assert_eq!(current.messages.last().unwrap().text, "SETTINGS ANSWER 1");
+    assert_eq!(
+        current
+            .pending_settings
+            .as_ref()
+            .unwrap()
+            .model
+            .as_ref()
+            .unwrap()
+            .id,
+        "next-model"
+    );
+    assert_eq!(
+        current.pending_settings.as_ref().unwrap().permission_mode,
+        Some(PermissionMode::Full)
+    );
+    fixture.open(1).await;
+    advance.send(()).unwrap();
+    let next = until_event(&mut received, |event| {
+        event["data"]["delta"] == "SETTINGS ANSWER 2"
+    })
+    .await;
+    let applied = next
+        .iter()
+        .position(|event| {
+            event["data"]["type"] == "settings_changed"
+                && event["data"]["settings"]["pending"].is_null()
+        })
+        .unwrap();
+    let started = next
+        .iter()
+        .position(|event| {
+            event["runId"] == "settings-second" && event["data"]["type"] == "run_started"
+        })
+        .unwrap();
+    assert!(applied < started);
+    let current = client.snapshot().await.unwrap();
+    assert_eq!(current.model.as_ref().unwrap().id, "next-model");
+    assert_eq!(current.permission_mode, PermissionMode::Full);
+    assert_eq!(current.thinking_level, "off");
+    assert!(current.pending_settings.is_none());
+
+    client
+        .update_next_settings(
+            NextTurnSettings {
+                model: Some(model_a),
+                permission_mode: Some(PermissionMode::Ask),
+                thinking_level: Some("high".into()),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let current = client.snapshot().await.unwrap();
+    assert_eq!(current.model.as_ref().unwrap().id, "next-model");
+    assert_eq!(current.permission_mode, PermissionMode::Full);
+    assert_eq!(current.thinking_level, "off");
+    advance.send(()).unwrap();
+    until_event(&mut received, |event| {
+        event["data"]["delta"] == "SETTINGS ANSWER 3"
+    })
+    .await;
+    let current = client.snapshot().await.unwrap();
+    assert_eq!(current.model.as_ref().unwrap().id, "model");
+    assert_eq!(current.permission_mode, PermissionMode::Ask);
+    assert_eq!(current.thinking_level, "high");
+    advance.send(()).unwrap();
+    until_event(&mut received, |event| {
+        event["runId"] == "settings-third" && event["data"]["type"] == "run_finished"
+    })
+    .await;
+    let requests = server.join().unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .map(|request| request["model"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["model", "next-model", "model"]
+    );
+    let current = client.snapshot().await.unwrap();
+    for id in [
+        "settings-first-user",
+        "settings-second-user",
+        "settings-third-user",
+    ] {
+        assert_eq!(
+            current
+                .messages
+                .iter()
+                .filter(|message| message.id == id)
+                .count(),
+            1
+        );
+    }
+    fixture.manager.disconnect().await;
+}
+
 fn request_body(socket: &mut std::net::TcpStream) -> Option<Value> {
     socket
         .set_read_timeout(Some(Duration::from_secs(15)))

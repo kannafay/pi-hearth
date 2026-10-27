@@ -146,6 +146,7 @@ pub fn run() {
             pi::composer::pi_compact,
             pi::pi_send,
             pi::pi_remove_queued_message,
+            pi::pi_update_next_settings,
             pi::pi_rewrite,
             pi::pi_stop,
             pi::pi_set_model,

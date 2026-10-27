@@ -155,7 +155,7 @@ test('a rejected queue submission preserves the draft and its attachments', asyn
   expect(useWorkspaceStore.getState().draftAttachments).toEqual([file])
 })
 
-test('queued messages keep model, permission and effort selectors consistent until the queue drains', () => {
+test('model, permission and effort selectors stay enabled with queued messages', () => {
   runningReply()
   const model = { provider: 'test', id: 'model', name: 'Test model' }
   useConversationStore.setState({
@@ -164,9 +164,9 @@ test('queued messages keep model, permission and effort selectors consistent unt
     queuedMessages: [{ id: 'second', text: '追加消息', attachments: [] }],
   })
   render(<Composer onSendStart={() => {}} />)
-  expect(screen.getByRole('combobox', { name: '切换模型' })).toBeDisabled()
-  expect(screen.getByRole('combobox', { name: '会话权限' })).toBeDisabled()
-  expect(screen.getByRole('combobox', { name: '思考强度' })).toBeDisabled()
+  expect(screen.getByRole('combobox', { name: '切换模型' })).toBeEnabled()
+  expect(screen.getByRole('combobox', { name: '会话权限' })).toBeEnabled()
+  expect(screen.getByRole('combobox', { name: '思考强度' })).toBeEnabled()
 })
 
 test('composer attachment controls keep their own actions without focusing the draft', async () => {

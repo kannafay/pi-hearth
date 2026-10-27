@@ -7,6 +7,7 @@ use super::{
     session_pool::{FileRevision, MAX_OPEN_SESSIONS, RetainedSession},
     storage,
     tool_output::{ToolOutput, mask, result_text},
+    turn_settings::{Action as SettingsAction, TurnSettings},
     types::*,
 };
 use serde_json::{Value, json};
@@ -51,6 +52,11 @@ enum Control {
     },
     RemoveQueued {
         message_id: String,
+        reply: Reply,
+    },
+    UpdateSettings {
+        settings: NextTurnSettings,
+        preferred: Option<String>,
         reply: Reply,
     },
     Subscribe {
@@ -121,6 +127,7 @@ struct Pending {
     deadline: Instant,
     history: bool,
     writes: bool,
+    settings: bool,
 }
 
 struct Approval {
@@ -289,12 +296,15 @@ impl PiClient {
         let runtime_project_path = project_path.clone();
         let file_revision = Arc::new(std::sync::Mutex::new(None));
         let runtime_revision = file_revision.clone();
+        let runtime_source = source_agent_dir.to_owned();
+        let runtime_token = action_token.clone();
         let runtime = tauri::async_runtime::spawn(async move {
             let _tree = tree;
             let mut conversation = Conversation::new(runtime_instance_id, runtime_project_path);
             let mut channel = channel;
             let mut pending = HashMap::<String, Pending>::new();
             let mut queue = MessageQueue::default();
+            let mut next_settings = TurnSettings::default();
             let mut context_usage = ContextUsageReader::default();
             let mut approvals = HashMap::<String, Approval>::new();
             let mut decoder = JsonLines::default();
@@ -324,7 +334,7 @@ impl PiClient {
                         };
                         match control {
                             Some(Control::Renew { instance_id, channel: next, preserve, reply }) => {
-                                if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() {
+                                if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() || next_settings.blocked() {
                                     let _ = reply.send(Err("请先停止当前回复再新建聊天。".into())); continue;
                                 }
                                 if deny_approvals(&mut approvals, &mut stdin, &mut conversation, &channel).await.is_err() {
@@ -363,11 +373,11 @@ impl PiClient {
                                 let _ = reply.send(result.map(|_| conversation.snapshot.clone()));
                             }
                             Some(Control::Request { mut body, run_id, reply }) => {
-                                if matches!(body["type"].as_str(), Some("set_model" | "set_thinking_level")) && (conversation.snapshot.active_run_id.is_some() || !queue.is_empty()) {
+                                if matches!(body["type"].as_str(), Some("set_model" | "set_thinking_level")) && (conversation.snapshot.active_run_id.is_some() || !queue.is_empty() || next_settings.blocked()) {
                                     let _ = reply.send(Err("请先等待回复结束再修改模型设置。".into())); continue;
                                 }
                                 if body["type"] == "prompt" && let Some(run) = &run_id {
-                                    if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() {
+                                    if conversation.snapshot.active_run_id.is_some() || !queue.is_empty() || next_settings.blocked() {
                                         let result = if conversation.is_cancelling() {
                                             Err("正在停止生成，请稍后再发送消息。".into())
                                         } else if conversation.snapshot.active_run_id.as_ref() == Some(run) {
@@ -422,7 +432,16 @@ impl PiClient {
                                 }
                                 let deadline = if body["type"] == "compact" { 120 } else if body["type"] == "abort" || body["type"] == "clear_queue" { 5 } else { 20 };
                                 let writes = matches!(body["type"].as_str(), Some("prompt" | "compact" | "set_model" | "set_thinking_level" | "set_session_name"));
-                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes });
+                                pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes, settings: false });
+                            }
+                            Some(Control::UpdateSettings { settings, preferred, reply }) => {
+                                let result = next_settings.update(settings, preferred, &conversation.snapshot).map(|_| {
+                                    sync_next_settings(&mut conversation, &next_settings);
+                                    let event = conversation.settings_changed(None, None);
+                                    emit(&channel, vec![event.clone()]);
+                                    serde_json::to_value(event).unwrap()
+                                });
+                                let _ = reply.send(result);
                             }
                             Some(Control::RemoveQueued { message_id, reply }) => {
                                 let result = queue.remove(&message_id);
@@ -507,6 +526,12 @@ impl PiClient {
                                                 *runtime_revision.lock().unwrap() = conversation.snapshot.session_file.as_deref().and_then(FileRevision::read);
                                             }
                                             let result: Result<Value, String> = if record["success"] == true { Ok(record["data"].clone()) } else { Err(record["error"].as_str().unwrap_or("Pi 拒绝了命令。").into()) };
+                                            if request.settings && let Err(error) = &result {
+                                                next_settings.fail();
+                                                sync_next_settings(&mut conversation, &next_settings);
+                                                let event = conversation.settings_changed(None, Some(format!("设置未能生效，待发送消息已保留：{error}")));
+                                                emit(&channel, vec![event]);
+                                            }
                                             if request.prompt_run.as_ref() == conversation.snapshot.active_run_id.as_ref() && request.prompt_run.is_some() {
                                                 match &result {
                                                     _ if record["command"] == "compact" => {
@@ -607,6 +632,63 @@ impl PiClient {
                 // and all its RPC acknowledgements have arrived. Each queued
                 // message receives its own run, transcript and approval scope.
                 if conversation.snapshot.active_run_id.is_none() && pending.is_empty() {
+                    loop {
+                        match next_settings.advance(
+                            &conversation.snapshot,
+                            &runtime_source,
+                            &runtime_token,
+                        ) {
+                            Ok(SettingsAction::Idle) => break,
+                            Ok(SettingsAction::Applied(requested)) => {
+                                sync_next_settings(&mut conversation, &next_settings);
+                                let event = conversation.settings_changed(requested, None);
+                                emit(&channel, vec![event]);
+                            }
+                            Ok(SettingsAction::Command(mut body)) => {
+                                let was_applying =
+                                    conversation.snapshot.settings_applying.unwrap_or(false);
+                                sync_next_settings(&mut conversation, &next_settings);
+                                if !was_applying {
+                                    let event = conversation.settings_changed(None, None);
+                                    emit(&channel, vec![event]);
+                                }
+                                let id = Uuid::new_v4().to_string();
+                                body["id"] = id.clone().into();
+                                if !write_wire(&mut stdin, &body).await {
+                                    exit_error = Some("Pi 输入管道已中断，请重新连接。".into());
+                                    break 'runtime;
+                                }
+                                let (reply, _) = oneshot::channel();
+                                pending.insert(
+                                    id,
+                                    Pending {
+                                        reply,
+                                        prompt_run: None,
+                                        deadline: Instant::now() + Duration::from_secs(20),
+                                        history: body["type"] == "get_entries",
+                                        writes: matches!(
+                                            body["type"].as_str(),
+                                            Some("prompt" | "set_model" | "set_thinking_level")
+                                        ),
+                                        settings: true,
+                                    },
+                                );
+                                break;
+                            }
+                            Err(error) => {
+                                next_settings.fail();
+                                sync_next_settings(&mut conversation, &next_settings);
+                                let event = conversation.settings_changed(None, Some(error));
+                                emit(&channel, vec![event]);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if conversation.snapshot.active_run_id.is_none()
+                    && pending.is_empty()
+                    && !next_settings.blocked()
+                {
                     if let Some(mut prompt) = queue.pop() {
                         match begin_request(
                             &mut conversation,
@@ -638,6 +720,7 @@ impl PiClient {
                                 deadline: Instant::now() + Duration::from_secs(20),
                                 history: false,
                                 writes: true,
+                                settings: false,
                             },
                         );
                     }
@@ -743,7 +826,7 @@ impl PiClient {
         &self,
         mode: super::types::PermissionMode,
     ) -> Result<RuntimeSnapshot, String> {
-        if self.snapshot().await?.active_run_id.is_some() {
+        if self.snapshot().await?.has_pending_work() {
             return Err("请等待当前回复结束后修改权限。".into());
         }
         self.request(json!({"type":"prompt","message":format!("/hearth-permission {} {}",self.action_token,mode.as_str())}),None).await?;
@@ -930,6 +1013,24 @@ impl PiClient {
         Ok(())
     }
 
+    pub async fn update_next_settings(
+        &self,
+        settings: NextTurnSettings,
+        preferred: Option<String>,
+    ) -> Result<Value, String> {
+        let (reply, receive) = oneshot::channel();
+        self.control(Control::UpdateSettings {
+            settings,
+            preferred,
+            reply,
+        })
+        .await?;
+        timeout(Duration::from_secs(5), receive)
+            .await
+            .map_err(|_| "保存下一条消息设置超时。")?
+            .map_err(|_| "Pi 连接已关闭。")?
+    }
+
     pub async fn rewrite(
         &self,
         message_id: &str,
@@ -1050,6 +1151,11 @@ fn invalidate_context_usage(conversation: &mut Conversation, channel: &Channel<P
         usage: conversation.snapshot.context_usage.clone(),
     });
     emit(channel, vec![event]);
+}
+
+fn sync_next_settings(conversation: &mut Conversation, settings: &TurnSettings) {
+    conversation.snapshot.pending_settings = settings.pending.clone();
+    conversation.snapshot.settings_applying = Some(settings.applying());
 }
 
 fn begin_request(
@@ -1336,7 +1442,7 @@ impl PiManager {
             if snapshot.session_file.as_deref().is_some_and(|path| {
                 super::catalog::same_path(path, file)
                     || FileRevision::read(path).is_some_and(|current| current.path == revision.path)
-            }) && (snapshot.active_run_id.is_some() || current.actions.try_lock().is_err())
+            }) && (snapshot.has_pending_work() || current.actions.try_lock().is_err())
             {
                 return current.subscribe(channel).await.map(Some);
             }
@@ -1371,7 +1477,7 @@ impl PiManager {
         let busy = entry.client.actions.try_lock().is_err()
             || snapshot
                 .as_ref()
-                .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
+                .is_ok_and(|snapshot| snapshot.has_pending_work());
         if !busy
             && (entry.expired(Instant::now())
                 || *entry.client.file_revision.lock().unwrap() != Some(revision)
@@ -1430,7 +1536,7 @@ impl PiManager {
         if actions.is_err()
             || snapshot
                 .as_ref()
-                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+                .is_ok_and(|snapshot| snapshot.has_pending_work())
         {
             let file = snapshot
                 .as_ref()
@@ -1495,7 +1601,7 @@ impl PiManager {
                         .client
                         .snapshot()
                         .await
-                        .is_ok_and(|snapshot| snapshot.active_run_id.is_none())
+                        .is_ok_and(|snapshot| !snapshot.has_pending_work())
                 {
                     idle = Some(index);
                     break;
@@ -1526,7 +1632,7 @@ impl PiManager {
                     .client
                     .snapshot()
                     .await
-                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
+                    .is_ok_and(|snapshot| snapshot.has_pending_work());
             if busy {
                 entry.since = Instant::now();
             }
@@ -1609,7 +1715,7 @@ impl PiManager {
                 || current
                     .snapshot()
                     .await
-                    .is_ok_and(|snapshot| snapshot.active_run_id.is_some());
+                    .is_ok_and(|snapshot| snapshot.has_pending_work());
             if current.project_path == project_path && options.is_none() {
                 if let Ok(snapshot) = current.subscribe(channel.clone()).await {
                     return Ok(snapshot);
@@ -1808,7 +1914,7 @@ impl PiManager {
                     .try_lock()
                     .map_err(|_| "请等待当前操作完成。")?;
                 let snapshot = client.snapshot().await?;
-                if snapshot.active_run_id.is_some() {
+                if snapshot.has_pending_work() {
                     return Err("请等待当前回复结束后再重命名。".into());
                 }
                 client
@@ -1866,7 +1972,7 @@ impl PiManager {
             if client
                 .snapshot()
                 .await
-                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+                .is_ok_and(|snapshot| snapshot.has_pending_work())
             {
                 return Err("请等待所有会话的任务结束后再修改代理。".into());
             }
@@ -1902,7 +2008,7 @@ impl PiManager {
             if client
                 .snapshot()
                 .await
-                .is_ok_and(|state| state.active_run_id.is_some())
+                .is_ok_and(|state| state.has_pending_work())
             {
                 return Err("请等待所有会话的任务结束后再迁移项目。".into());
             }
@@ -2158,7 +2264,7 @@ mod tests {
             client.request(json!({"type":"abort"}), None).await.unwrap();
             let snapshot = client.snapshot().await.unwrap();
             assert!(
-                snapshot.active_run_id.is_none(),
+                !snapshot.has_pending_work(),
                 "finishing approval must release the input controls"
             );
             let tools: Vec<_> = snapshot
@@ -2416,6 +2522,10 @@ mod tests {
         }
 
         async fn with_endpoint_and_key(endpoint: &str, api_key: &str) -> Self {
+            Self::with_models(endpoint, api_key, json!([{"id":"model","name":"Offline","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}])).await
+        }
+
+        async fn with_models(endpoint: &str, api_key: &str, models: Value) -> Self {
             let root = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../work/resident-session-test")
                 .join(Uuid::new_v4().to_string());
@@ -2423,10 +2533,15 @@ mod tests {
             let directory = root.join("sessions");
             std::fs::create_dir_all(&source).unwrap();
             std::fs::create_dir_all(&directory).unwrap();
-            std::fs::write(source.join("models.json"), json!({"providers":{"resident-test":{
-                "api":"openai-completions", "baseUrl":endpoint, "apiKey":api_key,
-                "models":[{"id":"model","name":"Offline","reasoning":true,"input":["text"],"contextWindow":128000,"maxTokens":4096}]
-            }}}).to_string()).unwrap();
+            std::fs::write(
+                source.join("models.json"),
+                json!({"providers":{"resident-test":{
+                    "api":"openai-completions", "baseUrl":endpoint, "apiKey":api_key,
+                    "models":models
+                }}})
+                .to_string(),
+            )
+            .unwrap();
             let mut projects = Vec::new();
             let mut files = Vec::new();
             let mut histories = Vec::new();

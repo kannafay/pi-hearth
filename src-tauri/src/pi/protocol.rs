@@ -99,6 +99,8 @@ impl Conversation {
                 available_thinking_levels: vec![],
                 messages: vec![],
                 queued_messages: vec![],
+                pending_settings: None,
+                settings_applying: None,
                 tools: vec![],
                 timeline: vec![],
                 active_run_id: None,
@@ -141,6 +143,25 @@ impl Conversation {
     pub fn set_queue(&mut self, messages: Vec<QueuedMessage>) -> Vec<PiEvent> {
         self.snapshot.queued_messages = messages.clone();
         vec![self.event(EventData::QueueChanged { messages })]
+    }
+
+    pub fn settings_changed(
+        &mut self,
+        requested_thinking_level: Option<String>,
+        error: Option<String>,
+    ) -> PiEvent {
+        self.event(EventData::SettingsChanged {
+            settings: ConversationSettings {
+                model: self.snapshot.model.clone(),
+                thinking_level: self.snapshot.thinking_level.clone(),
+                available_thinking_levels: self.snapshot.available_thinking_levels.clone(),
+                permission_mode: self.snapshot.permission_mode,
+                pending: self.snapshot.pending_settings.clone(),
+                applying: self.snapshot.settings_applying.unwrap_or(false),
+                requested_thinking_level,
+            },
+            error,
+        })
     }
 
     #[cfg(test)]

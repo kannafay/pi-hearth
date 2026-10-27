@@ -1,9 +1,16 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
-import type { PermissionMode, PiEvent, RuntimeSnapshot, ToolLogPage } from '@/lib/generated/pi'
+import type {
+  NextTurnSettings,
+  PermissionMode,
+  PiEvent,
+  RuntimeSnapshot,
+  ToolLogPage,
+} from '@/lib/generated/pi'
 
 let activeChannel: Channel<PiEvent> | null = null
 const channels = new Map<string, { channel: Channel<PiEvent>; running: boolean; queued: number }>()
 let connection = 0
+const settingsUpdates = new Map<string, Promise<void>>()
 
 export async function connectPi(
   projectPath: string | null,
@@ -83,7 +90,29 @@ export function sendPiMessage(
   message: string,
   attachmentIds: string[] = [],
 ) {
-  return invoke<PiEvent | void>('pi_send', { instanceId, runId, message, attachmentIds })
+  const send = () =>
+    invoke<PiEvent | void>('pi_send', { instanceId, runId, message, attachmentIds })
+  return settingsUpdates.get(instanceId)?.then(send) ?? send()
+}
+
+export function updatePiNextSettings(
+  instanceId: string,
+  settings: NextTurnSettings,
+  preferredThinkingLevel: string | null = null,
+) {
+  const previous = settingsUpdates.get(instanceId) ?? Promise.resolve()
+  const operation = previous.then(() =>
+    invoke<PiEvent>('pi_update_next_settings', { instanceId, settings, preferredThinkingLevel }),
+  )
+  const settled = operation.then(
+    () => {},
+    () => {},
+  )
+  settingsUpdates.set(instanceId, settled)
+  void settled.then(() => {
+    if (settingsUpdates.get(instanceId) === settled) settingsUpdates.delete(instanceId)
+  })
+  return operation
 }
 
 export function stopPi(instanceId: string) {

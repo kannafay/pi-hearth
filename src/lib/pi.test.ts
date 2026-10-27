@@ -1,6 +1,13 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { Channel, invoke } from '@tauri-apps/api/core'
-import { connectPi, disconnectPi, sendPiMessage, setPiModel, setPiThinkingLevel } from './pi'
+import {
+  connectPi,
+  disconnectPi,
+  sendPiMessage,
+  setPiModel,
+  setPiThinkingLevel,
+  updatePiNextSettings,
+} from './pi'
 import type { PiEvent, RuntimeSnapshot } from './generated/pi'
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
@@ -191,4 +198,24 @@ test('a session awaiting its next queued turn keeps its event channel when more 
   for (const name of ['A', 'B', 'C', 'D']) await connectPi(name, () => {}, received, name)
   callbacks.get(opened[0].id)?.({ index: 0, message: event })
   expect(received).toHaveBeenCalledExactlyOnceWith(event)
+})
+
+test('setting changes keep their order and are acknowledged before the next message is submitted', async () => {
+  let finish!: () => void
+  vi.mocked(invoke)
+    .mockReset()
+    .mockReturnValueOnce(new Promise((resolve) => (finish = () => resolve(undefined))))
+    .mockResolvedValue(undefined)
+  const first = updatePiNextSettings('pi-next', { permissionMode: 'full' })
+  const second = updatePiNextSettings('pi-next', { permissionMode: 'ask' })
+  const sending = sendPiMessage('pi-next', 'run-next', 'next message')
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1))
+  finish()
+  await Promise.all([first, second, sending])
+  expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).toEqual([
+    'pi_update_next_settings',
+    'pi_update_next_settings',
+    'pi_send',
+  ])
+  expect(vi.mocked(invoke).mock.calls[1][1]).toMatchObject({ settings: { permissionMode: 'ask' } })
 })

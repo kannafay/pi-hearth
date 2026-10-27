@@ -4,6 +4,7 @@ import type {
   ComposerCommand,
   ContextUsage,
   ModelInfo,
+  NextTurnSettings,
   PermissionMode,
   PiEvent,
   QueuedMessage,
@@ -21,6 +22,7 @@ import {
   setPiPermission,
   stopPi,
   removeQueuedPiMessage,
+  updatePiNextSettings,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
 import { compactPi } from '@/lib/composer'
@@ -50,6 +52,7 @@ export interface ConversationData {
   messages: ChatMessage[]
   queuedMessages: QueuedMessage[]
   queueSubmissions: number
+  runtimeSettingsPending: boolean
   tools: ToolCall[]
   timeline: TimelineEntry[]
   model: ModelInfo | null
@@ -117,6 +120,7 @@ export const emptyConversation: ConversationData = {
   messages: [],
   queuedMessages: [],
   queueSubmissions: 0,
+  runtimeSettingsPending: false,
   tools: [],
   timeline: [],
   model: null,
@@ -151,6 +155,8 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
     activeRunId: snapshot.activeRunId,
     messages: snapshot.messages,
     queuedMessages: snapshot.queuedMessages ?? [],
+    pendingSettings: snapshot.pendingSettings ?? null,
+    runtimeSettingsPending: Boolean(snapshot.pendingSettings),
     streamingBase: Object.fromEntries(
       snapshot.messages
         .filter((message) => message.status === 'streaming')
@@ -203,7 +209,6 @@ export function canQueueMessage(
 ) {
   return (
     state.status === 'running' &&
-    !state.pendingSettings &&
     Boolean(
       state.activeRunId &&
       state.messages.some((message) => message.id === `${state.activeRunId}-user`),
@@ -217,6 +222,28 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
   if (event.runId && state.activeRunId && event.runId !== state.activeRunId) return next
   const data = event.data
   switch (data.type) {
+    case 'settings_changed': {
+      const settings = data.settings
+      if (settings.model && (!state.model || modelKey(settings.model) !== modelKey(state.model)))
+        next.contextUsage = null
+      next.model = settings.model
+      next.thinkingLevel = settings.thinkingLevel
+      next.availableThinkingLevels = settings.availableThinkingLevels
+      next.permissionMode = settings.permissionMode
+      next.pendingSettings = settings.pending
+      next.runtimeSettingsPending = Boolean(settings.pending) || settings.applying
+      next.settingsPending = settings.applying
+        ? settings.pending?.model
+          ? 'model'
+          : settings.pending?.permissionMode
+            ? 'permission'
+            : 'thinking'
+        : null
+      next.requestedThinkingLevel = settings.requestedThinkingLevel ?? state.requestedThinkingLevel
+      next.error = data.error
+      if (!settings.pending || data.error) next.lastLocalActivityAt = Date.now()
+      break
+    }
     case 'queue_changed':
       next.queuedMessages = data.messages
       break
@@ -385,6 +412,7 @@ function applyPendingSettings(): Promise<void> {
   if (
     !instanceId ||
     status !== 'ready' ||
+    get().runtimeSettingsPending ||
     queuedMessages.length ||
     queueSubmissions ||
     readOnly ||
@@ -397,7 +425,10 @@ function applyPendingSettings(): Promise<void> {
   const task = { connection, instanceId, promise: Promise.resolve() }
   settingsTask = task
   const current = () =>
-    task.connection === connection && get().instanceId === instanceId && get().status === 'ready'
+    task.connection === connection &&
+    get().instanceId === instanceId &&
+    get().status === 'ready' &&
+    !get().runtimeSettingsPending
   task.promise = (async () => {
     let appliedModel: ModelInfo | null = null
     try {
@@ -479,10 +510,12 @@ function flushEvents() {
 
 const running = (
   state: Pick<ConversationData, 'status'> &
-    Partial<Pick<ConversationData, 'queuedMessages' | 'queueSubmissions'>>,
+    Partial<
+      Pick<ConversationData, 'queuedMessages' | 'queueSubmissions' | 'runtimeSettingsPending'>
+    >,
 ) =>
   ['running', 'stopping'].includes(state.status) ||
-  Boolean(state.queuedMessages?.length || state.queueSubmissions)
+  Boolean(state.queuedMessages?.length || state.queueSubmissions || state.runtimeSettingsPending)
 
 export function isSessionBusy(
   session: { id: string; path: string },
@@ -536,6 +569,34 @@ function updateInstance(instanceId: string, update: (state: ConversationData) =>
   void applyPendingSettings()
 }
 
+function needsRuntimeSettings(state: ConversationData) {
+  return (
+    state.runtimeSettingsPending || state.queuedMessages.length > 0 || state.queueSubmissions > 0
+  )
+}
+
+async function deferRuntimeSettings(
+  instanceId: string,
+  settings: NextTurnSettings,
+  preferred?: string | null,
+) {
+  const previous = useConversationStore.getState().runtimeSettingsPending
+  updateInstance(instanceId, (state) => ({ ...state, runtimeSettingsPending: true, error: null }))
+  try {
+    const event = await updatePiNextSettings(instanceId, settings, preferred)
+    flushEvents()
+    useConversationStore.getState().receive([event])
+    return true
+  } catch (reason) {
+    updateInstance(instanceId, (state) => ({
+      ...state,
+      runtimeSettingsPending: previous,
+      error: String(reason),
+    }))
+    return false
+  }
+}
+
 export function canReuseNewConversation(state: ConversationState, projectPath: string | null) {
   return Boolean(
     state.connectionTarget &&
@@ -572,16 +633,27 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }),
   connectionTarget: null,
   receive: (events) => {
+    const thinkingChoices: Array<{ instanceId: string; level: string }> = []
+    const applied = (event: PiEvent) => {
+      if (event.data.type === 'settings_changed' && event.data.settings.requestedThinkingLevel)
+        thinkingChoices.push({
+          instanceId: event.instanceId,
+          level: event.data.settings.requestedThinkingLevel,
+        })
+    }
     set((state) => {
       let next = state
       for (const event of events) {
-        if (event.instanceId === next.instanceId)
-          next = reducePiEvent(next, event) as ConversationState
-        else {
+        if (event.instanceId === next.instanceId) {
+          const updated = reducePiEvent(next, event) as ConversationState
+          if (updated !== next) applied(event)
+          next = updated
+        } else {
           const entry = next.backgroundSessions.get(event.instanceId)
           if (!entry) continue
           const data = reducePiEvent(entry.data, event)
           if (data === entry.data) continue
+          applied(event)
           const backgroundSessions = new Map(next.backgroundSessions)
           if (running(data)) backgroundSessions.set(event.instanceId, { ...entry, data })
           else backgroundSessions.delete(event.instanceId)
@@ -594,6 +666,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }
       return next
     })
+    for (const choice of thinkingChoices)
+      void saveThinkingPreference(choice.level).catch((reason: unknown) => {
+        if (get().instanceId === choice.instanceId)
+          set({ error: `无法保存思考偏好：${String(reason)}` })
+      })
     // Choices made during a reply are applied only after its terminal event.
     // The current run, including any outstanding approvals, keeps its settings.
     void applyPendingSettings()
@@ -676,13 +753,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           flushEvents()
           const pendingSettings = snapshot.readOnly
             ? null
-            : snapshot.activeRunId
-              ? get().pendingSettings
-              : {
-                  model: null,
-                  thinkingLevel: requestedThinkingLevel,
-                  ...get().pendingSettings,
-                }
+            : (snapshot.pendingSettings ??
+              (get().runtimeSettingsPending
+                ? null
+                : snapshot.activeRunId
+                  ? get().pendingSettings
+                  : {
+                      model: null,
+                      thinkingLevel: requestedThinkingLevel,
+                      ...get().pendingSettings,
+                    }))
           const data = {
             ...fromSnapshot(snapshot),
             ...(get().sessionId === snapshot.sessionId && !snapshot.activeRunId
@@ -690,8 +770,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
               : {}),
             requestedThinkingLevel,
             pendingSettings,
+            runtimeSettingsPending: Boolean(snapshot.pendingSettings),
             settingsPending:
-              pendingSettings && !snapshot.activeRunId
+              pendingSettings &&
+              !snapshot.activeRunId &&
+              (!snapshot.pendingSettings || snapshot.settingsApplying)
                 ? pendingSettings.permissionMode
                   ? ('permission' as const)
                   : pendingSettings.model
@@ -768,6 +851,19 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (!queued) set({ status: 'running', activeRunId: runId, error: null, activity: '正在发送…' })
     else set({ queueSubmissions: get().queueSubmissions + 1 })
     try {
+      const selection = get().pendingSettings
+      if (queued && selection && !get().runtimeSettingsPending) {
+        const accepted = await deferRuntimeSettings(
+          instanceId,
+          {
+            ...(selection.model ? { model: selection.model } : {}),
+            ...(selection.thinkingLevel ? { thinkingLevel: selection.thinkingLevel } : {}),
+            ...(selection.permissionMode ? { permissionMode: selection.permissionMode } : {}),
+          },
+          get().requestedThinkingLevel,
+        )
+        if (!accepted) return false
+      }
       const accepted = await sendPiMessage(instanceId, runId, message, attachmentIds)
       flushEvents()
       // Apply the sequenced acknowledgement before enabling settings again;
@@ -866,7 +962,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   changeModel: async (model) => {
-    if (get().queuedMessages.length || get().queueSubmissions) return
+    if (needsRuntimeSettings(get()) && get().instanceId) {
+      await deferRuntimeSettings(get().instanceId!, { model }, get().requestedThinkingLevel)
+      return
+    }
     const { instanceId, status, readOnly, pendingSettings, requestedThinkingLevel } = get()
     if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
     set({
@@ -883,7 +982,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     await applyPendingSettings()
   },
   changeThinkingLevel: async (level) => {
-    if (get().queuedMessages.length || get().queueSubmissions) return
+    if (needsRuntimeSettings(get()) && get().instanceId) {
+      await deferRuntimeSettings(get().instanceId!, { thinkingLevel: level })
+      return
+    }
     const state = get()
     const { instanceId, status, readOnly, pendingSettings } = state
     if (status === 'disconnected' || readOnly || (status !== 'connecting' && !instanceId)) return
@@ -907,7 +1009,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     await applyPendingSettings()
   },
   changePermission: async (mode) => {
-    if (get().queuedMessages.length || get().queueSubmissions) return
+    if (needsRuntimeSettings(get()) && get().instanceId) {
+      await deferRuntimeSettings(get().instanceId!, { permissionMode: mode })
+      return
+    }
     const state = get()
     if (
       state.status === 'disconnected' ||

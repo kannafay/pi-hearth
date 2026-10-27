@@ -1,6 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { isSessionBusy, useConversationStore } from './store'
-import { connectPi, removeQueuedPiMessage, sendPiMessage, setPiPermission } from '@/lib/pi'
+import {
+  connectPi,
+  removeQueuedPiMessage,
+  sendPiMessage,
+  setPiPermission,
+  updatePiNextSettings,
+} from '@/lib/pi'
 import type {
   ChatMessage,
   EventData,
@@ -19,6 +25,7 @@ vi.mock('@/lib/pi', () => ({
   setPiModel: vi.fn(),
   setPiPermission: vi.fn(),
   setPiThinkingLevel: vi.fn(),
+  updatePiNextSettings: vi.fn(),
 }))
 
 const user: ChatMessage = {
@@ -68,6 +75,24 @@ beforeEach(() => {
   vi.mocked(sendPiMessage).mockReset().mockResolvedValue(undefined)
   vi.mocked(removeQueuedPiMessage).mockReset().mockResolvedValue(undefined)
   vi.mocked(connectPi).mockImplementation(async (_project, hydrate) => hydrate(snapshot))
+  vi.mocked(updatePiNextSettings)
+    .mockReset()
+    .mockImplementation(async (_id, patch) => {
+      const state = useConversationStore.getState()
+      return event(state.sequence + 1, {
+        type: 'settings_changed',
+        settings: {
+          model: state.model,
+          thinkingLevel: state.thinkingLevel,
+          availableThinkingLevels: state.availableThinkingLevels,
+          permissionMode: state.permissionMode,
+          pending: { ...state.pendingSettings, ...patch } as typeof patch,
+          applying: false,
+          requestedThinkingLevel: null,
+        },
+        error: null,
+      })
+    })
 })
 
 test('sending during a reply queues the message without replacing its active run or transcript', async () => {
@@ -93,32 +118,37 @@ test('rejected queue submissions leave the current answer running and preserve a
   expect(useConversationStore.getState().error).toContain('队列已满')
 })
 
-test('the acceptance acknowledgement closes the settings race before batched events are delivered', async () => {
+test('settings can change while a queue submission is awaiting acceptance', async () => {
   let accept!: (value: PiEvent) => void
   vi.mocked(sendPiMessage).mockReturnValueOnce(new Promise((resolve) => (accept = resolve)))
   const sending = useConversationStore.getState().send('第二条')
   expect(useConversationStore.getState().queueSubmissions).toBe(1)
   await useConversationStore.getState().changePermission('full')
-  expect(useConversationStore.getState().pendingSettings).toBeNull()
-  accept(event(1, { type: 'queue_changed', messages: [queued] }))
+  expect(useConversationStore.getState().pendingSettings).toEqual({ permissionMode: 'full' })
+  expect(useConversationStore.getState().permissionMode).toBe('ask')
+  accept(event(2, { type: 'queue_changed', messages: [queued] }))
   expect(await sending).toBe(true)
   expect(useConversationStore.getState()).toMatchObject({
     queueSubmissions: 0,
     queuedMessages: [queued],
   })
-  await useConversationStore.getState().changePermission('full')
+  await useConversationStore.getState().changePermission('auto')
   expect(useConversationStore.getState().permissionMode).toBe('ask')
-  expect(useConversationStore.getState().pendingSettings).toBeNull()
+  expect(useConversationStore.getState().pendingSettings).toEqual({ permissionMode: 'auto' })
   const messages = useConversationStore.getState().queuedMessages
   useConversationStore.getState().receive([event(1, { type: 'queue_changed', messages: [] })])
   expect(useConversationStore.getState().queuedMessages).toBe(messages)
 })
 
-test('a setting selected during the current reply takes effect before further messages can be queued', async () => {
+test('pending settings transfer to the runtime before another message is queued', async () => {
   await useConversationStore.getState().changePermission('full')
   expect(useConversationStore.getState().pendingSettings).toEqual({ permissionMode: 'full' })
-  expect(await useConversationStore.getState().send('设置生效后发送')).toBe(false)
-  expect(sendPiMessage).not.toHaveBeenCalled()
+  expect(await useConversationStore.getState().send('设置生效后发送')).toBe(true)
+  expect(updatePiNextSettings).toHaveBeenCalledWith('pi-A', { permissionMode: 'full' }, null)
+  expect(vi.mocked(updatePiNextSettings).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(sendPiMessage).mock.invocationCallOrder[0],
+  )
+  expect(useConversationStore.getState().activeRunId).toBe('first')
 })
 
 test('background state survives the gap between completion and the next queued run', async () => {
@@ -177,28 +207,42 @@ test('reopening a running session restores its queue from the native snapshot', 
   expect(removeQueuedPiMessage).toHaveBeenCalledExactlyOnceWith('pi-A-new', 'second')
 })
 
-test('deferred permission choices wait for queued replies to finish', async () => {
-  useConversationStore.setState({
-    queuedMessages: [queued],
-    pendingSettings: { permissionMode: 'auto' },
-  })
-  vi.mocked(setPiPermission).mockResolvedValue({
-    ...snapshot,
-    instanceId: 'pi-A',
-    permissionMode: 'auto',
-  })
+test('runtime permission updates take effect before the next queued reply starts', async () => {
+  useConversationStore.setState({ queuedMessages: [queued] })
+  await useConversationStore.getState().changePermission('auto')
+  expect(useConversationStore.getState().permissionMode).toBe('ask')
   useConversationStore
     .getState()
-    .receive([event(1, { type: 'run_finished', status: 'complete', error: null })])
+    .receive([event(2, { type: 'run_finished', status: 'complete', error: null })])
   expect(setPiPermission).not.toHaveBeenCalled()
-  useConversationStore
-    .getState()
-    .receive([
-      event(2, { type: 'run_started', message: { ...user, id: 'second-user' } }, 'second'),
-      event(3, { type: 'queue_changed', messages: [] }, 'second'),
-      event(4, { type: 'run_finished', status: 'complete', error: null }, 'second'),
-    ])
-  await vi.waitFor(() => expect(setPiPermission).toHaveBeenCalledExactlyOnceWith('pi-A', 'auto'))
+  useConversationStore.getState().receive([
+    event(
+      3,
+      {
+        type: 'settings_changed',
+        settings: {
+          model: null,
+          thinkingLevel: 'off',
+          availableThinkingLevels: ['off'],
+          permissionMode: 'auto',
+          pending: null,
+          applying: false,
+          requestedThinkingLevel: null,
+        },
+        error: null,
+      },
+      null,
+    ),
+    event(4, { type: 'run_started', message: { ...user, id: 'second-user' } }, 'second'),
+    event(5, { type: 'queue_changed', messages: [] }, 'second'),
+  ])
+  expect(setPiPermission).not.toHaveBeenCalled()
+  expect(useConversationStore.getState()).toMatchObject({
+    permissionMode: 'auto',
+    activeRunId: 'second',
+    runtimeSettingsPending: false,
+    pendingSettings: null,
+  })
 })
 
 test('queue events from other sessions or older sequence numbers cannot replace the visible queue', () => {

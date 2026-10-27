@@ -283,7 +283,7 @@ export function Composer({
       {status === 'disconnected' && <ConnectionNotice className="mb-2 px-1" />}
       {status === 'running' && waitingForSettings && (
         <p role="status" className="mb-2 px-1 text-xs text-muted-foreground">
-          设置将在当前回复结束后生效，随后可继续发送。
+          设置将从下一条消息开始生效，当前回答保持不变。
         </p>
       )}
       {queuedMessages.length > 0 && (

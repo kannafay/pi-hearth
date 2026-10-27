@@ -11,13 +11,12 @@ import { useConversationStore } from './store'
 import { isPermissionMode, permissionOptions } from './permissions'
 
 export function PermissionPicker() {
-  const { status, readOnly, mode, pending, queueBusy, changePermission } = useConversationStore(
+  const { status, readOnly, mode, pending, changePermission } = useConversationStore(
     useShallow((state) => ({
       status: state.status,
       readOnly: state.readOnly,
       mode: state.pendingSettings?.permissionMode ?? state.permissionMode,
       pending: state.settingsPending,
-      queueBusy: state.queuedMessages.length > 0 || state.queueSubmissions > 0,
       changePermission: state.changePermission,
     })),
   )
@@ -26,14 +25,13 @@ export function PermissionPicker() {
     <Select
       items={permissionOptions}
       value={mode}
-      disabled={status === 'disconnected' || Boolean(readOnly) || queueBusy}
+      disabled={status === 'disconnected' || Boolean(readOnly)}
       onValueChange={(value) => {
         if (isPermissionMode(value)) void changePermission(value)
       }}
     >
       <SelectTrigger
         aria-label="会话权限"
-        title={queueBusy ? '队列处理完后可更改设置' : undefined}
         size="sm"
         variant="ghost"
         tone={mode === 'full' ? 'warning' : 'default'}

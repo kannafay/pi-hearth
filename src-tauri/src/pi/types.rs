@@ -382,6 +382,12 @@ pub struct RuntimeSnapshot {
     pub available_thinking_levels: Vec<String>,
     pub messages: Vec<ChatMessage>,
     pub queued_messages: Vec<QueuedMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pending_settings: Option<NextTurnSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub settings_applying: Option<bool>,
     pub tools: Vec<ToolCall>,
     pub timeline: Vec<TimelineEntry>,
     pub active_run_id: Option<String>,
@@ -396,6 +402,40 @@ pub struct QueuedMessage {
     pub attachments: Vec<Attachment>,
 }
 
+impl RuntimeSnapshot {
+    pub fn has_pending_work(&self) -> bool {
+        self.active_run_id.is_some()
+            || !self.queued_messages.is_empty()
+            || self.pending_settings.is_some()
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NextTurnSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<ModelInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub thinking_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission_mode: Option<PermissionMode>,
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSettings {
+    pub model: Option<ModelInfo>,
+    pub thinking_level: String,
+    pub available_thinking_levels: Vec<String>,
+    pub permission_mode: PermissionMode,
+    pub pending: Option<NextTurnSettings>,
+    pub applying: bool,
+    pub requested_thinking_level: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(
     tag = "type",
@@ -403,6 +443,10 @@ pub struct QueuedMessage {
     rename_all_fields = "camelCase"
 )]
 pub enum EventData {
+    SettingsChanged {
+        settings: ConversationSettings,
+        error: Option<String>,
+    },
     QueueChanged {
         messages: Vec<QueuedMessage>,
     },
@@ -528,6 +572,8 @@ fn export_frontend_types() {
         ProjectInstructions::decl(),
         ContextUsage::decl(),
         RuntimeSnapshot::decl(),
+        NextTurnSettings::decl(),
+        ConversationSettings::decl(),
         QueuedMessage::decl(),
         ResourceScope::decl(),
         ResourceStatus::decl(),
