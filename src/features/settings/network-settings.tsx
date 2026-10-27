@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Globe, LoaderCircle, Monitor, Network, PlugZap, Save } from 'lucide-react'
+import {
+  CircleCheck,
+  CircleX,
+  Globe,
+  Info,
+  LoaderCircle,
+  Monitor,
+  Network,
+  PlugZap,
+  Save,
+} from 'lucide-react'
 import { useWorkspaceStore } from '@/app/store'
 import { useConversationStore } from '@/features/conversation/store'
 import { Button } from '@/components/ui/button'
@@ -36,6 +46,8 @@ const modes = [
   },
 ]
 
+type TestResult = { type: 'success' | 'info' | 'error'; message: string }
+
 export function NetworkSettings() {
   const { proxy, pending, ready, actionPending, setProxy } = useWorkspaceStore(
     useShallow((state) => ({
@@ -62,7 +74,11 @@ export function NetworkSettings() {
           ...proxy,
           noProxy: proxy.noProxy.trim() === defaultProxySettings.noProxy ? '' : proxy.noProxy,
         }
-  const setDraft = (draft: ProxySettings) => setEdit({ source: proxy, draft })
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const setDraft = (draft: ProxySettings) => {
+    setEdit({ source: proxy, draft })
+    setTestResult(null)
+  }
   const [target, setTarget] = useState('https://www.google.com/generate_204')
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState('')
@@ -84,6 +100,8 @@ export function NetworkSettings() {
     icon: ModeIcon,
     description,
   } = modes.find((mode) => mode.value === draft.mode) ?? modes[0]
+  const ResultIcon =
+    testResult?.type === 'error' ? CircleX : testResult?.type === 'info' ? Info : CircleCheck
 
   async function save() {
     if (unavailable || busy || actionPending || invalid || !changed) return
@@ -100,13 +118,25 @@ export function NetworkSettings() {
     if (unavailable || invalid) return
     setTesting(true)
     setError('')
+    setTestResult(null)
     try {
       const result = await testProxyConnection(normalized, target.trim())
-      if (result.status >= 200 && result.status < 400)
-        toast.success(`连接成功（${result.elapsedMs} ms）`)
-      else toast.info(`网络已连通，目标返回 HTTP ${result.status}（${result.elapsedMs} ms）`)
+      const feedback: TestResult =
+        result.status >= 200 && result.status < 400
+          ? { type: 'success', message: `连接成功（${result.elapsedMs} ms）` }
+          : {
+              type: 'info',
+              message: `网络已连通，目标返回 HTTP ${result.status}（${result.elapsedMs} ms）`,
+            }
+      setTestResult(feedback)
+      toast[feedback.type](feedback.message)
     } catch (reason) {
-      toast.error(reason)
+      const message =
+        (reason instanceof Error ? reason.message : String(reason ?? ''))
+          .trim()
+          .replace(/^(?:Error:\s*)+/, '') || '连接测试失败，请检查代理地址和网络。'
+      setTestResult({ type: 'error', message })
+      toast.error(message)
     } finally {
       setTesting(false)
     }
@@ -196,7 +226,19 @@ export function NetworkSettings() {
       </SettingsRow>
       <SettingsRow
         title="测试地址"
-        description="使用当前填写的配置测试，无需先保存。"
+        description={
+          testResult ? (
+            <span
+              role="status"
+              className={`flex items-start gap-2 ${testResult.type === 'error' ? 'text-destructive' : ''}`}
+            >
+              <ResultIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span>{testResult.message}</span>
+            </span>
+          ) : (
+            '使用当前填写的配置测试，无需先保存。'
+          )
+        }
         htmlFor="network-test-target"
         descriptionId="network-test-target-description"
         control={
@@ -222,7 +264,10 @@ export function NetworkSettings() {
           aria-describedby="network-test-target-description"
           value={target}
           disabled={unavailable}
-          onChange={(event) => setTarget(event.target.value)}
+          onChange={(event) => {
+            setTarget(event.target.value)
+            setTestResult(null)
+          }}
         />
       </SettingsRow>
       <div className="flex flex-wrap items-center justify-between gap-3 pt-5">

@@ -82,7 +82,40 @@ test('testing uses the unsaved configuration without changing proxy preferences'
   expect(updateAppSettings).not.toHaveBeenCalled()
   expect(useWorkspaceStore.getState().proxy).toEqual(defaultProxySettings)
   expect(toast.success).toHaveBeenCalledExactlyOnceWith('连接成功（120 ms）')
+  expect(screen.getByRole('status')).toHaveTextContent('连接成功（120 ms）')
 })
+
+test('reachable HTTP errors are retained as a test result without claiming success', async () => {
+  vi.mocked(testProxyConnection).mockResolvedValueOnce({ status: 403, elapsedMs: 90 })
+  const user = userEvent.setup()
+  render(<NetworkSettings />)
+  await user.click(screen.getByRole('button', { name: '测试连接' }))
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    '网络已连通，目标返回 HTTP 403（90 ms）',
+  )
+  expect(toast.info).toHaveBeenCalledExactlyOnceWith('网络已连通，目标返回 HTTP 403（90 ms）')
+  expect(toast.success).not.toHaveBeenCalled()
+})
+
+test.each(['代理模式', '代理地址', '不使用代理的地址', '测试地址'])(
+  'editing %s clears the previous connection result',
+  async (field) => {
+    useWorkspaceStore.setState({
+      proxy: { ...defaultProxySettings, mode: 'manual', url: 'http://127.0.0.1:10808' },
+    })
+    const user = userEvent.setup()
+    render(<NetworkSettings />)
+    await user.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('连接成功')
+    if (field === '代理模式') {
+      await user.click(screen.getByRole('combobox', { name: field }))
+      await user.click(screen.getByRole('option', { name: '直连' }))
+    } else {
+      await user.type(screen.getByRole('textbox', { name: field }), '1')
+    }
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  },
+)
 
 test('invalid proxy addresses cannot be saved or tested', async () => {
   const user = userEvent.setup()
@@ -198,7 +231,7 @@ test('direct mode can override an inherited proxy without requiring an address',
   })
 })
 
-test('connection tests show pending state and failed results only in the shared toast', async () => {
+test('connection tests clear old feedback while pending and retain failures for retry', async () => {
   let fail!: (reason: string) => void
   vi.mocked(testProxyConnection).mockReturnValueOnce(
     new Promise((_resolve, reject) => {
@@ -211,7 +244,16 @@ test('connection tests show pending state and failed results only in the shared 
   expect(screen.getByRole('button', { name: '测试中…' })).toBeDisabled()
   await act(async () => fail('无法连接代理'))
   expect(toast.error).toHaveBeenCalledExactlyOnceWith('无法连接代理')
+  expect(screen.getByRole('status')).toHaveTextContent('无法连接代理')
+  expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  let succeed!: (result: { status: number; elapsedMs: number }) => void
+  vi.mocked(testProxyConnection).mockReturnValueOnce(new Promise((resolve) => (succeed = resolve)))
+  await user.click(screen.getByRole('button', { name: '测试连接' }))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '测试中…' })).toBeDisabled()
+  await act(async () => succeed({ status: 204, elapsedMs: 100 }))
+  expect(screen.getByRole('status')).toHaveTextContent('连接成功（100 ms）')
 })
 
 test('browser preview does not invoke native networking', async () => {
