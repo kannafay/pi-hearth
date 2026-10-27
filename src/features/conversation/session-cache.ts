@@ -12,6 +12,7 @@ type SessionDisplay = Pick<
   | 'tools'
   | 'timeline'
   | 'model'
+  | 'contextUsage'
   | 'permissionMode'
   | 'models'
   | 'thinkingLevel'
@@ -73,6 +74,7 @@ export function sessionDisplay(state: ConversationData): SessionDisplay {
     ),
     timeline: state.timeline,
     model: state.model,
+    contextUsage: state.contextUsage,
     permissionMode: state.permissionMode,
     models: state.models,
     thinkingLevel: state.thinkingLevel,

@@ -3,6 +3,7 @@ pub mod catalog;
 mod client;
 pub mod composer;
 mod config;
+mod context_usage;
 pub mod files;
 pub(crate) mod process_tree;
 mod protocol;

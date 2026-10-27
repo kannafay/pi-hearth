@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   ChatMessage,
   ComposerCommand,
+  ContextUsage,
   ModelInfo,
   PermissionMode,
   PiEvent,
@@ -48,6 +49,7 @@ export interface ConversationData {
   tools: ToolCall[]
   timeline: TimelineEntry[]
   model: ModelInfo | null
+  contextUsage: ContextUsage | null
   permissionMode: PermissionMode
   models: ModelInfo[]
   thinkingLevel: string
@@ -111,6 +113,7 @@ export const emptyConversation: ConversationData = {
   tools: [],
   timeline: [],
   model: null,
+  contextUsage: null,
   permissionMode: 'ask',
   models: [],
   thinkingLevel: 'off',
@@ -150,6 +153,7 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
       snapshot.timeline ??
       snapshot.messages.map((message) => ({ kind: 'message', id: message.id })),
     model: snapshot.model,
+    contextUsage: snapshot.contextUsage ?? null,
     permissionMode: snapshot.permissionMode ?? 'ask',
     models: snapshot.models,
     thinkingLevel: snapshot.thinkingLevel ?? 'off',
@@ -165,9 +169,12 @@ function fromSnapshot(snapshot: RuntimeSnapshot): ConversationData {
 
 // Settings acknowledgements must not replace the transcript or its scroll state.
 function settingsFromSnapshot(snapshot: RuntimeSnapshot) {
+  const current = useConversationStore.getState()
   return {
     permissionMode: snapshot.permissionMode ?? useConversationStore.getState().permissionMode,
     model: snapshot.model,
+    contextUsage:
+      snapshot.sequence < current.sequence ? current.contextUsage : (snapshot.contextUsage ?? null),
     models: snapshot.models,
     thinkingLevel: snapshot.thinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,
@@ -189,6 +196,9 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
   if (event.runId && state.activeRunId && event.runId !== state.activeRunId) return next
   const data = event.data
   switch (data.type) {
+    case 'context_usage_changed':
+      next.contextUsage = data.usage
+      break
     case 'transcript_replaced':
       next.messages = data.messages
       next.tools = data.tools

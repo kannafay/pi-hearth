@@ -75,6 +75,7 @@ impl Conversation {
                 read_only: None,
                 permission_mode: Default::default(),
                 model: None,
+                context_usage: None,
                 models: vec![],
                 thinking_level: "off".into(),
                 available_thinking_levels: vec![],
@@ -481,9 +482,21 @@ impl Conversation {
                     .unwrap_or_default();
             }
             Some("get_state") => {
-                self.snapshot.session_id = data["sessionId"].as_str().unwrap_or_default().into();
+                let session_id = data["sessionId"].as_str().unwrap_or_default();
+                let model = model_info(&data["model"]);
+                if self.snapshot.session_id != session_id
+                    || self
+                        .snapshot
+                        .model
+                        .as_ref()
+                        .map(|model| (&model.provider, &model.id))
+                        != model.as_ref().map(|model| (&model.provider, &model.id))
+                {
+                    self.snapshot.context_usage = None;
+                }
+                self.snapshot.session_id = session_id.into();
                 self.snapshot.session_file = data["sessionFile"].as_str().map(str::to_owned);
-                self.snapshot.model = model_info(&data["model"]);
+                self.snapshot.model = model;
                 self.snapshot.thinking_level =
                     data["thinkingLevel"].as_str().unwrap_or("off").into();
             }
@@ -493,7 +506,10 @@ impl Conversation {
                     .map(|models| models.iter().filter_map(model_info).collect())
                     .unwrap_or_default();
             }
-            Some("set_model") => self.snapshot.model = model_info(data),
+            Some("set_model") => {
+                self.snapshot.model = model_info(data);
+                self.snapshot.context_usage = None;
+            }
             Some("get_available_thinking_levels") => {
                 self.snapshot.available_thinking_levels = data["levels"]
                     .as_array()
@@ -949,6 +965,36 @@ mod tests {
         assert!(
             matches!(&events[0].data, EventData::RunFinished {status,..} if status == "cancelled")
         );
+    }
+
+    #[test]
+    fn context_usage_is_cleared_when_the_model_session_or_runtime_changes() {
+        let mut conversation = Conversation::new("runtime".into(), "project".into());
+        let mut state = json!({"success":true,"command":"get_state","data":{
+            "sessionId":"first","model":{"provider":"test","id":"model"}
+        }});
+        conversation.response(&state);
+        let usage = || {
+            Some(ContextUsage {
+                tokens: Some(12000),
+                context_window: 128000,
+                percent: Some(9.375),
+            })
+        };
+        conversation.snapshot.context_usage = usage();
+        conversation.response(&state);
+        assert!(conversation.snapshot.context_usage.is_some());
+        state["data"]["sessionId"] = "second".into();
+        conversation.response(&state);
+        assert!(conversation.snapshot.context_usage.is_none());
+        conversation.snapshot.context_usage = usage();
+        conversation.response(
+            &json!({"success":true,"command":"set_model","data":{"provider":"test","id":"other"}}),
+        );
+        assert!(conversation.snapshot.context_usage.is_none());
+        conversation.snapshot.context_usage = usage();
+        conversation.renew("new-runtime".into());
+        assert!(conversation.snapshot.context_usage.is_none());
     }
 
     #[test]

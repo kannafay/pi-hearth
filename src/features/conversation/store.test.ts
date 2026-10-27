@@ -16,6 +16,7 @@ import {
   stopPi,
 } from '@/lib/pi'
 import { loadThinkingPreference, saveThinkingPreference } from './thinking-preference'
+import { rememberSession, sessionDisplay } from './session-cache'
 
 vi.mock('@/lib/pi', () => ({
   connectPi: vi.fn(),
@@ -73,6 +74,35 @@ beforeEach(() => {
     ...snapshot,
     permissionMode: mode,
   }))
+})
+
+test('context usage follows runtime snapshots and events and never leaks into a new session', async () => {
+  const usage = { tokens: 12000, contextWindow: 200000, percent: 6 }
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, contextUsage: usage })
+  vi.mocked(connectPi).mockImplementation(async (_path, hydrate) => {
+    hydrate({ ...snapshot, contextUsage: usage })
+  })
+  await useConversationStore.getState().connect('project', 'current.jsonl', { force: true })
+  let state = useConversationStore.getState()
+  expect(state.contextUsage).toEqual(usage)
+  expect(sessionDisplay(state).contextUsage).toEqual(usage)
+  const cache = rememberSession(new Map(), state)
+  expect(cache.get('id:session-1')?.display.contextUsage).toEqual(usage)
+
+  const compacted = { tokens: null, contextWindow: 200000, percent: null }
+  state.receive([event(1, { type: 'context_usage_changed', usage: compacted }, 'pi-1', null)])
+  state = useConversationStore.getState()
+  expect(state.contextUsage).toEqual(compacted)
+  state.receive([event(0, { type: 'context_usage_changed', usage }, 'pi-1', null)])
+  state.receive([event(2, { type: 'context_usage_changed', usage }, 'old-runtime', null)])
+  expect(useConversationStore.getState().contextUsage).toEqual(compacted)
+
+  vi.mocked(connectPi).mockImplementation(async (_path, hydrate) => {
+    hydrate({ ...snapshot, instanceId: 'pi-2', sessionId: 'session-2' })
+  })
+  vi.mocked(setPiThinkingLevel).mockResolvedValue({ ...snapshot, instanceId: 'pi-2' })
+  await state.connect('project', 'next.jsonl')
+  expect(useConversationStore.getState().contextUsage).toBeNull()
 })
 
 test('permission-only changes serialize the last choice without touching model or thinking settings', async () => {

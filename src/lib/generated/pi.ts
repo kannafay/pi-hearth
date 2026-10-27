@@ -39,7 +39,9 @@ export type WorkspaceCatalog = { projects: Array<ProjectInfo>, sessions: Array<S
 
 export type ProjectInstructions = { path: string, content: string, };
 
-export type RuntimeSnapshot = { instanceId: string, projectPath: string, sessionId: string, sessionFile: string | null, readOnly: string | null, permissionMode: PermissionMode, model: ModelInfo | null, models: Array<ModelInfo>, thinkingLevel: string, availableThinkingLevels: Array<string>, messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, activeRunId: string | null, sequence: number, };
+export type ContextUsage = { tokens: number | null, contextWindow: number, percent: number | null, };
+
+export type RuntimeSnapshot = { instanceId: string, projectPath: string, sessionId: string, sessionFile: string | null, readOnly: string | null, permissionMode: PermissionMode, model: ModelInfo | null, contextUsage?: ContextUsage, models: Array<ModelInfo>, thinkingLevel: string, availableThinkingLevels: Array<string>, messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, activeRunId: string | null, sequence: number, };
 
 export type ResourceScope = "global" | "project" | "custom";
 
@@ -49,6 +51,6 @@ export type ResourceInfo = { name: string, description: string, source: string, 
 
 export type ResourceCatalog = { skills: Array<ResourceInfo>, mcp: Array<ResourceInfo>, warnings: Array<string>, };
 
-export type EventData = { "type": "transcript_replaced", messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, } | { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
+export type EventData = { "type": "context_usage_changed", usage: ContextUsage | null, } | { "type": "transcript_replaced", messages: Array<ChatMessage>, tools: Array<ToolCall>, timeline: Array<TimelineEntry>, } | { "type": "run_started", message: ChatMessage, } | { "type": "message_started", message: ChatMessage, } | { "type": "message_delta", messageId: string, contentIndex: number, kind: string, delta: string, } | { "type": "message_completed", message: ChatMessage, } | { "type": "tool_changed", tool: ToolCall, } | { "type": "run_finished", status: string, error: string | null, finishedAt?: number, } | { "type": "status", text: string, } | { "type": "disconnected", error: string | null, };
 
 export type PiEvent = { instanceId: string, projectPath: string, sessionId: string, runId: string | null, sequence: number, data: EventData, };

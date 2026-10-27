@@ -1,5 +1,6 @@
 use super::{
     config::{local_agent_directory, prepare_config, redact},
+    context_usage::ContextUsageReader,
     process_tree::ProcessTree,
     protocol::{Conversation, JsonLines},
     session_pool::{FileRevision, MAX_OPEN_SESSIONS, RetainedSession},
@@ -281,6 +282,7 @@ impl PiClient {
             let mut conversation = Conversation::new(runtime_instance_id, runtime_project_path);
             let mut channel = channel;
             let mut pending = HashMap::<String, Pending>::new();
+            let mut context_usage = ContextUsageReader::default();
             let mut approvals = HashMap::<String, Approval>::new();
             let mut decoder = JsonLines::default();
             let mut output_buffer = [0u8; 16384];
@@ -321,6 +323,7 @@ impl PiClient {
                                 }
                                 if preserve { conversation.snapshot.instance_id = instance_id; }
                                 else { conversation.renew(instance_id); }
+                                context_usage.end_session();
                                 channel = next;
                                 let _ = reply.send(Ok(conversation.snapshot.clone()));
                             }
@@ -343,6 +346,7 @@ impl PiClient {
                                     if result.is_err() { break; }
                                 }
                                 conversation.end_restore();
+                                context_usage.invalidate();
                                 let _ = reply.send(result.map(|_| conversation.snapshot.clone()));
                             }
                             Some(Control::Request { mut body, run_id, reply }) => {
@@ -360,6 +364,15 @@ impl PiClient {
                                     match started {
                                         Ok(events) => emit(&channel, events),
                                         Err(error) => { let _ = reply.send(Err(error)); continue; }
+                                    }
+                                    context_usage.invalidate();
+                                }
+                                if body["type"] == "new_session" {
+                                    context_usage.begin_session();
+                                } else if matches!(body["type"].as_str(), Some("set_model" | "compact")) {
+                                    context_usage.suspend();
+                                    if body["type"] == "compact" {
+                                        invalidate_context_usage(&mut conversation, &channel);
                                     }
                                 }
                                 if body["type"] == "abort" || body["type"] == "clear_queue" {
@@ -383,7 +396,11 @@ impl PiClient {
                                 let writes = matches!(body["type"].as_str(), Some("prompt" | "compact" | "set_model" | "set_thinking_level" | "set_session_name"));
                                 pending.insert(id, Pending { reply, prompt_run: run_id, deadline: Instant::now() + Duration::from_secs(deadline), history: body["type"] == "get_entries", writes });
                             }
-                            Some(Control::Subscribe { channel: next, reply }) => { channel = next; let _ = reply.send(conversation.snapshot.clone()); }
+                            Some(Control::Subscribe { channel: next, reply }) => {
+                                channel = next;
+                                context_usage.invalidate();
+                                let _ = reply.send(conversation.snapshot.clone());
+                            }
                             Some(Control::Snapshot { reply }) => { let _ = reply.send(conversation.snapshot.clone()); }
                             Some(Control::Decide { approval_id, allow, reply }) => {
                                 let Some(approval) = approvals.remove(&approval_id) else {
@@ -433,8 +450,22 @@ impl PiClient {
                                         *error = redact(error.as_str().unwrap().into(), &config.secrets).into();
                                     }
                                     if record["type"] == "response" {
+                                        if let Some(usage) = context_usage.response(&record, &conversation.snapshot) {
+                                            if usage != conversation.snapshot.context_usage {
+                                                conversation.snapshot.context_usage = usage.clone();
+                                                let event = conversation.event(EventData::ContextUsageChanged { usage });
+                                                emit(&channel, vec![event]);
+                                            }
+                                        }
                                         if let Some(request) = record["id"].as_str().and_then(|id| pending.remove(id)) {
                                             conversation.response(&record);
+                                            if matches!(record["command"].as_str(), Some("get_state" | "set_model" | "compact"))
+                                            {
+                                                context_usage.resume();
+                                            }
+                                            if record["command"] == "new_session" && (record["success"] != true || record["data"]["cancelled"] == true) {
+                                                context_usage.end_session();
+                                            }
                                             conversation.apply_provider_names(&config.provider_names);
                                             if request.writes && record["success"] == true {
                                                 *runtime_revision.lock().unwrap() = conversation.snapshot.session_file.as_deref().and_then(FileRevision::read);
@@ -482,6 +513,16 @@ impl PiClient {
                                             exit_error = Some("无法关闭未支持的工具确认。".into()); break 'runtime;
                                         }
                                     } else {
+                                        match record["type"].as_str() {
+                                            Some("auto_compaction_start") => {
+                                                context_usage.suspend();
+                                                invalidate_context_usage(&mut conversation, &channel);
+                                            }
+                                            Some("auto_compaction_end") => context_usage.resume(),
+                                            Some("agent_settled") => context_usage.resume(),
+                                            Some("message_end" | "tool_execution_end") => context_usage.invalidate(),
+                                            _ => {}
+                                        }
                                         if record["type"].as_str().is_some_and(|kind| kind.starts_with("tool_execution_")) { mask_tool_record(&mut record, &config.secrets); }
                                         let events = conversation.record(&record);
                                         if persist_tool(&output, &conversation, &record).await.is_err() {
@@ -512,6 +553,7 @@ impl PiClient {
                         }
                     }
                     _ = tick.tick() => {
+                        context_usage.expire(Instant::now());
                         let expired: Vec<_> = approvals.iter().filter(|(_, approval)| approval.deadline <= Instant::now()).map(|(id, _)| id.clone()).collect();
                         for id in expired {
                             let approval = approvals.remove(&id).unwrap();
@@ -523,6 +565,13 @@ impl PiClient {
                         if pending.values().any(|request| request.deadline <= Instant::now()) {
                             exit_error = Some("Pi 命令响应超时，连接已关闭，请重新连接。".into()); break;
                         }
+                    }
+                }
+                // Keep optional usage reads out of the action timeout queue. Read
+                // once per completed step, never for each streamed token.
+                if pending.is_empty() {
+                    if let Some(request) = context_usage.request(&conversation.snapshot) {
+                        let _ = write_wire(&mut stdin, &request).await;
                     }
                 }
             }
@@ -899,6 +948,22 @@ impl PiClient {
             .map_err(|_| "读取 Pi 状态超时。")?
             .map_err(|_| "Pi 连接已关闭。".into())
     }
+}
+
+fn invalidate_context_usage(conversation: &mut Conversation, channel: &Channel<PiEvent>) {
+    if let Some(usage) = conversation.snapshot.context_usage.as_mut() {
+        if usage.tokens.is_none() && usage.percent.is_none() {
+            return;
+        }
+        usage.tokens = None;
+        usage.percent = None;
+    } else {
+        return;
+    }
+    let event = conversation.event(EventData::ContextUsageChanged {
+        usage: conversation.snapshot.context_usage.clone(),
+    });
+    emit(channel, vec![event]);
 }
 
 async fn write_wire(stdin: &mut Option<tokio::process::ChildStdin>, value: &Value) -> bool {
@@ -2276,6 +2341,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn context_usage_reads_real_pi_stats_and_refreshes_after_new_session() {
+        async fn usage(client: &PiClient) -> ContextUsage {
+            timeout(Duration::from_secs(5), async {
+                loop {
+                    if let Some(usage) = client.snapshot().await.unwrap().context_usage {
+                        return usage;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("Pi should publish current context usage")
+        }
+
+        let fixture = ResidentFixture::new().await;
+        let client = fixture
+            .manager
+            .client(&fixture.initial.instance_id)
+            .await
+            .unwrap();
+        let (events, mut received) = mpsc::unbounded_channel::<Value>();
+        let initial_events = events.clone();
+        let subscribed = client
+            .subscribe(Channel::new(move |body| {
+                let _ = initial_events.send(body.deserialize().unwrap());
+                Ok(())
+            }))
+            .await
+            .unwrap();
+        let current = usage(&client).await;
+        let stats = client
+            .request(json!({"type":"get_session_stats"}), None)
+            .await
+            .unwrap();
+        assert_eq!(current.context_window, 128000);
+        assert_eq!(
+            serde_json::to_value(&current).unwrap(),
+            stats["contextUsage"]
+        );
+        if subscribed.context_usage.is_none() {
+            timeout(Duration::from_secs(5), async {
+                while let Some(event) = received.recv().await {
+                    if event["data"]["type"] == "context_usage_changed" {
+                        return;
+                    }
+                }
+                panic!("Context usage channel closed");
+            })
+            .await
+            .expect("Pi should emit a usage update when the snapshot has no usage");
+        }
+        let (next, snapshot) = client
+            .new_session(
+                Channel::new(move |body| {
+                    let _ = events.send(body.deserialize().unwrap());
+                    Ok(())
+                }),
+                fixture.initial.model.as_ref(),
+                PermissionMode::Ask,
+            )
+            .await
+            .unwrap();
+        assert_ne!(snapshot.session_id, fixture.initial.session_id);
+        assert!(snapshot.context_usage.is_none());
+        let fresh = usage(&next).await;
+        assert_eq!(fresh.context_window, 128000);
+        assert_eq!(fresh.tokens, Some(0));
+        timeout(Duration::from_secs(5), async {
+            while let Some(event) = received.recv().await {
+                if event["instanceId"] == snapshot.instance_id
+                    && event["data"]["type"] == "context_usage_changed"
+                {
+                    assert_eq!(event["sessionId"], snapshot.session_id);
+                    assert_eq!(event["data"]["usage"]["tokens"], 0);
+                    return;
+                }
+            }
+            panic!("New session usage channel closed");
+        })
+        .await
+        .expect("The new session must receive its own usage update");
+        next.shutdown().await;
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
     async fn permissions_survive_resident_switches_and_cold_reopens_and_new_sessions_use_only_the_default()
      {
         let fixture = ResidentFixture::new().await;
@@ -3002,6 +3153,7 @@ mod tests {
                 .await
                 .is_none()
         );
+        let old_session_id = before.session_id.clone();
         let mut previous = before;
         let mut timings = Vec::new();
         let mut empty_process = None;
@@ -3033,7 +3185,10 @@ mod tests {
             assert_ne!(next.session_file, previous.session_file);
             assert!(next.messages.is_empty() && next.tools.is_empty() && next.timeline.is_empty());
             assert!(next.active_run_id.is_none());
-            assert_eq!(next.sequence, 0);
+            // Optional usage updates may arrive before the opening snapshot.
+            if let Some(usage) = &next.context_usage {
+                assert_eq!(usage.tokens, Some(0));
+            }
             assert_eq!(next.model.as_ref().unwrap().id, "first");
             assert_eq!(next.thinking_level, "high");
             assert_eq!(next.models.len(), previous.models.len());
@@ -3085,11 +3240,11 @@ mod tests {
         );
         initial.shutdown().await;
         assert_eq!(client.snapshot().await.unwrap().thinking_level, "high");
-        let unexpected = old_received.try_recv();
-        assert!(
-            unexpected.is_err(),
-            "unexpected old subscription event: {unexpected:?}"
-        );
+        while let Ok(event) = old_received.try_recv() {
+            assert_eq!(event["data"]["type"], "context_usage_changed");
+            assert_eq!(event["instanceId"], initial.instance_id);
+            assert_eq!(event["sessionId"], old_session_id);
+        }
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
         let active_action = client.actions.lock().await;
         timeout(

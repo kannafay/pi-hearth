@@ -292,6 +292,16 @@ pub struct ProjectInstructions {
     pub content: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextUsage {
+    #[ts(type = "number | null")]
+    pub tokens: Option<u64>,
+    #[ts(type = "number")]
+    pub context_window: u64,
+    pub percent: Option<f64>,
+}
+
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeSnapshot {
@@ -302,6 +312,9 @@ pub struct RuntimeSnapshot {
     pub read_only: Option<String>,
     pub permission_mode: PermissionMode,
     pub model: Option<ModelInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context_usage: Option<ContextUsage>,
     pub models: Vec<ModelInfo>,
     pub thinking_level: String,
     pub available_thinking_levels: Vec<String>,
@@ -320,6 +333,9 @@ pub struct RuntimeSnapshot {
     rename_all_fields = "camelCase"
 )]
 pub enum EventData {
+    ContextUsageChanged {
+        usage: Option<ContextUsage>,
+    },
     TranscriptReplaced {
         messages: Vec<ChatMessage>,
         tools: Vec<ToolCall>,
@@ -432,6 +448,7 @@ fn export_frontend_types() {
         AppSettingsPatch::decl(),
         WorkspaceCatalog::decl(),
         ProjectInstructions::decl(),
+        ContextUsage::decl(),
         RuntimeSnapshot::decl(),
         ResourceScope::decl(),
         ResourceStatus::decl(),

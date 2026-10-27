@@ -31,6 +31,7 @@ import { useComposerCompletion } from './use-composer-completion'
 import { ComposerCompletionMenu } from './composer-completion-menu'
 import { slashCommand } from './composer-completion'
 import { toast } from '@/lib/toast'
+import { ContextUsageIndicator } from './context-usage'
 
 export function Composer({
   onSendStart,
@@ -408,39 +409,42 @@ export function Composer({
                 onOpenChange={(open) => setPicker(open ? 'thinking' : null)}
               />
             </div>
-            {busy ? (
-              <Button
-                aria-label="停止生成"
-                size="icon-sm"
-                variant="secondary"
-                disabled={status === 'stopping' || !runStarted}
-                onClick={() => void stop()}
-              >
-                {status === 'stopping' ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Square className="size-3 fill-current" />
-                )}
-              </Button>
-            ) : (
-              <Button
-                aria-label="发送消息"
-                size="icon-sm"
-                disabled={
-                  status !== 'ready' ||
-                  Boolean(readOnly) ||
-                  Boolean(settingsPending) ||
-                  commandBusy ||
-                  sessionUpdating ||
-                  selecting ||
-                  pending > 0 ||
-                  (!draft.trim() && !draftAttachments.length)
-                }
-                onClick={() => void submit()}
-              >
-                <ArrowUp />
-              </Button>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              <ContextUsageIndicator />
+              {busy ? (
+                <Button
+                  aria-label="停止生成"
+                  size="icon-sm"
+                  variant="secondary"
+                  disabled={status === 'stopping' || !runStarted}
+                  onClick={() => void stop()}
+                >
+                  {status === 'stopping' ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Square className="size-3 fill-current" />
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  aria-label="发送消息"
+                  size="icon-sm"
+                  disabled={
+                    status !== 'ready' ||
+                    Boolean(readOnly) ||
+                    Boolean(settingsPending) ||
+                    commandBusy ||
+                    sessionUpdating ||
+                    selecting ||
+                    pending > 0 ||
+                    (!draft.trim() && !draftAttachments.length)
+                  }
+                  onClick={() => void submit()}
+                >
+                  <ArrowUp />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
