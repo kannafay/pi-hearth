@@ -181,10 +181,17 @@ impl PiClient {
         .map_err(|_| "无法安装资源模块。")?;
         let agent_dir = data_dir.join("pi");
         let mut config = prepare_config(source_agent_dir, &agent_dir)?;
+        let proxy = super::network::for_runtime(data_dir, source_agent_dir).await?;
+        config.environment.extend(proxy.values);
+        config.secrets.extend(proxy.secrets);
         config.secrets.extend(super::config::mcp_secrets(
             source_agent_dir,
             Path::new(&project_path),
         ));
+        config
+            .secrets
+            .sort_by_key(|value| std::cmp::Reverse(value.len()));
+        config.secrets.dedup();
         let global_instructions = ["AGENTS.md", "CLAUDE.md"]
             .iter()
             .map(|name| source_agent_dir.join(name))
@@ -1735,6 +1742,45 @@ impl PiManager {
             .ok_or_else(|| "当前 Pi 连接已失效，请重新连接。".into())
     }
 
+    pub(super) async fn update_proxy(
+        &self,
+        data: &Path,
+        patch: AppSettingsPatch,
+    ) -> Result<AppSettings, String> {
+        // Hold the pool and action gates through persistence and shutdown so a
+        // concurrent send cannot start between the idle check and reconnect.
+        let mut runtime = self.runtime.lock().await;
+        let mut retained = self.retained.lock().await;
+        let clients: Vec<_> = runtime
+            .iter()
+            .cloned()
+            .chain(retained.iter().map(|entry| entry.client.clone()))
+            .collect();
+        let mut actions = Vec::new();
+        for client in &clients {
+            actions.push(
+                client
+                    .actions
+                    .try_lock()
+                    .map_err(|_| "请等待所有会话的任务结束后再修改代理。")?,
+            );
+            if client
+                .snapshot()
+                .await
+                .is_ok_and(|snapshot| snapshot.active_run_id.is_some())
+            {
+                return Err("请等待所有会话的任务结束后再修改代理。".into());
+            }
+        }
+        let settings = storage::update_settings(data, patch).await?;
+        for client in &clients {
+            client.shutdown().await;
+        }
+        *runtime = None;
+        retained.clear();
+        Ok(settings)
+    }
+
     pub async fn disconnect(&self) {
         let mut runtime = self.runtime.lock().await;
         if let Some(client) = runtime.take() {
@@ -2341,6 +2387,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_saves_preserve_failed_changes_and_reconnect_all_idle_native_sessions() {
+        let fixture = ResidentFixture::new().await;
+        let second = fixture.open(1).await;
+        let active = fixture.manager.client(&second.instance_id).await.unwrap();
+        let parked = fixture.manager.retained.lock().await[0].client.clone();
+        let old_pid = parked.process_id;
+        let data = fixture.root.join("data");
+        let proxy = ProxySettings {
+            mode: ProxyMode::Manual,
+            url: "http://127.0.0.1:1".into(),
+            ..Default::default()
+        };
+        let patch = || AppSettingsPatch {
+            proxy: Some(proxy.clone()),
+            ..Default::default()
+        };
+        {
+            let _action = active.actions.lock().await;
+            assert!(fixture.manager.update_proxy(&data, patch()).await.is_err());
+            assert!(storage::settings(&data).await.unwrap().proxy.is_none());
+            assert!(active.snapshot().await.is_ok());
+        }
+        let invalid = AppSettingsPatch {
+            proxy: Some(ProxySettings {
+                url: "ftp://proxy.invalid".into(),
+                ..proxy.clone()
+            }),
+            ..Default::default()
+        };
+        assert!(fixture.manager.update_proxy(&data, invalid).await.is_err());
+        assert!(active.snapshot().await.is_ok() && parked.snapshot().await.is_ok());
+        let saved = fixture.manager.update_proxy(&data, patch()).await.unwrap();
+        assert_eq!(saved.proxy, Some(proxy));
+        assert!(active.snapshot().await.is_err() && parked.snapshot().await.is_err());
+        assert!(fixture.manager.retained.lock().await.is_empty());
+        let reopened = fixture.open(0).await;
+        assert_eq!(reopened.session_id, fixture.initial.session_id);
+        assert_eq!(reopened.messages.len(), fixture.initial.messages.len());
+        assert_ne!(
+            fixture
+                .manager
+                .client(&reopened.instance_id)
+                .await
+                .unwrap()
+                .process_id,
+            old_pid
+        );
+        fixture.manager.disconnect().await;
+    }
+
+    #[tokio::test]
     async fn context_usage_reads_real_pi_stats_and_refreshes_after_new_session() {
         async fn usage(client: &PiClient) -> ContextUsage {
             timeout(Duration::from_secs(5), async {
@@ -2831,6 +2928,30 @@ mod tests {
             .await
             .unwrap();
         assert!(client.snapshot().await.unwrap().active_run_id.is_some());
+        assert!(
+            fixture
+                .manager
+                .update_proxy(
+                    &fixture.root.join("data"),
+                    AppSettingsPatch {
+                        proxy: Some(ProxySettings {
+                            mode: ProxyMode::Direct,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }
+                )
+                .await
+                .is_err(),
+            "Changing proxy must not interrupt a background stream"
+        );
+        assert!(
+            storage::settings(&fixture.root.join("data"))
+                .await
+                .unwrap()
+                .proxy
+                .is_none()
+        );
         assert!(
             fixture
                 .manager

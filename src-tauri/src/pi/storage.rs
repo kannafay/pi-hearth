@@ -254,6 +254,9 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
         values.insert(key, serde_json::from_str(&value).map_err(database_error)?);
     }
     let settings: AppSettings = serde_json::from_value(values.into()).map_err(database_error)?;
+    if let Some(proxy) = &settings.proxy {
+        super::network::validate(proxy)?;
+    }
     if settings
         .default_model
         .as_ref()
@@ -331,16 +334,25 @@ pub async fn app_settings(app: tauri::AppHandle) -> Result<AppSettings, String> 
 #[tauri::command]
 pub async fn app_update_settings(
     app: tauri::AppHandle,
+    manager: tauri::State<'_, super::client::PiManager>,
     patch: AppSettingsPatch,
 ) -> Result<AppSettings, String> {
     let data = app.path().app_local_data_dir().map_err(database_error)?;
     let Some(enabled) = patch.developer_mode else {
-        return update_settings(&data, patch).await;
+        return if patch.proxy.is_some() {
+            manager.update_proxy(&data, patch).await
+        } else {
+            update_settings(&data, patch).await
+        };
     };
     let _gate = crate::developer::SETTINGS_GATE.lock().await;
     let previous = settings(&data).await?.developer_mode;
     crate::developer::set_enabled(&data, enabled)?;
-    let result = update_settings(&data, patch).await;
+    let result = if patch.proxy.is_some() {
+        manager.update_proxy(&data, patch).await
+    } else {
+        update_settings(&data, patch).await
+    };
     if result.is_err() {
         let _ = crate::developer::set_enabled(&data, previous);
     }

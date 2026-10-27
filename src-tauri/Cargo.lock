@@ -2692,6 +2692,7 @@ dependencies = [
  "ignore",
  "image",
  "libc",
+ "percent-encoding",
  "rusqlite",
  "serde",
  "serde_json",

@@ -176,6 +176,41 @@ impl PermissionMode {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyMode {
+    #[default]
+    Inherit,
+    Direct,
+    Manual,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct ProxySettings {
+    pub mode: ProxyMode,
+    pub url: String,
+    pub no_proxy: String,
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        Self {
+            mode: ProxyMode::Inherit,
+            url: String::new(),
+            no_proxy: "localhost,127.0.0.1,[::1]".into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyTestResult {
+    pub status: u16,
+    #[ts(type = "number")]
+    pub elapsed_ms: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -199,6 +234,9 @@ pub struct AppSettings {
     pub files_directory: String,
     pub custom_files_directory: String,
     pub developer_mode: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub proxy: Option<ProxySettings>,
 }
 
 impl Default for AppSettings {
@@ -223,6 +261,7 @@ impl Default for AppSettings {
             files_directory: String::new(),
             custom_files_directory: String::new(),
             developer_mode: false,
+            proxy: None,
         }
     }
 }
@@ -284,6 +323,9 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub developer_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub proxy: Option<ProxySettings>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -444,6 +486,9 @@ fn export_frontend_types() {
         SessionPreference::decl(),
         AppTheme::decl(),
         PermissionMode::decl(),
+        ProxyMode::decl(),
+        ProxySettings::decl(),
+        ProxyTestResult::decl(),
         AppSettings::decl(),
         AppSettingsPatch::decl(),
         WorkspaceCatalog::decl(),

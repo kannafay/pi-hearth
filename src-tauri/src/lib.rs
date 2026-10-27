@@ -114,6 +114,7 @@ pub fn run() {
             pi::attachments::attachment_preview,
             pi::storage::app_settings,
             pi::storage::app_update_settings,
+            pi::network::network_test_proxy,
             pi::catalog::workspace_catalog,
             pi::catalog::workspace_search,
             pi::catalog::workspace_select,

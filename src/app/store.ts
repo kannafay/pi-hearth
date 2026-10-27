@@ -6,11 +6,13 @@ import type {
   Attachment,
   ModelInfo,
   PermissionMode,
+  ProxySettings,
   ProjectInfo,
   SessionInfo,
   WorkspaceCatalog,
 } from '@/lib/generated/pi'
 import { loadAppSettings, updateAppSettings } from '@/lib/app-settings'
+import { defaultProxySettings } from '@/lib/network'
 import { isDesktop } from '@/lib/desktop'
 import { loadThinkingPreference } from '@/features/conversation/thinking-preference'
 import { releaseAttachments } from '@/lib/attachments'
@@ -108,6 +110,9 @@ interface WorkspaceState {
   customFilesDirectory: string
   developerMode: boolean
   developerModePending: boolean
+  proxy: ProxySettings
+  proxyPending: boolean
+  setProxy: (proxy: ProxySettings) => Promise<void>
   setDeveloperMode: (enabled: boolean) => Promise<void>
   setProjectsDirectory: (directory: string) => void
   setFilesDirectory: (directory: string) => void
@@ -435,6 +440,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         filesDirectory,
         customFilesDirectory,
         developerMode: settings.developerMode ?? false,
+        proxy: settings.proxy ?? defaultProxySettings,
         settingsReady: true,
       })
     } catch (reason) {
@@ -474,6 +480,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
   developerMode: false,
   developerModePending: false,
+  proxy: defaultProxySettings,
+  proxyPending: false,
+  setProxy: async (proxy) => {
+    if (get().proxyPending || get().sessionActionPending) throw new Error('请等待当前操作完成。')
+    set({ proxyPending: true, sessionActionPending: 'network-proxy' })
+    const current = useConversationStore.getState()
+    try {
+      const settings = await updateAppSettings({ proxy })
+      set({ proxy: settings.proxy ?? defaultProxySettings })
+      await useConversationStore.getState().connect(get().projectPath, current.sessionFile, {
+        force: true,
+        sessionId: current.sessionId ?? undefined,
+      })
+    } finally {
+      set({ proxyPending: false, sessionActionPending: null })
+    }
+  },
   setDeveloperMode: async (enabled) => {
     if (get().developerModePending) return
     set({ developerModePending: true })

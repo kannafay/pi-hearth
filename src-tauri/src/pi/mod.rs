@@ -5,6 +5,7 @@ pub mod composer;
 mod config;
 mod context_usage;
 pub mod files;
+pub mod network;
 pub(crate) mod process_tree;
 mod protocol;
 pub mod resources;

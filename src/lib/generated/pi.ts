@@ -31,9 +31,15 @@ export type AppTheme = "system" | "light" | "dark";
 
 export type PermissionMode = "ask" | "auto" | "full";
 
-export type AppSettings = { theme: AppTheme, sidebarOpen: boolean, inspectorOpen: boolean, navigationWidth: number, inspectorWidth: number, expandedProjects: Record<string, boolean>, projectOrder: Array<string>, sessionOrder: Array<string>, pinnedProjects: Array<string>, archivedProjects: Array<string>, removedProjects: Array<string>, thinkingLevel: string | null, defaultModel: ModelInfo | null, defaultPermission: PermissionMode, projectsDirectory: string, customProjectsDirectory: string, filesDirectory: string, customFilesDirectory: string, developerMode: boolean, };
+export type ProxyMode = "inherit" | "direct" | "manual";
 
-export type AppSettingsPatch = { theme?: AppTheme, sidebarOpen?: boolean, inspectorOpen?: boolean, navigationWidth?: number, inspectorWidth?: number, expandedProjects?: { [key in string]?: boolean }, projectOrder?: Array<string>, sessionOrder?: Array<string>, pinnedProjects?: Array<string>, archivedProjects?: Array<string>, thinkingLevel?: string, defaultModel?: ModelInfo, defaultPermission?: PermissionMode, projectsDirectory?: string, customProjectsDirectory?: string, filesDirectory?: string, customFilesDirectory?: string, developerMode?: boolean, };
+export type ProxySettings = { mode: ProxyMode, url: string, noProxy: string, };
+
+export type ProxyTestResult = { status: number, elapsedMs: number, };
+
+export type AppSettings = { theme: AppTheme, sidebarOpen: boolean, inspectorOpen: boolean, navigationWidth: number, inspectorWidth: number, expandedProjects: Record<string, boolean>, projectOrder: Array<string>, sessionOrder: Array<string>, pinnedProjects: Array<string>, archivedProjects: Array<string>, removedProjects: Array<string>, thinkingLevel: string | null, defaultModel: ModelInfo | null, defaultPermission: PermissionMode, projectsDirectory: string, customProjectsDirectory: string, filesDirectory: string, customFilesDirectory: string, developerMode: boolean, proxy?: ProxySettings, };
+
+export type AppSettingsPatch = { theme?: AppTheme, sidebarOpen?: boolean, inspectorOpen?: boolean, navigationWidth?: number, inspectorWidth?: number, expandedProjects?: { [key in string]?: boolean }, projectOrder?: Array<string>, sessionOrder?: Array<string>, pinnedProjects?: Array<string>, archivedProjects?: Array<string>, thinkingLevel?: string, defaultModel?: ModelInfo, defaultPermission?: PermissionMode, projectsDirectory?: string, customProjectsDirectory?: string, filesDirectory?: string, customFilesDirectory?: string, developerMode?: boolean, proxy?: ProxySettings, };
 
 export type WorkspaceCatalog = { projects: Array<ProjectInfo>, sessions: Array<SessionInfo>, generalCwd: string, selection: Selection, sessionPreferences: { [key in string]?: SessionPreference }, };
 

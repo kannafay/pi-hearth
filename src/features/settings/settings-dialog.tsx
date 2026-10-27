@@ -6,6 +6,7 @@ import {
   BookOpen,
   HardDrive,
   Info,
+  Globe,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -37,11 +38,13 @@ import { DeveloperModeSettings } from './developer-mode-settings'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
 import { ResourceSettings } from './resource-settings'
+import { NetworkSettings } from './network-settings'
 import { useResourceCatalog } from './use-resource-catalog'
 
 const sections = [
   { value: 'appearance', label: '外观', icon: Palette },
   { value: 'models', label: '模型与凭证', icon: SlidersHorizontal },
+  { value: 'network', label: '网络', icon: Globe },
   { value: 'skills', label: '技能', icon: BookOpen },
   { value: 'mcp', label: 'MCP', icon: Plug },
   { value: 'storage', label: '存储', icon: HardDrive },
@@ -140,7 +143,7 @@ export function SettingsDialog({
       <DialogContent layout="panel" size="xl" className="settings-dialog">
         <DialogTitle className="sr-only">设置</DialogTitle>
         <DialogDescription className="sr-only">
-          Pi Hearth 的外观、模型、技能、MCP、存储、归档与运行信息。
+          Pi Hearth 的外观、模型、网络、技能、MCP、存储、归档与运行信息。
         </DialogDescription>
         <Tabs
           value={section}
@@ -245,6 +248,13 @@ export function SettingsDialog({
               description="默认沿用 Pi 配置，开关仅在 Pi Hearth 内生效。"
             >
               <ResourceSettings kind="skills" state={resources} />
+            </SettingsPanel>
+            <SettingsPanel
+              value="network"
+              title="网络"
+              description="配置模型请求的代理连接，仅在 Pi Hearth 内生效。"
+            >
+              <NetworkSettings />
             </SettingsPanel>
             <SettingsPanel
               value="mcp"
