@@ -13,6 +13,24 @@ fn now_ms() -> f64 {
         .as_millis() as f64
 }
 
+fn assistant_phase(raw: &Value, completed: bool) -> Option<String> {
+    if let Some(phase @ ("commentary" | "partial_answer" | "final_answer")) = raw["phase"].as_str()
+    {
+        return Some(phase.into());
+    }
+    if raw["stopReason"] == "toolUse"
+        || raw["content"]
+            .as_array()
+            .is_some_and(|content| content.iter().any(|block| block["type"] == "toolCall"))
+    {
+        Some("commentary".into())
+    } else if completed && raw["stopReason"] == "stop" {
+        Some("final_answer".into())
+    } else {
+        None
+    }
+}
+
 #[derive(Default)]
 pub struct JsonLines {
     pending: Vec<u8>,
@@ -146,6 +164,7 @@ impl Conversation {
             thinking: String::new(),
             status: "complete".into(),
             error: None,
+            phase: None,
             timestamp: Some(now_ms()),
             attachments,
             started_at: Some(now_ms()),
@@ -208,6 +227,7 @@ impl Conversation {
                     thinking: String::new(),
                     status: "complete".into(),
                     error: None,
+                    phase: None,
                     timestamp: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
                     attachments,
                     started_at: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
@@ -227,6 +247,7 @@ impl Conversation {
                     thinking: String::new(),
                     status: "complete".into(),
                     error: None,
+                    phase: None,
                     timestamp: raw["timestamp"].as_f64().filter(|time| *time > 0.0),
                     attachments: None,
                     started_at: None,
@@ -588,6 +609,7 @@ impl Conversation {
                     thinking: String::new(),
                     status: "streaming".into(),
                     error: None,
+                    phase: assistant_phase(&record["message"], false),
                     timestamp: record["message"]["timestamp"]
                         .as_f64()
                         .filter(|time| *time > 0.0)
@@ -683,6 +705,7 @@ impl Conversation {
                     thinking,
                     status: status.into(),
                     error,
+                    phase: assistant_phase(raw, true),
                     timestamp: raw["timestamp"]
                         .as_f64()
                         .filter(|time| *time > 0.0)
@@ -771,6 +794,53 @@ fn model_info(value: &Value) -> Option<ModelInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assistant_phases_use_pi_tool_calls_and_completion_without_guessing_streamed_text() {
+        assert!(assistant_phase(&json!({"role":"assistant","stopReason":"stop"}), false).is_none());
+        assert_eq!(
+            assistant_phase(&json!({"role":"assistant","stopReason":"stop"}), true).as_deref(),
+            Some("final_answer")
+        );
+        assert_eq!(
+            assistant_phase(&json!({"role":"assistant","stopReason":"toolUse"}), true).as_deref(),
+            Some("commentary")
+        );
+        assert_eq!(
+            assistant_phase(
+                &json!({"role":"assistant","content":[{"type":"toolCall"}]}),
+                false
+            )
+            .as_deref(),
+            Some("commentary")
+        );
+        assert_eq!(assistant_phase(&json!({"role":"assistant","phase":"partial_answer","content":[{"type":"toolCall"}]}),true).as_deref(),Some("partial_answer"));
+        assert!(assistant_phase(&json!({"role":"assistant","stopReason":"error"}), true).is_none());
+        let mut conversation = Conversation::new("instance".into(), "cwd".into());
+        conversation
+            .begin("run".into(), "Check the project".into())
+            .unwrap();
+        conversation.record(&json!({"type":"message_start","message":{"role":"assistant"}}));
+        conversation.record(&json!({"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Checking the project"}],"stopReason":"toolUse"}}));
+        assert_eq!(
+            conversation
+                .snapshot
+                .messages
+                .last()
+                .unwrap()
+                .phase
+                .as_deref(),
+            Some("commentary")
+        );
+        assert!(conversation.snapshot.tools.is_empty());
+        let raw = json!({"role":"assistant","content":[{"type":"text","text":"Checking the project"}],"stopReason":"toolUse"});
+        let mut restored = Conversation::new("restored".into(), "cwd".into());
+        restored.restore_message(&raw);
+        assert_eq!(
+            restored.snapshot.messages.last().unwrap().phase.as_deref(),
+            Some("commentary")
+        );
+    }
 
     #[test]
     fn compaction_tracks_busy_state_without_inserting_messages_or_retiming_a_reply() {

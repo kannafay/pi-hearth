@@ -102,7 +102,9 @@ test('expanded command output updates live and displays errors as plain text', a
   const view = render(
     <ToolRecord tool={{ ...tool, name: 'powershell', status: 'running', output: 'first' }} />,
   )
-  expect(await screen.findByRole('button', { expanded: true })).toBeVisible()
+  const header = screen.getByRole('button', { name: /执行命令/ })
+  expect(header).toHaveAttribute('aria-expanded', 'false')
+  await user.click(header)
   expect(screen.getByText('实时输出')).toBeVisible()
   view.rerender(
     <ToolRecord
@@ -115,8 +117,7 @@ test('expanded command output updates live and displays errors as plain text', a
       }}
     />,
   )
-  expect(screen.getByRole('button', { name: /执行命令/ })).toHaveAttribute('aria-expanded', 'false')
-  await user.click(screen.getByRole('button', { name: /执行命令/ }))
+  expect(header).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('<script>failure</script>')).toBeVisible()
   expect(screen.getByText('执行失败')).toBeVisible()
   expect(screen.queryByText('first')).not.toBeInTheDocument()
@@ -125,7 +126,9 @@ test('expanded command output updates live and displays errors as plain text', a
 test('a running step manually folded by the reader reopens when approval is requested', async () => {
   const user = userEvent.setup()
   const view = render(<ToolRecord tool={{ ...tool, status: 'running', approvalId: null }} />)
-  const header = await screen.findByRole('button', { expanded: true })
+  const header = screen.getByRole('button', { name: /写入文件/ })
+  expect(header).toHaveAttribute('aria-expanded', 'false')
+  await user.click(header)
   await user.click(header)
   expect(header).toHaveAttribute('aria-expanded', 'false')
   view.rerender(<ToolRecord tool={tool} />)
@@ -135,7 +138,7 @@ test('a running step manually folded by the reader reopens when approval is requ
 })
 
 test.each(['complete', 'failed', 'denied', 'cancelled', 'interrupted'])(
-  'tool details follow the queued and running phases, then collapse on %s',
+  'explicit tool detail choices survive queued, running and %s statuses',
   async (terminalStatus) => {
     const user = userEvent.setup()
     const queued = { ...tool, status: 'queued', approvalId: null }
@@ -157,8 +160,7 @@ test.each(['complete', 'failed', 'denied', 'cancelled', 'interrupted'])(
     view.rerender(
       <ToolRecord tool={{ ...running, status: terminalStatus, output: '操作已结束' }} />,
     )
-    expect(header).toHaveAttribute('aria-expanded', 'false')
-    await user.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('操作已结束')).toBeVisible()
   },
 )

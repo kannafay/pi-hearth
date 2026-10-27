@@ -20,6 +20,7 @@ function sameMessage(a: ChatMessage | undefined, b: ChatMessage) {
     a.thinking === b.thinking &&
     a.status === b.status &&
     a.error === b.error &&
+    a.phase === b.phase &&
     attachments.length === other.length &&
     attachments.every((attachment, index) => sameAttachment(attachment, other[index]))
   )

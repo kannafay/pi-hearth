@@ -80,6 +80,7 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
         : tool.status === 'queued'
           ? 'pending'
           : 'finished',
+    'details',
   )
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')

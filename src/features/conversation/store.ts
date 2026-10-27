@@ -256,6 +256,15 @@ export function reducePiEvent(state: ConversationData, event: PiEvent): Conversa
     }
     case 'message_completed':
       next.messages = state.messages.map((m) => (m.id === data.message.id ? data.message : m))
+      if (data.message.phase === 'commentary') {
+        next.activity =
+          next.status === 'stopping'
+            ? '正在停止…'
+            : getResponseStatus(
+                data.message,
+                next.tools.filter((tool) => tool.runId === next.activeRunId),
+              )
+      }
       next.blocks = { ...state.blocks }
       delete next.blocks[data.message.id]
       next.streamingBase = { ...state.streamingBase }

@@ -84,6 +84,41 @@ test('a progress statement followed by a tool is not mistaken for a final answer
   expect(turn.process.map((item) => item.kind)).toEqual(['message', 'tool'])
 })
 
+test('completed progress is kept in activity before its tool event arrives', () => {
+  const user = message('user', 'user', '检查项目')
+  const progress = { ...message('progress', 'assistant', '先检查项目状态。'), phase: 'commentary' }
+  const [before] = buildConversationTurns([user, progress], [], [])
+  expect(before.reply).toBeNull()
+  expect(before.process).toMatchObject([{ kind: 'message', message: progress }])
+  const [after] = buildConversationTurns(
+    [user, progress],
+    [tool],
+    [
+      { kind: 'message', id: user.id },
+      { kind: 'message', id: progress.id },
+      { kind: 'tool', id: tool.id },
+    ],
+  )
+  expect(after.reply).toBeNull()
+  expect(after.process[0]).toEqual(before.process[0])
+})
+
+test('explicit final answers stay separate from later tool cleanup', () => {
+  const user = message('user', 'user', '检查项目')
+  const answer = { ...message('answer', 'assistant', '检查完成。'), phase: 'final_answer' }
+  const [turn] = buildConversationTurns(
+    [user, answer],
+    [tool],
+    [
+      { kind: 'message', id: user.id },
+      { kind: 'message', id: answer.id },
+      { kind: 'tool', id: tool.id },
+    ],
+  )
+  expect(turn.reply).toBe(answer)
+  expect(turn.process).toMatchObject([{ kind: 'tool' }])
+})
+
 test('partial histories keep orphaned tool records, and plain chats need no process group', () => {
   const [partial] = buildConversationTurns(
     [message('answer', 'assistant', '结果')],

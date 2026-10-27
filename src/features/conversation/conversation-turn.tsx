@@ -1,15 +1,10 @@
 import { memo, useState } from 'react'
-import { Streamdown } from 'streamdown'
-import { codeHighlighter } from './code-highlighter'
-import { Check, ChevronRight, Copy, Download } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { ChatMessage } from '@/lib/generated/pi'
 import type { ConversationTurnData } from './conversation-turns'
 import { AttachmentList } from './attachment-list'
-import {
-  ConversationCode,
-  ConversationCodeState,
-  ConversationMarkdownBlock,
-} from './conversation-code'
+import { ReplyMarkdown } from './reply-markdown'
+export { ReplyMarkdown } from './reply-markdown'
 import { ExecutionProcess } from './execution-process'
 import { MessageActions } from './message-actions'
 import { useConversationStore } from './store'
@@ -21,39 +16,6 @@ import { ResponseError } from './response-error'
 import { ResponseWaiting } from './response-waiting'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/scroll-area'
-
-const markdownComponents = { code: ConversationCode }
-const markdownIcons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
-const markdownTranslations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
-const markdownPlugins = { code: codeHighlighter }
-
-export const ReplyMarkdown = memo(function ReplyMarkdown({
-  text,
-  streaming,
-  stateKey,
-}: {
-  text: string
-  streaming: boolean
-  stateKey: string
-}) {
-  return (
-    <ConversationCodeState key={stateKey} stateKey={stateKey}>
-      <Streamdown
-        plugins={markdownPlugins}
-        components={markdownComponents}
-        icons={markdownIcons}
-        translations={markdownTranslations}
-        isAnimating={streaming}
-        mode="streaming"
-        parseIncompleteMarkdown={streaming}
-        BlockComponent={ConversationMarkdownBlock}
-        className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
-      >
-        {text}
-      </Streamdown>
-    </ConversationCodeState>
-  )
-})
 
 function ContextSummary({ message }: { message: ChatMessage }) {
   const [open, setOpen] = useConversationLocalState(`summary:${message.id}`, false)
@@ -226,6 +188,7 @@ export const ConversationTurn = memo(function ConversationTurn({
             active={active}
             startedAt={user?.startedAt}
             finishedAt={user?.finishedAt}
+            interrupted={cancelled || Boolean(error)}
           />
           <div className="space-y-2">
             {reply ? (

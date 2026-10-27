@@ -69,8 +69,24 @@ function buildTurn(group: Group): ConversationTurnData {
       lastAssistant: null,
       summary: tail.message,
     }
-  // A statement followed by another tool is progress, rather than the final answer.
-  const reply = tail?.kind === 'message' && tail.message.text.trim() ? tail.message : null
+  // Pi's completed message metadata distinguishes progress before the tool event arrives.
+  // Keep an explicit answer separate even if post-answer work follows it.
+  let explicitAnswer: ChatMessage | null = null
+  for (let index = group.entries.length - 1; index >= 0; index--) {
+    const entry = group.entries[index]
+    if (
+      entry.kind === 'message' &&
+      ['final_answer', 'partial_answer'].includes(entry.message.phase ?? '') &&
+      entry.message.text.trim()
+    ) {
+      explicitAnswer = entry.message
+      break
+    }
+  }
+  const reply =
+    tail?.kind === 'message' && tail.message.phase !== 'commentary' && tail.message.text.trim()
+      ? tail.message
+      : explicitAnswer
   let lastAssistant: ChatMessage | null = null
   const process: ProcessItem[] = []
   for (const entry of group.entries) {

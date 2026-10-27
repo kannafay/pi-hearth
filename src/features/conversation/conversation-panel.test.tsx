@@ -501,6 +501,82 @@ test('streaming deltas do not keep inserting a waiting indicator below the outpu
   expect(reply.getByText(text)).toBeVisible()
 })
 
+test('progress is ordinary visible text and stays in place when the next tool arrives', () => {
+  const { user, progress, tool, answer } = processFixture()
+  useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
+  const view = render(<ConversationPanel />)
+  receive(1, { type: 'run_started', message: user })
+  receive(2, {
+    type: 'message_started',
+    message: { ...progress, text: '', thinking: '', phase: 'commentary', status: 'streaming' },
+  })
+  receive(3, {
+    type: 'message_delta',
+    messageId: progress.id,
+    contentIndex: 0,
+    kind: 'text',
+    delta: progress.text,
+  })
+  const process = screen.getByRole('region', { name: '执行过程详情' })
+  expect(within(process).getByText(progress.text)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '执行说明' })).not.toBeInTheDocument()
+  const progressNode = view.container.querySelector(`[data-execution-message="${progress.id}"]`)
+  receive(4, { type: 'message_completed', message: { ...progress, phase: 'commentary' } })
+  expect(screen.getByRole('status')).toHaveTextContent('等待回复')
+  receive(5, { type: 'tool_changed', tool })
+  expect(view.container.querySelector(`[data-execution-message="${progress.id}"]`)).toBe(
+    progressNode,
+  )
+  expect(screen.getAllByText(progress.text)).toHaveLength(1)
+  expect(within(process).getByRole('button', { name: /读取文件/ })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  receive(6, { type: 'tool_changed', tool: { ...tool, status: 'complete' } })
+  receive(7, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', phase: 'final_answer', status: 'streaming' },
+  })
+  receive(8, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 0,
+    kind: 'text',
+    delta: answer.text,
+  })
+  expect(within(process).queryByText(answer.text)).not.toBeInTheDocument()
+  receive(9, { type: 'message_completed', message: { ...answer, phase: 'final_answer' } })
+  receive(10, { type: 'run_finished', status: 'complete', error: null })
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByText(answer.text)).toBeVisible()
+})
+
+test('streamed answer text suppresses the waiting line while another tool is still running', () => {
+  const { user, tool, answer, timeline } = processFixture()
+  useConversationStore.setState({
+    instanceId: 'pi-1',
+    status: 'running',
+    activeRunId: 'run-1',
+    messages: [user],
+    tools: [tool],
+    timeline: timeline.filter((entry) => entry.kind === 'tool' || entry.id === user.id),
+  })
+  render(<ConversationPanel />)
+  receive(1, {
+    type: 'message_started',
+    message: { ...answer, text: '', thinking: '', status: 'streaming' },
+  })
+  receive(2, {
+    type: 'message_delta',
+    messageId: answer.id,
+    contentIndex: 0,
+    kind: 'text',
+    delta: answer.text,
+  })
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  expect(screen.getByText(answer.text)).toBeVisible()
+})
+
 test('tool states take priority and completed tools return to waiting for the next response', () => {
   const { user, progress, answer, tool, timeline } = processFixture()
   const queued = { ...tool, id: 'tool-2', toolCallId: 'source-2', status: 'queued' }
@@ -552,12 +628,8 @@ test('completed history shows one final reply and keeps all process details in a
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   await user.click(trigger)
   const process = await screen.findByRole('region', { name: '执行过程详情' })
-  expect(within(process).getByRole('button', { name: '执行说明' })).toHaveAttribute(
-    'aria-expanded',
-    'false',
-  )
-  expect(within(process).queryByText(progress.text)).not.toBeInTheDocument()
-  await user.click(within(process).getByRole('button', { name: '执行说明' }))
+  expect(within(process).queryByRole('button', { name: '执行说明' })).not.toBeInTheDocument()
+  expect(within(process).getByText(progress.text)).toBeVisible()
   for (const thinking of within(process).getAllByRole('button', { name: '思考' }))
     await user.click(thinking)
   expect(within(process).getByText(progress.text)).toBeVisible()
@@ -567,7 +639,7 @@ test('completed history shows one final reply and keeps all process details in a
   expect(within(process).getByText(tool.output)).toBeVisible()
 })
 
-test('live tool output and final-answer deltas render immediately, then the process automatically collapses', async () => {
+test('inspected tool output remains visible when the final reply finishes', async () => {
   const { user: prompt, progress, answer, tool, timeline } = processFixture()
   useConversationStore.setState({
     instanceId: 'pi-1',
@@ -585,12 +657,9 @@ test('live tool output and final-answer deltas render immediately, then the proc
   await user.click(trigger)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   const process = screen.getByRole('region', { name: '执行过程详情' })
-  await waitFor(() =>
-    expect(within(process).getByRole('button', { name: /读取文件/ })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    ),
-  )
+  const toolHeader = within(process).getByRole('button', { name: /读取文件/ })
+  expect(toolHeader).toHaveAttribute('aria-expanded', 'false')
+  await user.click(toolHeader)
   receive(1, { type: 'tool_changed', tool: { ...tool, output: '第一段输出\n第二段输出' } })
   expect(within(process).getByText(/第二段输出/)).toBeVisible()
   receive(2, {
@@ -616,12 +685,13 @@ test('live tool output and final-answer deltas render immediately, then the proc
   expect(screen.getByText('实时答复继续输出')).toBeVisible()
   receive(5, { type: 'message_completed', message: { ...answer, text: '实时答复继续输出' } })
   receive(6, { type: 'run_finished', status: 'complete', error: null })
-  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
-  expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(toolHeader).toHaveAttribute('aria-expanded', 'true')
+  expect(within(process).getByText(/第二段输出/)).toBeVisible()
   expect(screen.getByText('实时答复继续输出')).toBeVisible()
 })
 
-test('execution expands each active step, closes finished steps, and folds the whole run at the end', async () => {
+test('thinking previews stream while tool details stay compact and ordinary activity folds at the end', async () => {
   const { user: prompt, progress, answer, tool } = processFixture()
   useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
   const user = userEvent.setup()
@@ -647,9 +717,10 @@ test('execution expands each active step, closes finished steps, and folds the w
   expect(firstThinking).toHaveAttribute('aria-expanded', 'false')
   receive(5, { type: 'tool_changed', tool })
   const read = screen.getByRole('button', { name: /读取文件/ })
-  await waitFor(() => expect(read).toHaveAttribute('aria-expanded', 'true'))
-  expect(screen.getByRole('button', { name: '执行说明' })).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.getByText(tool.output)).toBeVisible()
+  expect(read).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('button', { name: '执行说明' })).not.toBeInTheDocument()
+  expect(screen.getByText(progress.text)).toBeVisible()
+  expect(screen.queryByText(tool.output)).not.toBeInTheDocument()
 
   receive(6, { type: 'tool_changed', tool: { ...tool, status: 'complete' } })
   expect(read).toHaveAttribute('aria-expanded', 'false')
@@ -695,7 +766,7 @@ test('execution expands each active step, closes finished steps, and folds the w
   expect(screen.getByText(progress.thinking)).toBeVisible()
 })
 
-test('approval stays accessible in the locked-open process and cancellation folds it', async () => {
+test('approval stays accessible and interruption preserves its process for inspection', async () => {
   const { user: prompt, progress, tool, timeline } = processFixture()
   useConversationStore.setState({
     instanceId: 'pi-1',
@@ -719,7 +790,7 @@ test('approval stays accessible in the locked-open process and cancellation fold
   expect(await screen.findByRole('button', { name: '允许本次' })).toBeVisible()
   expect(screen.getByText(tool.arguments)).toBeVisible()
   receive(2, { type: 'run_finished', status: 'cancelled', error: null })
-  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(screen.queryByRole('button', { name: '允许本次' })).not.toBeInTheDocument()
   expect(
     within(screen.getByRole('article', { name: 'Pi 的回复' })).getByText('已停止生成'),
