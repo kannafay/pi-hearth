@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import { DialogLayerProvider } from '@/components/dialog-layers'
@@ -45,6 +45,36 @@ test('successful results disappear automatically and can be shown again', async 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   act(() => toast.success('上下文已压缩'))
   expect(screen.getByRole('dialog', { name: '上下文已压缩' })).toBeVisible()
+})
+
+test.each(['window blur', 'hover', 'keyboard focus'])(
+  'operation results still expire after their timeout during %s',
+  async (interaction) => {
+    vi.useFakeTimers()
+    render(<Toaster />)
+    act(() => toast.error('操作失败，需要重试'))
+    const notice = screen.getByRole('dialog', { name: '操作失败，需要重试' })
+    if (interaction === 'window blur') fireEvent.blur(window)
+    if (interaction === 'hover') fireEvent.mouseEnter(notice)
+    if (interaction === 'keyboard focus') fireEvent.keyDown(window, { key: 'F6' })
+    await act(() => vi.advanceTimersByTimeAsync(6400))
+    expect(notice).toBeInTheDocument()
+    await act(() => vi.advanceTimersByTimeAsync(200))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  },
+)
+
+test('repeating the same result refreshes its timeout without an older timer dismissing it', async () => {
+  vi.useFakeTimers()
+  render(<Toaster />)
+  act(() => toast.info('结果已更新'))
+  await act(() => vi.advanceTimersByTimeAsync(3000))
+  act(() => toast.info('结果已更新'))
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+  await act(() => vi.advanceTimersByTimeAsync(1000))
+  expect(screen.getByRole('dialog', { name: '结果已更新' })).toBeVisible()
+  await act(() => vi.advanceTimersByTimeAsync(2600))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 test('closing an operation notice preserves an open settings dialog', async () => {

@@ -9,7 +9,9 @@ function notify(type: 'success' | 'error' | 'info', message: string) {
     id: `${type}:${title}`,
     title,
     type,
-    timeout: type === 'error' ? 6500 : 3500,
+    // Operation results expire by elapsed time, including while the window is inactive.
+    timeout: 0,
+    data: { dismissAfter: type === 'error' ? 6500 : 3500 },
   })
 }
 

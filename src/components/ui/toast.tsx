@@ -41,11 +41,12 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
       data-slot="toast"
       className={cn(
         'group/toast pointer-events-auto absolute top-0 right-0 z-[calc(1000-var(--toast-index))] w-full origin-top rounded-2xl border bg-popover text-popover-foreground shadow-lg will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        '[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))]',
+        '[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)+calc(var(--toast-index)*var(--gap))+var(--toast-swipe-movement-y))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))] [--toast-offscreen-y:calc(-100%_-_var(--titlebar-height)_-_1.5rem)]',
         'h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)+(var(--toast-index)*var(--peek))+(var(--shrink)*var(--height))))_scale(var(--scale))] [transition:transform_500ms_cubic-bezier(0.22,1,0.36,1),opacity_500ms,height_150ms]',
         "after:absolute after:bottom-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
         'data-expanded:h-(--toast-height) data-expanded:[transform:translateX(var(--toast-swipe-movement-x))_translateY(var(--offset-y))]',
-        'data-limited:opacity-0 data-starting-style:[transform:translateY(-150%)] data-ending-style:opacity-0',
+        'data-limited:opacity-0 data-starting-style:[transform:translateY(var(--toast-offscreen-y))]',
+        '[&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(var(--toast-offscreen-y))]',
         'data-ending-style:data-[swipe-direction=down]:[transform:translateY(calc(var(--toast-swipe-movement-y)+150%))]',
         'data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))_translateY(var(--offset-y))]',
         'data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))_translateY(var(--offset-y))]',
@@ -171,26 +172,42 @@ function ToastIcon({ type }: { type: string | undefined }) {
   )
 }
 
-function ToastList() {
-  const { toasts } = ToastPrimitive.useToastManager()
+type OperationToastData = { dismissAfter?: number }
 
-  return toasts.map((toastItem) => {
-    const message = toastItem.title ?? toastItem.description
-    return (
-      <Toast key={toastItem.id} toast={toastItem}>
-        <ToastContent>
-          <ToastIcon type={toastItem.type} />
-          <ToastTitle
-            className="min-w-0 flex-1 truncate font-normal text-muted-foreground"
-            title={typeof message === 'string' ? message : undefined}
-          >
-            {message}
-          </ToastTitle>
-          <ToastClose />
-        </ToastContent>
-      </Toast>
-    )
-  })
+function ToastNotice({
+  toastItem,
+}: {
+  toastItem: ToastPrimitive.Root.ToastObject<OperationToastData>
+}) {
+  const { close } = ToastPrimitive.useToastManager<OperationToastData>()
+  const dismissAfter = toastItem.data?.dismissAfter
+  const ending = toastItem.transitionStatus === 'ending'
+  React.useEffect(() => {
+    if (!dismissAfter || ending) return
+    const timer = window.setTimeout(() => close(toastItem.id), dismissAfter)
+    return () => window.clearTimeout(timer)
+  }, [close, dismissAfter, ending, toastItem.id, toastItem.updateKey])
+
+  const message = toastItem.title ?? toastItem.description
+  return (
+    <Toast toast={toastItem}>
+      <ToastContent>
+        <ToastIcon type={toastItem.type} />
+        <ToastTitle
+          className="min-w-0 flex-1 truncate font-normal text-muted-foreground"
+          title={typeof message === 'string' ? message : undefined}
+        >
+          {message}
+        </ToastTitle>
+        <ToastClose />
+      </ToastContent>
+    </Toast>
+  )
+}
+
+function ToastList() {
+  const { toasts } = ToastPrimitive.useToastManager<OperationToastData>()
+  return toasts.map((toastItem) => <ToastNotice key={toastItem.id} toastItem={toastItem} />)
 }
 
 function Toaster({ children, toastManager = toast, ...props }: ToastPrimitive.Provider.Props) {
