@@ -126,6 +126,7 @@ pub fn run() {
             pi::catalog::workspace_remove_project,
             pi::catalog::workspace_project_directory,
             pi::files::workspace_files_directory,
+            pi::resources::pi_config_directory,
             pi::resources::pi_resources,
             pi::resources::pi_resource_toggle,
             pi::resources::pi_resource_open,

@@ -35,6 +35,7 @@ import { ArchivedSessions } from './archived-sessions'
 import { ProjectLocationSettings } from './project-location-settings'
 import { StorageLocationSettings } from './storage-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
+import { PiConfigDirectory } from './pi-config-directory'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
 import { ResourceSettings } from './resource-settings'
@@ -315,6 +316,7 @@ export function SettingsDialog({
             </SettingsPanel>
             <SettingsPanel value="about" title="Pi Hearth" description="Pi Coding Agent 桌面工作台">
               <SettingsRow title="版本" value={version ?? '开发预览'} />
+              <PiConfigDirectory />
               <p className="mt-5 text-xs leading-6 text-muted-foreground">
                 在本机管理项目、对话和工具执行，共享 Pi CLI 的会话。模型配置由 Pi 与 CC Switch
                 管理。

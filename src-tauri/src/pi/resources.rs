@@ -77,6 +77,16 @@ fn find(catalog: &ResourceCatalog, kind: &str, source: &str, name: &str) -> Resu
 }
 
 #[tauri::command]
+pub fn pi_config_directory(open: bool) -> Result<String, String> {
+    let directory: PathBuf = local_agent_directory()?.components().collect();
+    if open {
+        std::fs::create_dir_all(&directory).map_err(|_| "无法创建 Pi CLI 配置目录。")?;
+        catalog::open_path(&directory)?;
+    }
+    Ok(directory.to_string_lossy().into())
+}
+
+#[tauri::command]
 pub async fn pi_resources(
     app: tauri::AppHandle,
     project_path: Option<String>,

@@ -15,6 +15,16 @@ export async function getAppVersion() {
   return invoke<string>('get_app_version')
 }
 
+export async function getPiConfigDirectory() {
+  requireDesktop()
+  return invoke<string>('pi_config_directory', { open: false })
+}
+
+export async function openPiConfigDirectory() {
+  requireDesktop()
+  return invoke<string>('pi_config_directory', { open: true })
+}
+
 export async function openDeveloperConsole() {
   requireDesktop()
   await invoke<void>('developer_console_open')
