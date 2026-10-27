@@ -31,7 +31,7 @@ test('approval shows parameters and allows exactly one decision before the order
   vi.mocked(decidePiTool).mockResolvedValue()
   const user = userEvent.setup()
   const view = render(<ToolRecord tool={tool} />)
-  expect(screen.getByText(tool.arguments)).toBeVisible()
+  expect(await screen.findByText(tool.arguments)).toBeVisible()
   await user.click(screen.getByRole('button', { name: '允许本次' }))
   expect(decidePiTool).toHaveBeenCalledExactlyOnceWith('pi-1', 'approve-1', true)
   expect(screen.getByRole('button', { name: '拒绝' })).toBeDisabled()
@@ -53,7 +53,7 @@ test('truncated arguments must be fully loaded before approval; refusal is alway
   vi.mocked(decidePiTool).mockResolvedValue()
   const user = userEvent.setup()
   render(<ToolRecord tool={{ ...tool, argumentsTruncated: true }} />)
-  expect(screen.getByRole('button', { name: '允许本次' })).toBeDisabled()
+  expect(await screen.findByRole('button', { name: '允许本次' })).toBeDisabled()
   expect(screen.getByRole('button', { name: '拒绝' })).toBeEnabled()
   await user.click(screen.getByRole('button', { name: '加载完整参数' }))
   await waitFor(() => expect(screen.getByRole('button', { name: '允许本次' })).toBeEnabled())
@@ -67,7 +67,7 @@ test('expanded command output updates live and displays errors as plain text', a
   const view = render(
     <ToolRecord tool={{ ...tool, name: 'powershell', status: 'running', output: 'first' }} />,
   )
-  expect(screen.getByRole('button', { expanded: true })).toBeVisible()
+  expect(await screen.findByRole('button', { expanded: true })).toBeVisible()
   expect(screen.getByText('实时输出')).toBeVisible()
   view.rerender(
     <ToolRecord
@@ -85,6 +85,18 @@ test('expanded command output updates live and displays errors as plain text', a
   expect(screen.getByText('<script>failure</script>')).toBeVisible()
   expect(screen.getByText('执行失败')).toBeVisible()
   expect(screen.queryByText('first')).not.toBeInTheDocument()
+})
+
+test('a running step manually folded by the reader reopens when approval is requested', async () => {
+  const user = userEvent.setup()
+  const view = render(<ToolRecord tool={{ ...tool, status: 'running', approvalId: null }} />)
+  const header = await screen.findByRole('button', { expanded: true })
+  await user.click(header)
+  expect(header).toHaveAttribute('aria-expanded', 'false')
+  view.rerender(<ToolRecord tool={tool} />)
+  expect(await screen.findByRole('button', { name: '允许本次' })).toBeVisible()
+  expect(header).toHaveAttribute('aria-expanded', 'true')
+  expect(header).toBeDisabled()
 })
 
 test.each(['complete', 'failed', 'denied', 'cancelled', 'interrupted'])(

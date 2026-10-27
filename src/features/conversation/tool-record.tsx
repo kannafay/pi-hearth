@@ -61,13 +61,14 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
   const running = tool.status === 'running' || tool.status === 'queued'
   const [expanded, setExpanded, headerRef] = useExecutionRecord(
     `tool:${tool.id}:expanded`,
-    awaiting || tool.status === 'running'
-      ? 'active'
-      : tool.status === 'queued'
-        ? 'pending'
-        : 'finished',
+    awaiting
+      ? 'approval'
+      : tool.status === 'running'
+        ? 'active'
+        : tool.status === 'queued'
+          ? 'pending'
+          : 'finished',
   )
-  const open = awaiting || expanded
   const [deciding, setDeciding] = useState(false)
   const [error, setError] = useState('')
   const args = useOutputPage(instanceId, tool.id, 'arguments')
@@ -98,7 +99,7 @@ export const ToolRecord = memo(function ToolRecord({ tool }: { tool: ToolCall })
     <ExecutionRecord
       icon={Icon}
       title={toolLabels[tool.name] ?? tool.name}
-      open={open}
+      open={expanded}
       onOpenChange={setExpanded}
       headerRef={headerRef}
       disabled={awaiting}

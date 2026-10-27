@@ -101,7 +101,7 @@ test('thinking collapses independently and stays collapsed as more content arriv
   const view = render(<ExecutionProcess stateKey="turn" items={[thought]} active />)
   const process = screen.getByRole('button', { name: '执行过程' })
   const thinking = screen.getByRole('button', { name: '思考' })
-  expect(thinking).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(thinking).toHaveAttribute('aria-expanded', 'true'))
   expect(screen.getByText(thought.text)).toBeVisible()
   await user.click(thinking)
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
@@ -122,6 +122,27 @@ test('thinking collapses independently and stays collapsed as more content arriv
   expect(thinking).toHaveAttribute('aria-expanded', 'false')
 })
 
+test('new active details animate their first opening without replaying it on a virtual remount', () => {
+  vi.useFakeTimers()
+  const local = new Map<string, unknown>()
+  const content = (
+    <ConversationLocalState initial={local}>
+      <ExecutionProcess
+        stateKey="entry"
+        active
+        items={[{ kind: 'thinking', id: 'thought', text: '正在思考。', streaming: true }]}
+      />
+    </ConversationLocalState>
+  )
+  const view = render(content)
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
+  act(() => vi.advanceTimersByTime(32))
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
+  view.unmount()
+  render(content)
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
+})
+
 test('active thinking choices survive virtual remounts and reset when it finishes offscreen', async () => {
   const user = userEvent.setup()
   const local = new Map<string, unknown>()
@@ -135,6 +156,9 @@ test('active thinking choices survive virtual remounts and reset when it finishe
     </ConversationLocalState>
   )
   let view = render(content())
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true'),
+  )
   await user.click(screen.getByRole('button', { name: '思考' }))
   view.unmount()
   view = render(content())

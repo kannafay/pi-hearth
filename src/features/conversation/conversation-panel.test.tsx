@@ -474,9 +474,11 @@ test('live tool output and final-answer deltas render immediately, then the proc
   await user.click(trigger)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   const process = screen.getByRole('region', { name: '执行过程详情' })
-  expect(within(process).getByRole('button', { name: /读取文件/ })).toHaveAttribute(
-    'aria-expanded',
-    'true',
+  await waitFor(() =>
+    expect(within(process).getByRole('button', { name: /读取文件/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    ),
   )
   receive(1, { type: 'tool_changed', tool: { ...tool, output: '第一段输出\n第二段输出' } })
   expect(within(process).getByText(/第二段输出/)).toBeVisible()
@@ -527,14 +529,14 @@ test('execution expands each active step, closes finished steps, and folds the w
   })
   const process = screen.getByRole('button', { name: '执行过程' })
   const firstThinking = screen.getByRole('button', { name: '思考' })
-  expect(firstThinking).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(firstThinking).toHaveAttribute('aria-expanded', 'true'))
   expect(screen.getByText(progress.thinking)).toBeVisible()
 
   receive(4, { type: 'message_completed', message: progress })
   expect(firstThinking).toHaveAttribute('aria-expanded', 'false')
   receive(5, { type: 'tool_changed', tool })
   const read = screen.getByRole('button', { name: /读取文件/ })
-  expect(read).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(read).toHaveAttribute('aria-expanded', 'true'))
   expect(screen.getByRole('button', { name: '执行说明' })).toHaveAttribute('aria-expanded', 'false')
   expect(screen.getByText(tool.output)).toBeVisible()
 
@@ -553,7 +555,7 @@ test('execution expands each active step, closes finished steps, and folds the w
     delta: answer.thinking,
   })
   const lastThinking = screen.getAllByRole('button', { name: '思考' })[1]
-  expect(lastThinking).toHaveAttribute('aria-expanded', 'true')
+  await waitFor(() => expect(lastThinking).toHaveAttribute('aria-expanded', 'true'))
   expect(firstThinking).toHaveAttribute('aria-expanded', 'false')
   expect(read).toHaveAttribute('aria-expanded', 'false')
 
@@ -602,7 +604,7 @@ test('approval requests force a manually collapsed process open and cancellation
     tool: { ...tool, status: 'awaiting_approval', approvalId: 'approval-1' },
   })
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByRole('button', { name: '允许本次' })).toBeVisible()
+  expect(await screen.findByRole('button', { name: '允许本次' })).toBeVisible()
   expect(screen.getByText(tool.arguments)).toBeVisible()
   receive(2, { type: 'run_finished', status: 'cancelled', error: null })
   await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
