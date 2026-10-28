@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { toast } from '@/lib/toast'
-import { ReplyMarkdown } from './reply-markdown'
+import { ReplyMarkdown } from './reply-markdown-content'
 
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 

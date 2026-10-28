@@ -1,18 +1,8 @@
-import { memo } from 'react'
-import { Streamdown } from 'streamdown'
-import { Check, Copy, Download } from 'lucide-react'
-import { codeHighlighter } from './code-highlighter'
-import { ConversationTable } from './conversation-table'
-import {
-  ConversationCode,
-  ConversationCodeState,
-  ConversationMarkdownBlock,
-} from './conversation-code'
+import { lazy, memo, Suspense } from 'react'
 
-const components = { code: ConversationCode, table: ConversationTable }
-const icons = { CheckIcon: Check, CopyIcon: Copy, DownloadIcon: Download }
-const translations = { copyCode: '复制代码', copied: '已复制', downloadFile: '下载代码' }
-const plugins = { code: codeHighlighter }
+const MarkdownContent = lazy(() =>
+  import('./reply-markdown-content').then((module) => ({ default: module.ReplyMarkdown })),
+)
 
 export const ReplyMarkdown = memo(function ReplyMarkdown({
   text,
@@ -24,20 +14,14 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
   stateKey: string
 }) {
   return (
-    <ConversationCodeState key={stateKey} stateKey={stateKey}>
-      <Streamdown
-        plugins={plugins}
-        components={components}
-        icons={icons}
-        translations={translations}
-        isAnimating={streaming}
-        mode="streaming"
-        parseIncompleteMarkdown={streaming}
-        BlockComponent={ConversationMarkdownBlock}
-        className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
-      >
-        {text}
-      </Streamdown>
-    </ConversationCodeState>
+    <Suspense
+      fallback={
+        <div className="min-w-0 text-[14px] leading-[1.65] whitespace-pre-wrap wrap-anywhere">
+          {text}
+        </div>
+      }
+    >
+      <MarkdownContent text={text} streaming={streaming} stateKey={stateKey} />
+    </Suspense>
   )
 })

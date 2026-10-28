@@ -24,6 +24,8 @@ export default defineConfig({
     host: host || '127.0.0.1',
     port: 1420,
     strictPort: true,
+    // Transform the deferred workspace before the native WebView requests it.
+    warmup: { clientFiles: ['./src/main.tsx', './src/index.css'] },
     hmr: host
       ? {
           protocol: 'ws',
@@ -31,6 +33,7 @@ export default defineConfig({
           port: 1421,
         }
       : undefined,
-    watch: { ignored: ['**/src-tauri/**'] },
+    // Test runs leave large fixture trees here; they are not frontend source.
+    watch: { ignored: ['**/src-tauri/**', '**/work/**'] },
   },
 })
