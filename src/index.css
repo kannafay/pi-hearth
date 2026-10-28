@@ -750,8 +750,8 @@ select {
 }
 
 .conversation-table-inline {
-  width: fit-content;
-  min-width: min(100%, 28rem);
+  width: 100%;
+  min-width: 0;
 }
 
 .conversation-table :is(table, th, td) {
@@ -798,7 +798,6 @@ select {
 }
 
 .conversation-table td {
-  max-width: 28rem;
   font-size: inherit;
   line-height: inherit;
 }

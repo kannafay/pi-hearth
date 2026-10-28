@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
+import { useContext, useRef, useState, type ComponentProps } from 'react'
 import { Copy, Download, Maximize } from 'lucide-react'
 import {
   StreamdownContext,
@@ -89,23 +89,14 @@ export function ConversationTable({
   node: _node,
   ...props
 }: ComponentProps<'table'> & ExtraProps) {
-  const { isAnimating, tableMaxHeight, controls } = useContext(StreamdownContext)
+  const { isAnimating, controls } = useContext(StreamdownContext)
   const table = useRef<HTMLTableElement>(null)
-  const viewport = useRef<HTMLDivElement>(null)
   const previewViewport = useRef<HTMLDivElement>(null)
-  const following = useRef(true)
-  const wasStreaming = useRef(isAnimating)
   const [preview, setPreview] = useState(false)
   const options = typeof controls === 'object' ? controls.table : controls
   const enabled = options !== false
   const show = (key: 'copy' | 'download' | 'fullscreen') =>
     enabled && (typeof options !== 'object' || options[key] !== false)
-
-  useLayoutEffect(() => {
-    if ((isAnimating || wasStreaming.current) && following.current && viewport.current)
-      viewport.current.scrollTop = viewport.current.scrollHeight
-    wasStreaming.current = isAnimating
-  }, [children, isAnimating])
 
   async function act(action: '复制' | '下载', format: Format) {
     if (!table.current) return
@@ -152,7 +143,7 @@ export function ConversationTable({
       {...props}
       ref={original ? table : undefined}
       data-streamdown="table"
-      className={cn('w-max min-w-full text-sm leading-5', className)}
+      className={cn('w-full text-sm leading-5', className)}
     >
       {children}
     </table>
@@ -194,17 +185,10 @@ export function ConversationTable({
       data-streamdown="table-wrapper"
     >
       <ScrollArea
-        ref={viewport}
         role="region"
         aria-label="表格内容"
         tabIndex={0}
-        style={{ maxHeight: tableMaxHeight }}
         viewportClassName="conversation-table-scroll"
-        onScroll={() => {
-          const element = viewport.current
-          if (element)
-            following.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48
-        }}
       >
         {grid(true)}
       </ScrollArea>

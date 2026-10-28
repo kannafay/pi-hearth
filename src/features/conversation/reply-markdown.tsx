@@ -33,7 +33,6 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
         isAnimating={streaming}
         mode="streaming"
         parseIncompleteMarkdown={streaming}
-        tableMaxHeight={400}
         BlockComponent={ConversationMarkdownBlock}
         className="conversation-markdown min-w-0 space-y-3 text-[14px] leading-[1.65] wrap-anywhere"
       >

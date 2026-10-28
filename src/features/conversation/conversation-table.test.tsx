@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -56,29 +56,6 @@ test('copy menu supports keyboard selection and preserves all table values as Ma
   await user.click(screen.getByRole('button', { name: '复制表格' }))
   await user.click(await screen.findByRole('menuitem', { name: '复制为 TSV' }))
   expect(write).toHaveBeenLastCalledWith('文件夹\t最近修改\ndocs\t2026/6/24\n中文,目录\t2026/10/27')
-})
-
-test('streaming follows new rows, pauses when reading earlier rows, and follows the final update', () => {
-  const view = render(content(true))
-  const viewport = screen.getByRole('region', { name: '表格内容' })
-  let height = 1000
-  Object.defineProperties(viewport, {
-    clientHeight: { value: 400 },
-    scrollHeight: { get: () => height },
-  })
-  const row = '\n| 新目录 | 今天 |'
-  view.rerender(content(true, text + row))
-  expect(viewport.scrollTop).toBe(1000)
-  viewport.scrollTop = 100
-  fireEvent.scroll(viewport)
-  height = 1200
-  view.rerender(content(true, text + row.repeat(2)))
-  expect(viewport.scrollTop).toBe(100)
-  viewport.scrollTop = 800
-  fireEvent.scroll(viewport)
-  height = 1400
-  view.rerender(content(false, text + row.repeat(3)))
-  expect(viewport.scrollTop).toBe(1400)
 })
 
 test('CSV download retains Unicode and quoted values without toolbar or row metadata', async () => {
