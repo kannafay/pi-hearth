@@ -10,6 +10,10 @@ import {
 
 const LocalState = createContext<Map<string, unknown> | null>(null)
 
+export function useConversationLocalCache() {
+  return useContext(LocalState)
+}
+
 export function ConversationLocalState({
   children,
   initial,

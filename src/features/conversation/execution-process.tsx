@@ -1,4 +1,4 @@
-import { memo, startTransition, useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Brain, ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ProcessItem } from './conversation-turns'
@@ -8,6 +8,7 @@ import { useExecutionRecord } from './use-execution-record'
 import { ExecutionRecord } from './execution-record'
 import { ReplyMarkdown } from './reply-markdown'
 import { ResponseWaiting } from './response-waiting'
+import { VirtualExecutionRecords } from './virtual-execution-records'
 
 export function formatElapsed(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -86,24 +87,30 @@ const ProcessRecords = memo(function ProcessRecords({
   items: ProcessItem[]
   stateKey?: string
 }) {
+  const renderItem = (item: ProcessItem) =>
+    item.kind === 'tool' ? (
+      <ToolRecord key={item.id} tool={item.tool} />
+    ) : item.kind === 'message' ? (
+      <div key={item.id} data-execution-message={item.id} className="py-1">
+        <ReplyMarkdown
+          stateKey={item.id}
+          text={item.message.text}
+          streaming={item.message.status === 'streaming'}
+        />
+      </div>
+    ) : (
+      <ProcessTextRecord key={item.id} id={item.id} text={item.text} stateKey={stateKey} />
+    )
+  if (items.length >= 24)
+    return (
+      <VirtualExecutionRecords items={items} stateKey={stateKey}>
+        {renderItem}
+      </VirtualExecutionRecords>
+    )
   // Keep the top gap inside the animated height so unmounting cannot shift the reply.
   return (
     <div role="region" aria-label="执行过程详情" className="space-y-1 pt-1">
-      {items.map((item) =>
-        item.kind === 'tool' ? (
-          <ToolRecord key={item.id} tool={item.tool} />
-        ) : item.kind === 'message' ? (
-          <div key={item.id} data-execution-message={item.id} className="py-1">
-            <ReplyMarkdown
-              stateKey={item.id}
-              text={item.message.text}
-              streaming={item.message.status === 'streaming'}
-            />
-          </div>
-        ) : (
-          <ProcessTextRecord key={item.id} id={item.id} text={item.text} stateKey={stateKey} />
-        ),
-      )}
+      {items.map(renderItem)}
     </div>
   )
 })
@@ -127,8 +134,6 @@ export function ExecutionProcess({
     stateKey ? `process:${stateKey}` : undefined,
     null,
   )
-  const [prepared, setPrepared] = useState(false)
-  if (active && prepared) setPrepared(false)
   useEffect(() => {
     if (active && choice) setChoice(null)
   }, [active, choice, setChoice])
@@ -144,33 +149,12 @@ export function ExecutionProcess({
 
   if (!active && !items.length && elapsed !== undefined && elapsed <= 2000) return null
 
-  function prepareRecords() {
-    if (active || !items.length || open) return
-    // Prepare archived rows while the pointer/focus approaches the trigger.
-    // Concurrent work yields to input so opening can reuse the mounted rows.
-    startTransition(() => setPrepared(true))
-  }
-
-  function discardPreparation() {
-    if (!open) setPrepared(false)
-  }
-
   return (
     <section data-execution-process className="space-y-3">
-      <Collapsible
-        open={open}
-        onOpenChange={(open) => {
-          setChoice({ active, open })
-          if (!open) setPrepared(false)
-        }}
-      >
+      <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
         <CollapsibleTrigger
           aria-label="执行过程"
           disabled={active || !items.length}
-          onPointerEnter={prepareRecords}
-          onFocus={prepareRecords}
-          onPointerLeave={discardPreparation}
-          onBlur={discardPreparation}
           className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
         >
           <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
@@ -184,7 +168,7 @@ export function ExecutionProcess({
             <span className="text-xs text-destructive">{failures} 次失败</span>
           ) : null}
         </CollapsibleTrigger>
-        <CollapsibleContent keepMounted={prepared} className="execution-process-content">
+        <CollapsibleContent className="execution-process-content">
           <ProcessRecords items={items} stateKey={stateKey} />
         </CollapsibleContent>
       </Collapsible>
