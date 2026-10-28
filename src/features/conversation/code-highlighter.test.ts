@@ -64,7 +64,7 @@ test('distinct blocks share a serial worker without mixing their results', () =>
   expect(second).toHaveBeenCalledWith(other)
 })
 
-test('streaming revisions and oversized source are not retained in the completed cache', () => {
+test('streaming revisions are not retained in the completed cache', () => {
   const { highlighter, worker, reply } = setup()
   const streaming = { ...options, isIncomplete: true }
   highlighter.highlight(streaming)
@@ -72,11 +72,57 @@ test('streaming revisions and oversized source are not retained in the completed
   highlighter.highlight(streaming)
   expect(worker.postMessage).toHaveBeenCalledTimes(2)
   reply(2)
-  const huge = { ...options, code: 'x'.repeat(1_000_001) }
-  highlighter.highlight(huge)
-  reply(3)
-  highlighter.highlight(huge)
-  expect(worker.postMessage).toHaveBeenCalledTimes(4)
+})
+
+test('oversized blocks stay readable without starting expensive tokenization', () => {
+  const { highlighter, create } = setup()
+  const huge = { ...options, code: 'x'.repeat(200_001) + '\nlast line' }
+  expect(highlighter.highlight(huge)).toEqual({
+    tokens: [[{ content: 'x'.repeat(200_001) }], [{ content: 'last line' }]],
+  })
+  expect(create).not.toHaveBeenCalled()
+})
+
+test('a stalled worker releases every waiting block and ignores its late response', () => {
+  vi.useFakeTimers()
+  const { highlighter, worker, reply, dispose } = setup()
+  try {
+    const first = vi.fn()
+    const second = vi.fn()
+    highlighter.highlight(options, first)
+    highlighter.highlight({ ...options, code: 'queued source' }, second)
+    vi.advanceTimersByTime(5000)
+    expect(worker.terminate).toHaveBeenCalledOnce()
+    expect(first).toHaveBeenCalledWith({ tokens: [[{ content: options.code }]] })
+    expect(second).toHaveBeenCalledWith({ tokens: [[{ content: 'queued source' }]] })
+    reply(1)
+    expect(first).toHaveBeenCalledOnce()
+    expect(highlighter.highlight({ ...options, code: 'new source' })).toEqual({
+      tokens: [[{ content: 'new source' }]],
+    })
+  } finally {
+    dispose()
+    vi.useRealTimers()
+  }
+})
+
+test('completed work and disposal clear the worker deadline', () => {
+  vi.useFakeTimers()
+  const { highlighter, worker, reply, dispose } = setup()
+  try {
+    highlighter.highlight(options)
+    vi.advanceTimersByTime(4000)
+    reply(1)
+    vi.advanceTimersByTime(5000)
+    expect(worker.terminate).not.toHaveBeenCalled()
+    highlighter.highlight({ ...options, code: 'another source' })
+    dispose()
+    vi.advanceTimersByTime(5000)
+    expect(worker.terminate).toHaveBeenCalledOnce()
+  } finally {
+    dispose()
+    vi.useRealTimers()
+  }
 })
 
 test('fast streaming bounds queued work while keeping the latest revision', () => {

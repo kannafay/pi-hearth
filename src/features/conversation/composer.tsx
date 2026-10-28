@@ -50,7 +50,16 @@ export function Composer({
     draftRestoring,
     clearAttachments,
     sessionActionPending,
-  } = useWorkspaceStore()
+  } = useWorkspaceStore(
+    useShallow((state) => ({
+      draft: state.draft,
+      setDraft: state.setDraft,
+      draftAttachments: state.draftAttachments,
+      draftRestoring: state.draftRestoring,
+      clearAttachments: state.clearAttachments,
+      sessionActionPending: state.sessionActionPending,
+    })),
+  )
   const {
     status,
     instanceId,

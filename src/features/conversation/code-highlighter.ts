@@ -9,11 +9,15 @@ type Pending = {
   callbacks: ((result: HighlightResult) => void)[]
 }
 
+const MAX_HIGHLIGHT_CHARACTERS = 200_000
+const HIGHLIGHT_TIMEOUT = 5000
+
 export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
   let worker: HighlightWorker | undefined
   let disabled = false
   let sequence = 0
   let active: number | undefined
+  let deadline: ReturnType<typeof setTimeout> | undefined
   let pendingCharacters = 0
   let cachedCharacters = 0
   const pending = new Map<number, Pending>()
@@ -29,6 +33,8 @@ export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
   }
 
   function dispose() {
+    clearTimeout(deadline)
+    deadline = undefined
     disabled = true
     worker?.terminate()
     worker = undefined
@@ -51,6 +57,8 @@ export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
     if (!next) return
     const [id, request] = next
     active = id
+    // A pathological grammar must not stall every later block in the shared worker.
+    deadline = setTimeout(fail, HIGHLIGHT_TIMEOUT)
     try {
       worker.postMessage({ id, options: request.options })
     } catch {
@@ -62,6 +70,8 @@ export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
     if (event.data.id !== active) return
     const request = pending.get(event.data.id)
     if (!request) return
+    clearTimeout(deadline)
+    deadline = undefined
     pending.delete(event.data.id)
     pendingCharacters -= request.options.code.length
     active = undefined
@@ -87,6 +97,8 @@ export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
   const highlighter: CodeHighlighterPlugin = {
     ...code,
     highlight(options, callback) {
+      // Check before constructing a second copy of a potentially huge source as its cache key.
+      if (disabled || options.code.length > MAX_HIGHLIGHT_CHARACTERS) return plain(options)
       const key = JSON.stringify([options.language, options.themes, options.code])
       const cached = cache.get(key)
       if (cached) {
@@ -94,7 +106,6 @@ export function createWorkerHighlighter(createWorker: () => HighlightWorker) {
         cache.set(key, cached)
         return cached.result
       }
-      if (disabled) return plain(options)
       for (const request of pending.values()) {
         if (request.key !== key) continue
         if (callback) request.callbacks.push(callback)

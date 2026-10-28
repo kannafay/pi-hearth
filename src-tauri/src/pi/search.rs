@@ -28,22 +28,16 @@ pub struct SearchIndex {
     pub persisted_loaded: bool,
 }
 
-fn excerpt(text: &str, terms: &[String]) -> String {
-    let lower = text.to_lowercase();
-    let offset = terms
-        .iter()
-        .filter_map(|term| lower.find(term))
-        .min()
-        .unwrap_or(0);
-    let start = lower[..offset].chars().count().saturating_sub(38);
-    let chars: Vec<_> = text.chars().collect();
-    let end = (start + 150).min(chars.len());
-    let body: String = chars[start.min(end)..end].iter().collect();
+fn excerpt(text: &str, offset: usize) -> String {
+    let start = offset.saturating_sub(38);
+    let mut chars = text.chars().skip(start);
+    let body: String = chars.by_ref().take(150).collect();
+    let has_tail = chars.next().is_some();
     format!(
         "{}{}{}",
         if start > 0 { "…" } else { "" },
         body.split_whitespace().collect::<Vec<_>>().join(" "),
-        if end < chars.len() { "…" } else { "" }
+        if has_tail { "…" } else { "" }
     )
 }
 
@@ -89,27 +83,49 @@ impl SearchIndex {
                 .get(&session.path)
                 .map(|doc| doc.texts.as_slice())
                 .unwrap_or_default();
-            let content = texts
-                .iter()
-                .map(|text| text.to_lowercase())
-                .collect::<Vec<_>>();
             // Every word must match, but words may match different fields/messages.
-            if !terms.iter().all(|term| {
-                title.contains(term)
-                    || project.contains(term)
-                    || content.iter().any(|text| text.contains(term))
-            }) {
+            let mut matched: Vec<_> = terms
+                .iter()
+                .map(|term| title.contains(term.as_str()) || project.contains(term.as_str()))
+                .collect();
+            let mut remaining = matched.iter().filter(|matched| !**matched).count();
+            let mut body = None;
+            // An empty query only needs recent session metadata. For content queries,
+            // normalize one message at a time and stop once every term and the first
+            // snippet have been found, instead of cloning all the conversation text.
+            if !terms.is_empty() {
+                for text in texts {
+                    let lower = text.to_lowercase();
+                    let mut first_offset: Option<usize> = None;
+                    for (matched, term) in matched.iter_mut().zip(&terms) {
+                        if *matched && body.is_some() {
+                            continue;
+                        }
+                        if let Some(offset) = lower.find(term) {
+                            first_offset = Some(first_offset.map_or(offset, |old| old.min(offset)));
+                            if !*matched {
+                                *matched = true;
+                                remaining -= 1;
+                            }
+                        }
+                    }
+                    if body.is_none()
+                        && let Some(offset) = first_offset
+                    {
+                        body = Some((text, lower[..offset].chars().count()));
+                    }
+                    if remaining == 0 && body.is_some() {
+                        break;
+                    }
+                }
+            }
+            if remaining != 0 {
                 continue;
             }
-            let title_match = !terms.is_empty() && terms.iter().any(|term| title.contains(term));
-            let project_match =
-                !terms.is_empty() && terms.iter().any(|term| project.contains(term));
-            let body = texts
-                .iter()
-                .zip(&content)
-                .find(|(_, lower)| terms.iter().any(|term| lower.contains(term)));
+            let title_match = terms.iter().any(|term| title.contains(term));
+            let project_match = terms.iter().any(|term| project.contains(term));
             let snippet = body
-                .map(|(text, _)| excerpt(text, &terms))
+                .map(|(text, offset)| excerpt(text, offset))
                 .unwrap_or_else(|| project_name.clone());
             let matched_in = if terms.is_empty() {
                 "recent"
@@ -147,6 +163,100 @@ impl SearchIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn large_index() -> SearchIndex {
+        let mut index = SearchIndex::default();
+        let mut sessions = Vec::new();
+        for id in 0..160 {
+            let path = id.to_string();
+            sessions.push(SessionInfo {
+                path: path.clone(),
+                id: path.clone(),
+                cwd: "project".into(),
+                title: format!("Session {id}"),
+                modified: id,
+                message_count: 80,
+            });
+            let mut texts = vec!["needle in the first message".into()];
+            texts.extend((0..79).map(|_| "普通历史聊天内容 previous conversation ".repeat(30)));
+            index.documents.insert(
+                path,
+                IndexedDocument {
+                    modified: SystemTime::UNIX_EPOCH,
+                    size: 1,
+                    texts,
+                },
+            );
+        }
+        index.catalog = Some((
+            Instant::now(),
+            WorkspaceCatalog {
+                sessions,
+                projects: vec![],
+                general_cwd: "project".into(),
+                selection: Selection::default(),
+                session_preferences: HashMap::new(),
+            },
+        ));
+        index
+    }
+
+    #[test]
+    fn recent_results_are_bounded_sorted_and_do_not_use_body_snippets() {
+        let index = large_index();
+        let recent = index.query(" \t ");
+        assert_eq!(recent.len(), 40);
+        assert_eq!(recent.first().unwrap().session.id, "159");
+        assert_eq!(recent.last().unwrap().session.id, "120");
+        assert!(
+            recent
+                .iter()
+                .all(|result| result.snippet == "聊天" && result.matched_in == "recent")
+        );
+    }
+
+    #[test]
+    fn keywords_can_match_separate_messages_and_keep_the_first_snippet() {
+        let mut index = large_index();
+        index.documents.get_mut("0").unwrap().texts = vec![
+            "First ALPHA message".into(),
+            "unrelated message".into(),
+            "Later BETA message".into(),
+        ];
+        let results = index.query("alpha beta");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].session.id, "0");
+        assert_eq!(results[0].snippet, "First ALPHA message");
+        assert_eq!(results[0].matched_in, "content");
+        assert_eq!(index.query("session beta")[0].matched_in, "title");
+        assert!(index.query("alpha absent").is_empty());
+    }
+
+    #[test]
+    fn excerpts_bound_large_unicode_messages_without_truncating_the_match() {
+        let text = format!("{}关键字{}", "前".repeat(10_000), "后".repeat(10_000));
+        let snippet = excerpt(&text, 10_000);
+        assert!(snippet.starts_with('…') && snippet.ends_with('…'));
+        assert!(snippet.contains("关键字"));
+        assert_eq!(snippet.chars().count(), 152);
+    }
+
+    #[test]
+    #[ignore = "manual search performance comparison"]
+    fn benchmark_search_queries() {
+        let index = large_index();
+        for query in ["", "needle", "missing"] {
+            let started = Instant::now();
+            for _ in 0..20 {
+                std::hint::black_box(index.query(query));
+            }
+            eprintln!(
+                "query={query:?} mean_ms={:.3}",
+                started.elapsed().as_secs_f64() * 1000.0 / 20.0
+            );
+        }
+    }
+
     #[test]
     fn searches_all_fields_ranks_titles_and_keeps_unicode_snippets() {
         let sessions = ["标题关键词", "历史聊天", "另一个"]
