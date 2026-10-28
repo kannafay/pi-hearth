@@ -540,7 +540,7 @@ pub async fn attachment_clipboard(
         }
         let mut clipboard = arboard::Clipboard::new().map_err(|_| "无法访问剪贴板。")?;
         match clipboard.get_image() {
-            Ok(image) => Ok(vec![clipboard_image(image, &root)?]),
+            Ok(image) => Ok::<_, String>(vec![clipboard_image(image, &root)?]),
             Err(arboard::Error::ContentNotAvailable) => Ok(vec![]),
             Err(_) => Err("无法读取剪贴板图片，请再次粘贴。".into()),
         }
