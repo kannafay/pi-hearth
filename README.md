@@ -86,3 +86,7 @@ pnpm desktop
 | `pnpm format:rust`        | 检查 Rust 格式                                                    |
 
 前端代码位于 `src/`，桌面核心位于 `src-tauri/`。`src/components/ui/` 保存 shadcn/ui 官方 Base UI 版组件源码，`components.json` 使用 `base-nova`。组件源码在仓库内维护；添加组件时参照官方 Base UI 版本，并沿用现有样式。项目不安装 shadcn CLI，避免引入其尚无补丁的传递依赖。
+
+Linux 的 GTK3 仍依赖 GLib 0.18。`src-tauri/vendor/security-patches.json` 记录官方安全补丁的回移、旧宏依赖的移除和单实例插件的 zbus 6 适配，以及原始包校验值。GLib 保留原版本号，按版本扫描的工具可能仍会告警；实际使用的是仓库内已修复的源码。上游提供兼容版本后应移除对应本地补丁。
+
+Linux 回归入口为 `tests/linux-security/check.sh`。使用同目录的 Dockerfile 创建验证环境，将仓库只读挂载到 `/workspace`，再在容器中执行该脚本；覆盖应用编译、优化构建下的 GLib 字符串迭代、宏错误提示和真实 D-Bus 单实例转发。
