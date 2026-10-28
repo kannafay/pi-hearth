@@ -85,4 +85,4 @@ pnpm desktop
 | `pnpm test:sessions:live` | 使用本机模型验证项目指令、会话隔离与历史续聊，会产生真实 API 请求 |
 | `pnpm format:rust`        | 检查 Rust 格式                                                    |
 
-前端代码位于 `src/`，桌面核心位于 `src-tauri/`。`src/components/ui/` 保存 shadcn/ui 官方 Base UI 版组件源码，`components.json` 使用 `base-nova`，通过 `pnpm exec shadcn add <组件名>` 添加组件。
+前端代码位于 `src/`，桌面核心位于 `src-tauri/`。`src/components/ui/` 保存 shadcn/ui 官方 Base UI 版组件源码，`components.json` 使用 `base-nova`。组件源码在仓库内维护；添加组件时参照官方 Base UI 版本，并沿用现有样式。项目不安装 shadcn CLI，避免引入其尚无补丁的传递依赖。
