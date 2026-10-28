@@ -3,5 +3,5 @@
   "identifier": "tray-menu",
   "description": "Event subscription for the custom tray menu",
   "windows": ["tray-menu"],
-  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+  "permissions": ["tray-commands", "core:event:allow-listen", "core:event:allow-unlisten"]
 }

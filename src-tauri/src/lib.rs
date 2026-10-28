@@ -1,4 +1,6 @@
 mod app_data;
+#[cfg(test)]
+mod command_permissions;
 mod desktop;
 mod developer;
 mod pi;

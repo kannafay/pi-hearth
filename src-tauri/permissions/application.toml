@@ -1,0 +1,65 @@
+# Declaring application permissions enables Tauri's ACL for custom IPC commands.
+# Keep the tray restricted to its own presentation and action protocol.
+[[permission]]
+identifier = "main-commands"
+description = "Workspace, conversation and settings commands for the local main window."
+commands.allow = [
+  "get_app_version",
+  "window_startup_ready",
+  "set_window_theme",
+  "developer_console_open",
+  "get_system_theme",
+  "finish_window_theme_change",
+  "attachment_paths",
+  "attachment_restore",
+  "attachment_bytes",
+  "attachment_clipboard",
+  "attachment_clipboard_available",
+  "attachment_release",
+  "attachment_preview",
+  "app_settings",
+  "app_update_settings",
+  "network_test_proxy",
+  "workspace_catalog",
+  "workspace_search",
+  "workspace_select",
+  "workspace_update_session",
+  "workspace_rename_session",
+  "workspace_delete_archived",
+  "workspace_add_project",
+  "workspace_update_project",
+  "workspace_remove_project",
+  "workspace_project_directory",
+  "workspace_change_projects_directory",
+  "workspace_files_directory",
+  "pi_config_directory",
+  "pi_cli_version",
+  "pi_resources",
+  "pi_resource_toggle",
+  "pi_resource_open",
+  "pi_models",
+  "workspace_open_project_folder",
+  "workspace_open_with",
+  "project_instructions",
+  "pi_open",
+  "pi_connect",
+  "pi_composer_commands",
+  "pi_project_files",
+  "pi_compact",
+  "pi_send",
+  "pi_remove_queued_message",
+  "pi_update_next_settings",
+  "pi_rewrite",
+  "pi_stop",
+  "pi_set_model",
+  "pi_set_thinking_level",
+  "pi_set_permission",
+  "pi_tool_decide",
+  "pi_tool_output",
+  "pi_disconnect",
+]
+
+[[permission]]
+identifier = "tray-commands"
+description = "Presentation and action acknowledgements for the local tray window."
+commands.allow = ["tray_ready", "tray_present", "tray_dismiss", "tray_closed", "tray_action"]
