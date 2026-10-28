@@ -1,6 +1,6 @@
 @import 'tailwindcss' source('./');
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
+@import './styles/shadcn.css';
 @import 'overlayscrollbars/overlayscrollbars.css';
 @import '@fontsource-variable/geist';
 
