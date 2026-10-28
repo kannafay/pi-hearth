@@ -1,5 +1,5 @@
 import { useContext, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
-import { Copy, Download, Maximize, Table2 } from 'lucide-react'
+import { Copy, Download, Maximize } from 'lucide-react'
 import {
   StreamdownContext,
   extractTableDataFromElement,
@@ -190,16 +190,9 @@ export function ConversationTable({
 
   return (
     <div
-      className="conversation-table conversation-table-inline max-w-full border"
+      className="conversation-table conversation-table-inline max-w-full"
       data-streamdown="table-wrapper"
     >
-      <div className="conversation-table-header flex min-h-8 items-center gap-2 px-1">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground">
-          <Table2 aria-hidden className="size-3.5 shrink-0 stroke-[1.6]" />
-          表格
-        </span>
-        {actions(true)}
-      </div>
       <ScrollArea
         ref={viewport}
         role="region"
@@ -215,6 +208,7 @@ export function ConversationTable({
       >
         {grid(true)}
       </ScrollArea>
+      <div className="conversation-table-toolbar flex justify-end pt-1">{actions(true)}</div>
       <Dialog open={preview} onOpenChange={setPreview}>
         <DialogContent layout="preview" initialFocus={previewViewport}>
           <DialogHeader variant="compact" className="flex-row items-center justify-between pr-9">
@@ -229,8 +223,8 @@ export function ConversationTable({
             role="region"
             aria-label="完整表格内容"
             tabIndex={0}
-            className="conversation-table min-h-0 border"
-            viewportClassName="h-full"
+            className="conversation-table min-h-0"
+            viewportClassName="conversation-table-scroll h-full"
           >
             {grid(false)}
           </ScrollArea>

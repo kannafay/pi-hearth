@@ -774,18 +774,26 @@ select {
 }
 
 .conversation-table :is(th, td) {
-  padding: 7px 16px;
+  padding: 10px 16px;
   vertical-align: top;
+}
+
+.conversation-table :is(th, td):first-child {
+  padding-inline-start: 4px;
+}
+
+.conversation-table :is(th, td):last-child {
+  padding-inline-end: 4px;
 }
 
 .conversation-table th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: color-mix(in oklch, var(--muted) 45%, var(--background));
-  box-shadow: inset 0 -1px color-mix(in oklch, var(--border) 70%, var(--background));
-  color: color-mix(in oklch, var(--foreground) 75%, var(--muted-foreground));
-  font-size: 13px;
+  background: var(--background);
+  box-shadow: inset 0 -1px var(--border);
+  color: var(--foreground);
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -795,27 +803,22 @@ select {
   line-height: inherit;
 }
 
-.conversation-table tbody tr + tr td {
-  border-top: 1px solid color-mix(in oklch, var(--border) 45%, var(--background));
+.conversation-table tbody td {
+  color: color-mix(in oklch, var(--foreground) 85%, var(--muted-foreground));
 }
 
 @media (hover: hover) {
   .conversation-table tbody tr:hover {
-    background: color-mix(in oklch, var(--muted) 45%, var(--background));
+    background: color-mix(in oklch, var(--muted) 35%, var(--background));
   }
 }
 
 .conversation-table-scroll {
-  background: var(--background);
-}
-
-.conversation-table-header {
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 45%, var(--background));
+  border-bottom: 1px solid var(--border);
   background: var(--background);
 }
 
 .conversation-code,
-.conversation-table,
 .tool-record-code {
   border-color: color-mix(in oklch, var(--border) 70%, var(--background));
 }
@@ -832,8 +835,7 @@ select {
   word-break: break-all;
 }
 
-.conversation-code,
-.conversation-table {
+.conversation-code {
   overflow: hidden;
   border-radius: 10px;
   background: color-mix(in oklch, var(--muted) 60%, var(--background));
