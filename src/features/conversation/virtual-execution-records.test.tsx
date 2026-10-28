@@ -72,6 +72,31 @@ test.each([100, 1000])(
   },
 )
 
+test('opening and reopening an archive preserves the shared conversation scroll offset', async () => {
+  const user = userEvent.setup()
+  render(fixture(1000).content)
+  const viewport = screen.getByRole('log')
+  const scrollTo = vi.fn((options: ScrollToOptions) => {
+    viewport.scrollTop = options.top ?? viewport.scrollTop
+  })
+  Object.defineProperty(viewport, 'scrollTo', { value: scrollTo })
+  const process = screen.getByRole('button', { name: '执行过程' })
+
+  for (const offset of [1200, 2400]) {
+    fireEvent.scroll(viewport, { target: { scrollTop: offset } })
+    scrollTo.mockClear()
+    await user.click(process)
+    expect(screen.getByRole('region', { name: '执行过程详情' })).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenCalled()
+    expect(viewport.scrollTop).toBe(offset)
+    expect(scrollTo.mock.calls.every(([options]) => options.top === offset)).toBe(true)
+    await user.click(process)
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument(),
+    )
+  }
+})
+
 test('an expanded record keeps its state when virtualized away and after folding the whole archive', async () => {
   const user = userEvent.setup()
   const { content, local } = fixture(1000)

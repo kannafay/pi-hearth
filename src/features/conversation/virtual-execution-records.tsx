@@ -64,6 +64,8 @@ export function VirtualExecutionRecords({
     paddingStart: 4,
     overscan: 4,
     scrollMargin: layout?.margin ?? 0,
+    // Mounting this nested list must not reset the conversation's shared viewport.
+    initialOffset: () => layout?.viewport?.scrollTop ?? 0,
     rangeExtractor,
     initialMeasurementsCache: measurements,
     enabled: !!layout?.viewport,
