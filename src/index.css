@@ -583,6 +583,11 @@ select {
     opacity var(--conversation-disclosure-duration) var(--conversation-disclosure-ease);
 }
 
+.execution-process-content {
+  --conversation-disclosure-duration: 320ms;
+  --conversation-disclosure-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
 :is(
   .execution-process-content,
   .execution-record-content,

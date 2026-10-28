@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ExecutionProcess, formatElapsed } from './execution-process'
@@ -88,6 +88,58 @@ test('quick replies with thinking retain the duration and accessible disclosure'
   await waitFor(() =>
     expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument(),
   )
+})
+
+test('approaching the process prepares hidden headers, releases them when abandoned, and keeps details lazy', async () => {
+  const user = userEvent.setup()
+  render(
+    <ExecutionProcess
+      stateKey="prepared"
+      active={false}
+      items={[
+        { kind: 'thinking', id: 'prepared-thought', text: '按需查看的思考详情', streaming: false },
+      ]}
+    />,
+  )
+  const trigger = screen.getByRole('button', { name: '执行过程' })
+  fireEvent.pointerEnter(trigger)
+  const prepared = await screen.findByRole('region', { name: '执行过程详情', hidden: true })
+  expect(prepared).not.toBeVisible()
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('按需查看的思考详情')).not.toBeInTheDocument()
+  fireEvent.pointerLeave(trigger)
+  await waitFor(() => expect(prepared).not.toBeInTheDocument())
+
+  fireEvent.focus(trigger)
+  const focused = await screen.findByRole('region', { name: '执行过程详情', hidden: true })
+  expect(focused).not.toBeVisible()
+  fireEvent.blur(trigger)
+  await waitFor(() => expect(focused).not.toBeInTheDocument())
+
+  await user.click(trigger)
+  expect(screen.getByRole('region', { name: '执行过程详情' })).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  expect(screen.getByText('按需查看的思考详情')).toBeVisible()
+  await user.click(trigger)
+  await waitFor(() => expect(screen.queryByText('按需查看的思考详情')).not.toBeInTheDocument())
+})
+
+test('resuming work discards prepared records until the reader approaches the finished turn again', async () => {
+  const items = [{ kind: 'thinking' as const, id: 'thought', text: '思考详情', streaming: false }]
+  const view = render(<ExecutionProcess items={items} active={false} />)
+  const trigger = screen.getByRole('button', { name: '执行过程' })
+  fireEvent.pointerEnter(trigger)
+  const prepared = await screen.findByRole('region', { name: '执行过程详情', hidden: true })
+  view.rerender(<ExecutionProcess items={items} active status="正在思考…" />)
+  await waitFor(() => expect(prepared).not.toBeInTheDocument())
+  fireEvent.pointerEnter(trigger)
+  expect(
+    screen.queryByRole('region', { name: '执行过程详情', hidden: true }),
+  ).not.toBeInTheDocument()
+  view.rerender(<ExecutionProcess items={items} active={false} />)
+  expect(
+    screen.queryByRole('region', { name: '执行过程详情', hidden: true }),
+  ).not.toBeInTheDocument()
 })
 
 test('live work stays collapsed with one changing status and no disclosure arrow', async () => {
