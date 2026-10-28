@@ -152,7 +152,7 @@ export function ConversationTable({
       {...props}
       ref={original ? table : undefined}
       data-streamdown="table"
-      className={cn('w-full text-sm leading-5', className)}
+      className={cn('w-max min-w-full text-sm leading-5', className)}
     >
       {children}
     </table>
@@ -189,8 +189,11 @@ export function ConversationTable({
   )
 
   return (
-    <div className="conversation-table min-w-0 max-w-full border" data-streamdown="table-wrapper">
-      <div className="conversation-table-header flex min-h-9 items-center gap-2 px-1">
+    <div
+      className="conversation-table conversation-table-inline max-w-full border"
+      data-streamdown="table-wrapper"
+    >
+      <div className="conversation-table-header flex min-h-8 items-center gap-2 px-1">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground">
           <Table2 aria-hidden className="size-3.5 shrink-0 stroke-[1.6]" />
           表格

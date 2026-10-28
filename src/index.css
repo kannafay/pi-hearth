@@ -749,11 +749,23 @@ select {
   font-style: normal;
 }
 
+.conversation-table-inline {
+  width: fit-content;
+  min-width: min(100%, 28rem);
+}
+
+.conversation-table :is(table, th, td) {
+  @apply font-sans;
+}
+
 .conversation-table table {
   border-collapse: separate;
   border-spacing: 0;
   background: var(--background);
-  font-family: inherit;
+  color: var(--foreground);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
 }
 
 .conversation-table :is(thead, tbody, tr) {
@@ -762,7 +774,7 @@ select {
 }
 
 .conversation-table :is(th, td) {
-  padding: 8px 12px;
+  padding: 7px 16px;
   vertical-align: top;
 }
 
@@ -770,13 +782,27 @@ select {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: color-mix(in oklch, var(--muted) 60%, var(--background));
+  background: color-mix(in oklch, var(--muted) 45%, var(--background));
   box-shadow: inset 0 -1px color-mix(in oklch, var(--border) 70%, var(--background));
-  font-weight: 500;
+  color: color-mix(in oklch, var(--foreground) 75%, var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.conversation-table td {
+  max-width: 28rem;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .conversation-table tbody tr + tr td {
-  border-top: 1px solid color-mix(in oklch, var(--border) 55%, var(--background));
+  border-top: 1px solid color-mix(in oklch, var(--border) 45%, var(--background));
+}
+
+@media (hover: hover) {
+  .conversation-table tbody tr:hover {
+    background: color-mix(in oklch, var(--muted) 45%, var(--background));
+  }
 }
 
 .conversation-table-scroll {
@@ -784,7 +810,8 @@ select {
 }
 
 .conversation-table-header {
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 45%, var(--background));
+  background: var(--background);
 }
 
 .conversation-code,
