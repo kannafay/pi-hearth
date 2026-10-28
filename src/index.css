@@ -803,6 +803,7 @@ select {
 }
 
 .conversation-table tbody td {
+  border-bottom: 1px solid var(--border);
   color: color-mix(in oklch, var(--foreground) 85%, var(--muted-foreground));
 }
 
@@ -813,7 +814,6 @@ select {
 }
 
 .conversation-table-scroll {
-  border-bottom: 1px solid var(--border);
   background: var(--background);
 }
 
