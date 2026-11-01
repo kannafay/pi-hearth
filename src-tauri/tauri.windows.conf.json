@@ -3,6 +3,7 @@
     "beforeBuildCommand": "pnpm runtime:prepare && pnpm build"
   },
   "bundle": {
+    "publisher": "Pi Hearth",
     "targets": ["nsis"],
     "resources": {
       "bundle-runtime/": "runtime/"
@@ -11,8 +12,15 @@
       "webviewInstallMode": { "type": "embedBootstrapper" },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": true
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false,
+        "template": "installer/installer.nsi",
+        "customLanguageFiles": { "SimpChinese": "installer/SimpChinese.nsh" },
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "uninstallerHeaderImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
       }
     }
   }

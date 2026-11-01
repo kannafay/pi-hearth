@@ -91,3 +91,58 @@ test('the distribution carries the Pi upstream copyright and permission notice',
   assert(license.includes('Copyright (c) 2025 Mario Zechner'))
   assert(license.includes('The above copyright notice and this permission notice'))
 })
+
+test('Windows setup uses Chinese without a language dialog or administrator installation mode', async () => {
+  const config = JSON.parse(
+    await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),
+  )
+  const nsis = config.bundle.windows.nsis
+  assert.equal(nsis.installMode, 'currentUser')
+  assert.deepEqual(nsis.languages, ['SimpChinese'])
+  assert.equal(nsis.displayLanguageSelector, false)
+  for (const file of [nsis.template, nsis.customLanguageFiles.SimpChinese])
+    assert((await readFile(new URL(`../src-tauri/${file}`, import.meta.url))).length > 0)
+})
+
+test('installer branding uses valid native bitmaps at NSIS header and sidebar dimensions', async () => {
+  const config = JSON.parse(
+    await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),
+  )
+  const nsis = config.bundle.windows.nsis
+  for (const [file, width, height] of [
+    [nsis.headerImage, 150, 57],
+    [nsis.sidebarImage, 164, 314],
+  ]) {
+    const bytes = await readFile(new URL(`../src-tauri/${file}`, import.meta.url))
+    assert.equal(bytes.toString('ascii', 0, 2), 'BM')
+    assert.equal(bytes.readUInt32LE(2), bytes.length)
+    assert.equal(bytes.readInt32LE(18), width)
+    assert.equal(bytes.readInt32LE(22), height)
+    assert.equal(bytes.readUInt16LE(28), 24)
+    assert.equal(bytes.readUInt32LE(30), 0, 'native installer images must be uncompressed')
+    assert.equal(bytes.length - bytes.readUInt32LE(10), Math.ceil((width * 3) / 4) * 4 * height)
+  }
+  for (const file of [nsis.installerIcon, nsis.uninstallerIcon]) {
+    const icon = await readFile(new URL(`../src-tauri/${file}`, import.meta.url))
+    assert.equal(icon.readUInt32LE(0), 0x10000, 'installer icon must be an ICO resource')
+  }
+})
+
+test('all Tauri installer messages have Chinese translations without unresolved template variables', async () => {
+  const template = await readFile(
+    new URL('../src-tauri/installer/installer.nsi', import.meta.url),
+    'utf8',
+  )
+  const translations = await readFile(
+    new URL('../src-tauri/installer/SimpChinese.nsh', import.meta.url),
+    'utf8',
+  )
+  assert(!translations.includes('{{'), 'NSIS language files are not Handlebars templates')
+  const defined = new Set(
+    [...`${template}\n${translations}`.matchAll(/^LangString\s+(\w+)\s/gm)].map(
+      (match) => match[1],
+    ),
+  )
+  for (const [, message] of template.matchAll(/\$\(([a-z]\w*)\)/g))
+    assert(defined.has(message), `missing Chinese translation: ${message}`)
+})

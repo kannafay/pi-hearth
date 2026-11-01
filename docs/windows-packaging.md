@@ -19,7 +19,21 @@ Node.js 版本与校验值位于 `runtime/windows-runtime.json`。Pi 版本同�
 
 ## 安装与启动
 
-NSIS 安装包默认按当前用户安装，提供简体中文与英文界面。随包嵌入 WebView2 Bootstrapper：系统已有 WebView2 时复用，缺少时由安装流程下载并安装，因此首次安装 WebView2 需要联网。安装包未做代码签名，签名发行与自动更新后续接入。
+NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，直接进入简体中文界面，无语言选择与独立欢迎页。首次安装为“选择位置 → 安装 → 完成”三步；已有安装时保留维护与覆盖安装选择。安装成功后自动显示完成页，可选择启动应用与创建桌面快捷方式。
+
+默认安装位置为 `%LOCALAPPDATA%\Programs\Pi Hearth`，可通过输入框或“浏览”修改。程序文件与既有应用数据目录分开；重新安装沿用之前的安装位置。卸载默认保留会话与配置，可选清理安装位置记录与旧版应用标识对应的数据。
+
+随包嵌入 WebView2 Bootstrapper：系统已有 WebView2 时复用，缺少时由安装流程下载并安装，因此首次安装 WebView2 需要联网。安装包未做代码签名。
+
+## 安装界面维护
+
+界面配置位于 `src-tauri/tauri.windows.conf.json`，中文提示与安装模板位于 `src-tauri/installer/`。模板基于 [Tauri CLI 2.12.4 的官方模板](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)（Git blob `75efe3da953fb6914a08359705d94d9ee8732542`），沿用其安装、更新、WebView2、快捷方式与卸载流程；MIT 许可随源码保留。自定义部分为品牌、中文页面、跳过欢迎页、成功后直接显示完成页、默认程序目录，以及发布者名称变更后从卸载记录恢复旧安装路径。升级 CLI 时需对照上游模板合并修复，再验证安装与卸载。
+
+品牌图片使用现有 Pi 图标，BMP 产物提交到仓库，构建无需额外图像工具。需要更新图片时，在 Windows 执行：
+
+```powershell
+./scripts/generate-installer-assets.ps1
+```
 
 ```text
 Pi Hearth.exe
@@ -44,5 +58,7 @@ pnpm runtime:verify "D:\安装验证 空格\Pi Hearth" "D:\检查报告.json"
 ```
 
 验证脚本从无开发工具 PATH 的独立临时目录启动安装后的 EXE，并注入不可用的外部 Node 配置，确认应用会忽略它。由应用自身解析并启动随附运行时，检查会话读取、资源与模型读取、本地 HTTP 网络测试、Pi RPC，以及审批和消息操作扩展的加载。测试只使用临时配置与本地 HTTP 服务，不调用付费模型或读取用户凭证。报告包含实际 Node.js 与 Pi 路径，必须都位于安装目录内。
+
+同时检查真实安装窗口的中文排版、安装位置输入与浏览、完成页，以及带中文和空格的自定义目录安装、重装后的路径恢复、快捷方式和默认保留数据的卸载行为。
 
 这可验证脱离开发目录和系统 Node.js 后的运行链路；不同 Windows 系统版本与缺少 WebView2 的全新系统仍需单独验证。
