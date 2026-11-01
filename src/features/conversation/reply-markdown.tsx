@@ -17,7 +17,8 @@ export const ReplyMarkdown = memo(function ReplyMarkdown({
     <Suspense
       fallback={
         <div className="min-w-0 text-[14px] leading-[1.65] whitespace-pre-wrap wrap-anywhere">
-          {text}
+          {/* Markdown ignores leading blank lines; keep the cold preview at the same position. */}
+          {text.replace(/^(?:[ \t]*(?:\r\n|\r|\n))+/, '')}
         </div>
       }
     >

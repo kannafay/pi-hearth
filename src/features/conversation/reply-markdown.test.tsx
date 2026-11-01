@@ -31,11 +31,26 @@ test('replies remain readable and retain new streaming text while the rich rende
   expect(screen.getByText('第一段')).toBeVisible()
   expect(screen.queryByRole('region')).not.toBeInTheDocument()
 
-  view.rerender(<ReplyMarkdown text="第一段，第二段" stateKey="next-reply" streaming={false} />)
+  for (const [text, preview] of [
+    ['\n\n第一段\n\n第二段', '第一段\n\n第二段'],
+    ['\r\n \t\r\n第一段', '第一段'],
+    ['\r\r第一段', '第一段'],
+    ['\n    保留代码缩进\n\n    下一行', '    保留代码缩进\n\n    下一行'],
+    ['    首行有缩进', '    首行有缩进'],
+    ['\n \t\n', ''],
+  ]) {
+    view.rerender(<ReplyMarkdown text={text} stateKey="reply" streaming />)
+    expect(view.container.textContent).toBe(preview)
+  }
+
+  const originalText = '\n\n第一段，第二段'
+  view.rerender(<ReplyMarkdown text={originalText} stateKey="next-reply" streaming={false} />)
   expect(screen.getByText('第一段，第二段')).toBeVisible()
+  expect(view.container.textContent).toBe('第一段，第二段')
   await act(async () => renderer.resolve())
   const content = await screen.findByRole('region', { name: '格式化回复' })
   expect(content).toHaveTextContent('第一段，第二段')
+  expect(content.textContent).toBe(originalText)
   expect(content).toHaveAttribute('data-state-key', 'next-reply')
   expect(content).toHaveAttribute('aria-busy', 'false')
   expect(renderer.loaded).toHaveBeenCalledOnce()
