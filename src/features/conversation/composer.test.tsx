@@ -219,7 +219,7 @@ test('composer dropdown triggers and their portalled options do not focus the dr
 })
 
 test.each(['ready', 'connecting', 'running', 'stopping', 'disconnected'] as const)(
-  '%s conversations keep all notices above the input area',
+  '%s empty conversations leave connection recovery to the welcome area',
   (status) => {
     useConversationStore.setState({
       status,
@@ -231,12 +231,7 @@ test.each(['ready', 'connecting', 'running', 'stopping', 'disconnected'] as cons
     expect(inputArea.parentElement!.lastElementChild).toBe(inputArea)
     expect(screen.queryByText('等待回复…')).not.toBeInTheDocument()
     expect(screen.queryByText('请配置模型')).not.toBeInTheDocument()
-    if (status === 'disconnected') {
-      const retry = screen.getByRole('button', { name: '重新连接' })
-      expect(
-        retry.compareDocumentPosition(inputArea) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy()
-    }
+    expect(screen.queryByRole('button', { name: '重新连接' })).not.toBeInTheDocument()
   },
 )
 

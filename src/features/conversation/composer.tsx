@@ -289,7 +289,7 @@ export function Composer({
           {readOnly}
         </p>
       )}
-      {status === 'disconnected' && <ConnectionNotice className="mb-2 px-1" />}
+      {status === 'disconnected' && hasMessages && <ConnectionNotice className="mb-2 px-1" />}
       {status === 'running' && waitingForSettings && (
         <p role="status" className="mb-2 px-1 text-xs text-muted-foreground">
           设置将从下一条消息开始生效，当前回答保持不变。

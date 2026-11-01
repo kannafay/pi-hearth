@@ -768,23 +768,60 @@ test('cached history stays visible during connection and failures have an inline
   expect(connect).toHaveBeenCalledWith('D:\\项目', 'history.jsonl')
 })
 
-test('a failed new conversation has one recovery action above the composer', async () => {
+test.each([null, 'history.jsonl'])(
+  'an empty failed conversation centers its recovery action for session %s',
+  async (sessionFile) => {
+    const connect = vi.fn().mockImplementation(async () => {
+      useConversationStore.setState({ status: 'connecting', error: null })
+    })
+    useConversationStore.setState({
+      status: 'disconnected',
+      sessionFile,
+      connectionTarget: { projectPath: 'D:\\项目', sessionPath: sessionFile },
+      error: '助手启动失败',
+      connect,
+    })
+    const user = userEvent.setup()
+    render(<ConversationPanel />)
+    const heading = screen.getByRole('heading', { name: '连接未完成' })
+    expect(heading).toBeVisible()
+    expect(screen.getAllByText('连接未完成')).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '重新连接' })).toHaveLength(1)
+    const retry = screen.getByRole('button', { name: '重新连接' })
+    expect(heading.parentElement).toContainElement(retry)
+    const input = screen.getByRole('textbox', { name: '消息草稿' })
+    const notice = screen.getByRole('status')
+    expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    expect(screen.getByLabelText('消息输入区').parentElement).not.toContainElement(retry)
+    await user.click(retry)
+    expect(connect).toHaveBeenCalledWith('D:\\项目', sessionFile)
+    expect(screen.queryByRole('button', { name: '重新连接' })).not.toBeInTheDocument()
+  },
+)
+
+test('an empty disconnected conversation centers recovery even without an error', async () => {
   const connect = vi.fn().mockResolvedValue(undefined)
+  useWorkspaceStore.setState({ projectPath: null })
   useConversationStore.setState({
     status: 'disconnected',
-    connectionTarget: { projectPath: 'D:\\项目', sessionPath: null },
-    error: '助手启动失败',
+    connectionTarget: { projectPath: null, sessionPath: null },
     connect,
   })
   const user = userEvent.setup()
   render(<ConversationPanel />)
-  expect(screen.getByRole('heading', { name: '连接未完成' })).toBeVisible()
-  expect(screen.getAllByRole('button', { name: '重新连接' })).toHaveLength(1)
-  const input = screen.getByRole('textbox', { name: '消息草稿' })
-  const notice = screen.getByRole('status')
-  expect(input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
-  await user.click(screen.getByRole('button', { name: '重新连接' }))
-  expect(connect).toHaveBeenCalledWith('D:\\项目', null)
+  const heading = screen.getByRole('heading', { name: '助手已断开' })
+  const retry = screen.getByRole('button', { name: '重新连接' })
+  expect(heading.parentElement).toContainElement(retry)
+  expect(screen.getAllByText('助手已断开')).toHaveLength(1)
+  await user.click(retry)
+  expect(connect).toHaveBeenCalledExactlyOnceWith(null, null)
+})
+
+test('initial startup leaves the welcome area free of disconnected recovery', () => {
+  useConversationStore.setState({ status: 'disconnected' })
+  render(<ConversationPanel />)
+  expect(screen.getByRole('heading', { name: '开始一段新对话' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '重新连接' })).not.toBeInTheDocument()
 })
 
 function historyFixture(count: number) {

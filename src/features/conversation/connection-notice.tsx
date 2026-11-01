@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button'
 import { isDesktop } from '@/lib/desktop'
 import { useConversationStore } from './store'
 
-export function ConnectionNotice({ className = '' }: { className?: string }) {
+export function ConnectionNotice({
+  className = '',
+  layout = 'inline',
+}: {
+  className?: string
+  layout?: 'inline' | 'centered'
+}) {
   const { status, sessionFile, hasMessages, error, connectionTarget, connect } =
     useConversationStore(
       useShallow((state) => ({
@@ -29,13 +35,19 @@ export function ConnectionNotice({ className = '' }: { className?: string }) {
     <div
       role="status"
       aria-live="polite"
-      className={`flex min-h-7 items-center gap-2 text-xs text-muted-foreground ${className}`}
+      className={`flex min-h-7 items-center gap-2 text-xs text-muted-foreground ${layout === 'centered' ? 'justify-center' : ''} ${className}`}
     >
-      <span className="min-w-0 flex-1">{error ? '连接未完成' : '助手已断开'}</span>
+      {layout === 'inline' && (
+        <span className="min-w-0 flex-1">{error ? '连接未完成' : '助手已断开'}</span>
+      )}
       <Button
-        variant="ghost"
-        size="xs"
-        className="h-6 shrink-0 px-2 font-normal text-muted-foreground"
+        variant={layout === 'centered' ? 'outline' : 'ghost'}
+        size={layout === 'centered' ? 'sm' : 'xs'}
+        className={
+          layout === 'centered'
+            ? 'font-normal'
+            : 'h-6 shrink-0 px-2 font-normal text-muted-foreground'
+        }
         aria-label="重新连接"
         onClick={() => void connect(projectPath, sessionFile)}
       >
