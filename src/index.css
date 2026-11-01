@@ -83,7 +83,7 @@
   --caption-pressed: oklch(0 0 0 / 7%);
   --titlebar-hover: var(--caption-hover);
   --background: oklch(1 0 0);
-  --composer-background: var(--background);
+  --composer-background: #f5f5f5;
   --composer-project-background: oklch(0.98 0 0);
   --user-message-background: #000;
   --foreground: oklch(0.145 0 0);
