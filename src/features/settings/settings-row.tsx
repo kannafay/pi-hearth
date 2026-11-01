@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { cn } from 'cn'
 import {
   Field,
   FieldContent,
@@ -11,6 +12,7 @@ export function SettingsRow({
   title,
   description,
   control,
+  controlClassName,
   value,
   children,
   htmlFor,
@@ -20,6 +22,7 @@ export function SettingsRow({
   title: string
   description?: ReactNode
   control?: ReactNode
+  controlClassName?: string
   value?: string
   children?: ReactNode
   htmlFor?: string
@@ -42,7 +45,7 @@ export function SettingsRow({
           {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
         </FieldContent>
         {control ? (
-          <div className="shrink-0">{control}</div>
+          <div className={cn('shrink-0', controlClassName)}>{control}</div>
         ) : value != null ? (
           <span className="shrink-0 text-sm text-muted-foreground">{value}</span>
         ) : null}

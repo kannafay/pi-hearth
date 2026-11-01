@@ -9,6 +9,7 @@ import { SettingsDialog } from '@/features/settings/settings-dialog'
 import {
   getAppVersion,
   getPiRuntimeVersion,
+  getPiConfigDirectory,
   isDesktop,
   openPiConfigDirectory,
   setWindowTheme,
@@ -49,6 +50,7 @@ beforeEach(() => {
   vi.mocked(loadResourceCatalog).mockReset()
   vi.mocked(setWindowTheme).mockClear()
   vi.mocked(getPiRuntimeVersion).mockClear()
+  vi.mocked(getPiConfigDirectory).mockReset().mockResolvedValue('C:\\Users\\admin\\.pi\\agent')
   vi.mocked(openPiConfigDirectory).mockClear()
 })
 
@@ -74,9 +76,13 @@ test('desktop diagnostics displays the version returned by Rust', async () => {
   expect(await screen.findByText('已连接桌面核心，版本 0.1.0')).toBeVisible()
 })
 
-test('About shows the app and runtime versions and opens the resolved Pi configuration directory', async () => {
+test.each([
+  { kind: 'default', directory: 'C:\\Users\\admin\\.pi\\agent' },
+  { kind: 'long', directory: `D:\\开发环境\\${'很长的配置目录\\'.repeat(12)}.pi\\agent` },
+])('About shows runtime information and opens the $kind Pi directory', async ({ directory }) => {
   vi.mocked(isDesktop).mockReturnValue(true)
   vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  vi.mocked(getPiConfigDirectory).mockResolvedValue(directory)
   const user = userEvent.setup()
   render(<SettingsHarness />)
   expect(getPiRuntimeVersion).not.toHaveBeenCalled()
@@ -87,7 +93,11 @@ test('About shows the app and runtime versions and opens the resolved Pi configu
   expect(screen.getByText(/由 Pi 运行时提供支持/)).toBeVisible()
   expect(await screen.findByText('1.3.0')).toBeVisible()
   expect(screen.getByText('0.1.0')).toBeVisible()
-  expect(screen.getByText('C:\\Users\\admin\\.pi\\agent')).toBeVisible()
+  expect(screen.getByText(directory)).toBeVisible()
+  expect(screen.getByRole('button', { name: '打开 Pi 配置目录' })).toHaveAttribute(
+    'title',
+    directory,
+  )
   await user.click(screen.getByRole('button', { name: '打开 Pi 配置目录' }))
   expect(openPiConfigDirectory).toHaveBeenCalledExactlyOnceWith()
 })

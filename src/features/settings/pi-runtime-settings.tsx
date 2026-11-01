@@ -65,25 +65,28 @@ export function PiRuntimeSettings() {
       </SettingsRow>
       <SettingsRow
         title="Pi 配置目录"
-        description={
+        controlClassName="min-w-0 max-w-full @md/field-group:max-w-[65%]"
+        control={
           directory ? (
             <Button
               variant="link"
               aria-label="打开 Pi 配置目录"
               title={directory}
               disabled={opening}
-              className="h-auto max-w-full justify-start gap-2 rounded-sm border-0 p-0 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground"
+              className="h-auto w-full max-w-full justify-end gap-2 rounded-sm border-0 p-0 text-right text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground"
               onClick={() => void open()}
             >
               <FolderOpen aria-hidden className="size-4" />
               <span className="min-w-0 break-all">{directory}</span>
             </Button>
-          ) : error ? (
-            <span>无法读取配置目录。</span>
-          ) : desktop ? (
-            '正在读取配置目录…'
           ) : (
-            '请在桌面应用中查看。'
+            <span className="block text-right text-xs leading-5 text-muted-foreground">
+              {error
+                ? '无法读取配置目录。'
+                : desktop
+                  ? '正在读取配置目录…'
+                  : '请在桌面应用中查看。'}
+            </span>
           )
         }
       >
