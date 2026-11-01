@@ -1014,15 +1014,15 @@ mod tests {
     #[test]
     fn model_responses_use_provider_display_metadata_without_changing_identity() {
         let mut conversation = Conversation::new("instance".into(), "cwd".into());
-        conversation.response(&json!({"success":true,"command":"get_available_models","data":{"models":[{"provider":"cc-switch-one","id":"shared","name":"One"},{"provider":"legacy","id":"shared","name":"Two"}]}}));
-        conversation.response(&json!({"success":true,"command":"get_state","data":{"model":{"provider":"cc-switch-one","id":"shared","name":"One"}}}));
+        conversation.response(&json!({"success":true,"command":"get_available_models","data":{"models":[{"provider":"custom-one","id":"shared","name":"One"},{"provider":"legacy","id":"shared","name":"Two"}]}}));
+        conversation.response(&json!({"success":true,"command":"get_state","data":{"model":{"provider":"custom-one","id":"shared","name":"One"}}}));
         conversation.apply_provider_names(&HashMap::from([(
-            "cc-switch-one".into(),
+            "custom-one".into(),
             "火山 Agent Plan".into(),
         )]));
         assert_eq!(
             conversation.snapshot.model.as_ref().unwrap().provider,
-            "cc-switch-one"
+            "custom-one"
         );
         assert_eq!(
             conversation

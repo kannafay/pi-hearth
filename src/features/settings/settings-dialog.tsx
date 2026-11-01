@@ -238,7 +238,7 @@ export function SettingsDialog({
             <SettingsPanel
               value="models"
               title="模型与凭证"
-              description="使用本机 Pi 配置，兼容 CC Switch。"
+              description="读取本机 Pi 配置中的模型和凭证。"
             >
               <PermissionSettings />
               <ModelSettings />

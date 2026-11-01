@@ -1247,10 +1247,10 @@ test('stop stays pending until Pi confirms it and blocks another send', async ()
 })
 
 test('connection failures are actionable and do not fabricate a ready model', async () => {
-  vi.mocked(connectPi).mockRejectedValue('没有可用模型，请在 CC Switch 中检查配置。')
+  vi.mocked(connectPi).mockRejectedValue('没有可用模型，请检查 Pi 配置中的模型与凭证。')
   await useConversationStore.getState().connect('project')
   expect(useConversationStore.getState().status).toBe('disconnected')
-  expect(useConversationStore.getState().error).toContain('CC Switch')
+  expect(useConversationStore.getState().error).toBe('没有可用模型，请检查 Pi 配置中的模型与凭证。')
   expect(useConversationStore.getState().model).toBeNull()
 })
 

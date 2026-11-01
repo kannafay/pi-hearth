@@ -793,20 +793,7 @@ impl PiClient {
 
     async fn apply_default_model(&self, default_model: Option<&ModelInfo>) -> Result<(), String> {
         let snapshot = self.snapshot().await?;
-        let selected = default_model
-            .and_then(|selected| {
-                snapshot
-                    .models
-                    .iter()
-                    .find(|model| model.provider == selected.provider && model.id == selected.id)
-            })
-            .or_else(|| {
-                snapshot
-                    .models
-                    .iter()
-                    .find(|model| model.provider.starts_with("cc-switch"))
-            })
-            .or_else(|| snapshot.models.first());
+        let selected = select_available_model(&snapshot.models, default_model);
         if let Some(model) = selected
             && !snapshot
                 .model
@@ -1324,6 +1311,19 @@ fn emit(channel: &Channel<PiEvent>, events: Vec<PiEvent>) {
     }
 }
 
+fn select_available_model<'a>(
+    models: &'a [ModelInfo],
+    preferred: Option<&ModelInfo>,
+) -> Option<&'a ModelInfo> {
+    preferred
+        .and_then(|selected| {
+            models
+                .iter()
+                .find(|model| model.provider == selected.provider && model.id == selected.id)
+        })
+        .or_else(|| models.first())
+}
+
 pub(super) fn pi_runtime_path() -> Result<PathBuf, String> {
     // The development runtime is pinned in package.json. Release sidecars are a
     // separate packaging step; never silently run an arbitrary global Pi version.
@@ -1811,8 +1811,7 @@ impl PiManager {
             let snapshot = client.subscribe(channel.clone()).await?;
             if snapshot.models.is_empty() {
                 return Err(
-                    "没有可用模型，请在 CC Switch 中配置 Pi 的提供商与 API Key，然后重新连接。"
-                        .into(),
+                    "没有可用模型，请在 Pi 配置中设置模型提供商与 API Key，然后重新连接。".into(),
                 );
             }
             if new_conversation {
@@ -1825,11 +1824,7 @@ impl PiManager {
                         .is_some_and(|model| model.provider == m.provider && model.id == m.id)
                 })
             {
-                let model = snapshot
-                    .models
-                    .iter()
-                    .find(|m| m.provider.starts_with("cc-switch"))
-                    .unwrap_or(&snapshot.models[0]);
+                let model = &snapshot.models[0];
                 client
                     .request(
                         json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
@@ -2106,6 +2101,40 @@ mod tests {
     use std::io::Write;
 
     mod message_queue;
+
+    #[test]
+    fn default_model_selection_preserves_identity_and_uses_catalog_order() {
+        let model = |provider: &str, id: &str| ModelInfo {
+            provider: provider.into(),
+            id: id.into(),
+            name: id.into(),
+            provider_name: None,
+        };
+        let models = [
+            model("custom-provider", "shared"),
+            model("cc-switch-legacy", "shared"),
+            model("another-provider", "other"),
+        ];
+        let missing_provider = model("missing-provider", "shared");
+        let missing_model = model("custom-provider", "missing-model");
+        for preferred in [None, Some(&missing_provider), Some(&missing_model)] {
+            assert_eq!(
+                select_available_model(&models, preferred).unwrap().provider,
+                "custom-provider"
+            );
+        }
+        for preferred in &models {
+            let selected = select_available_model(&models, Some(preferred)).unwrap();
+            assert_eq!(selected.provider, preferred.provider);
+            assert_eq!(selected.id, preferred.id);
+        }
+        let reordered = [models[1].clone(), models[0].clone()];
+        assert_eq!(
+            select_available_model(&reordered, None).unwrap().provider,
+            "cc-switch-legacy"
+        );
+        assert!(select_available_model(&[], Some(&models[0])).is_none());
+    }
 
     #[test]
     fn tool_redaction_preserves_fresh_confirmation_ids_and_lifecycle_routing() {
@@ -4103,11 +4132,8 @@ mod tests {
                 .await
                 .unwrap();
             let client = manager.client(&snapshot.instance_id).await.unwrap();
-            let model = snapshot
-                .models
-                .iter()
-                .find(|model| model.provider.starts_with("cc-switch"))
-                .unwrap();
+            let model = select_available_model(&snapshot.models, snapshot.model.as_ref())
+                .expect("a configured Pi model");
             client
                 .request(
                     json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
@@ -4275,11 +4301,8 @@ mod tests {
             .await
             .unwrap();
         let client = manager.client(&snapshot.instance_id).await.unwrap();
-        let model = snapshot
-            .models
-            .iter()
-            .find(|model| model.provider.starts_with("cc-switch"))
-            .unwrap();
+        let model = select_available_model(&snapshot.models, snapshot.model.as_ref())
+            .expect("a configured Pi model");
         client
             .request(
                 json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
@@ -4415,7 +4438,7 @@ mod tests {
         .expect("live model response timed out")
     }
 
-    // Explicit opt-in: uses the developer's existing CC Switch / Pi API key.
+    // Explicit opt-in: uses the developer's existing Pi API key.
     #[tokio::test]
     #[ignore = "verifies message edits and regeneration with the configured Pi model"]
     async fn live_rpc_message_rewrite() {
@@ -4439,11 +4462,8 @@ mod tests {
             .await
             .unwrap();
         let client = manager.client(&snapshot.instance_id).await.unwrap();
-        let model = snapshot
-            .models
-            .iter()
-            .find(|model| model.provider.starts_with("cc-switch"))
-            .unwrap_or(&snapshot.models[0]);
+        let model = select_available_model(&snapshot.models, snapshot.model.as_ref())
+            .expect("a configured Pi model");
         client
             .request(
                 json!({"type":"set_model","provider":model.provider,"modelId":model.id}),
@@ -4536,7 +4556,7 @@ mod tests {
         );
     }
 
-    // Explicit opt-in: uses the developer's existing CC Switch / Pi API key.
+    // Explicit opt-in: uses the developer's existing Pi API key.
     #[tokio::test]
     #[ignore = "sends real requests to the configured Pi model"]
     async fn live_rpc_conversation_and_stop() {
@@ -4560,11 +4580,8 @@ mod tests {
             .await
             .unwrap();
         let client = manager.client(&snapshot.instance_id).await.unwrap();
-        let model = snapshot
-            .models
-            .iter()
-            .find(|model| model.provider.starts_with("cc-switch"))
-            .unwrap_or(&snapshot.models[0]);
+        let model = select_available_model(&snapshot.models, snapshot.model.as_ref())
+            .expect("a configured Pi model");
         client
             .request(
                 json!({"type":"set_model","provider":model.provider,"modelId":model.id}),

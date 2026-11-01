@@ -14,12 +14,12 @@ beforeEach(() => {
 
 test('provider groups display configured names while selections keep the original IDs', async () => {
   const first = {
-    provider: 'cc-switch-first',
+    provider: 'custom-first',
     providerName: '火山 Agent Plan',
     id: 'a',
     name: 'Alpha',
   }
-  const second = { provider: 'cc-switch-second', providerName: 'DeepSeek', id: 'b', name: 'Beta' }
+  const second = { provider: 'custom-second', providerName: 'DeepSeek', id: 'b', name: 'Beta' }
   const changeModel = vi.fn().mockResolvedValue(undefined)
   useConversationStore.setState({
     status: 'ready',
@@ -33,7 +33,7 @@ test('provider groups display configured names while selections keep the origina
   await user.keyboard(' ')
   expect(await screen.findByRole('group', { name: '火山 Agent Plan' })).toBeVisible()
   expect(screen.getByRole('group', { name: 'DeepSeek' })).toBeVisible()
-  expect(screen.queryByText('cc-switch-first')).not.toBeInTheDocument()
+  expect(screen.queryByText('custom-first')).not.toBeInTheDocument()
   await user.click(screen.getByRole('option', { name: 'Beta' }))
   expect(changeModel).toHaveBeenCalledExactlyOnceWith(second)
 })

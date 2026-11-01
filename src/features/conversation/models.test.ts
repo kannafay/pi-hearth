@@ -2,12 +2,12 @@ import { expect, test } from 'vitest'
 import { groupModelsByProvider, modelKey } from './models'
 
 test('friendly provider names label groups without merging distinct provider IDs', () => {
-  const first = { provider: 'cc-switch-one', providerName: '同名平台', id: 'shared', name: 'Alpha' }
-  const second = { ...first, provider: 'cc-switch-two' }
+  const first = { provider: 'custom-one', providerName: '同名平台', id: 'shared', name: 'Alpha' }
+  const second = { ...first, provider: 'custom-two' }
   const groups = groupModelsByProvider([first, second])
   expect(groups.map(({ provider, label }) => ({ provider, label }))).toEqual([
-    { provider: 'cc-switch-one', label: '同名平台' },
-    { provider: 'cc-switch-two', label: '同名平台' },
+    { provider: 'custom-one', label: '同名平台' },
+    { provider: 'custom-two', label: '同名平台' },
   ])
   expect(modelKey(first)).not.toBe(modelKey(second))
 })

@@ -10,7 +10,7 @@ afterEach(() => vi.useRealTimers())
 
 test.each([
   '执行失败，请重试。',
-  '没有可用模型，请在 CC Switch 中配置 Pi 的提供商与 API Key，然后重新连接。',
+  '没有可用模型，请在 Pi 配置中设置模型提供商与 API Key，然后重新连接。',
   `连接服务失败，请检查以下地址：\nhttps://example.test/${'long-path-segment'.repeat(24)}`,
 ])(
   'operation error %s preserves its full content, deduplication, and focus when dismissed',

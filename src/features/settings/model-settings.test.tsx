@@ -212,5 +212,6 @@ test('empty model configuration explains the empty list', () => {
   useConversationStore.setState({ models: [], model: null, status: 'disconnected' })
   render(<ModelSettings />)
   expect(screen.getByText('暂无可用模型')).toBeVisible()
+  expect(screen.getByText('在 Pi 配置目录中管理模型和凭证，更新后点击刷新即可读取。')).toBeVisible()
   expect(screen.queryByRole('radio')).not.toBeInTheDocument()
 })

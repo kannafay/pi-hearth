@@ -164,6 +164,7 @@ test('vertical settings tabs use arrows and Enter, and closing restores focus', 
   expect(screen.getByRole('tab', { name: '外观' })).toHaveAttribute('aria-selected', 'true')
   await user.keyboard('{Enter}')
   expect(screen.getByRole('tabpanel', { name: '模型与凭证' })).toBeVisible()
+  expect(screen.getByText('读取本机 Pi 配置中的模型和凭证。')).toBeVisible()
   await user.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   await waitFor(() => expect(screen.getByRole('button', { name: '打开设置' })).toHaveFocus())

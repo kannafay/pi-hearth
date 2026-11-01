@@ -73,13 +73,13 @@ pub fn local_agent_directory() -> Result<PathBuf, String> {
 }
 
 // Copy provider metadata, but move every credential/header value into the child
-// environment. The application neither changes CC Switch's files nor returns keys.
+// environment. The application neither changes the source Pi config nor returns keys.
 pub fn prepare_config(source: &Path, target: &Path) -> Result<RuntimeConfig, String> {
     let mut environment = HashMap::new();
     let mut secrets = Vec::new();
     let mut config = match std::fs::read(source.join("models.json")) {
         Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
-            .map_err(|_| "本机 Pi 的 models.json 格式有误，请在 CC Switch 中检查配置。")?,
+            .map_err(|_| "本机 Pi 的 models.json 格式有误，请检查配置文件。")?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({"providers": {}}),
         Err(_) => return Err("无法读取本机 Pi 模型配置。".into()),
     };
@@ -213,10 +213,7 @@ fn protect_secret(
         return Ok(());
     };
     if raw.starts_with('!') {
-        return Err(
-            "当前对话接入支持 API Key；请在 CC Switch 中改用密钥或环境变量，暂不执行凭证命令。"
-                .into(),
-        );
+        return Err("当前仅支持 API Key 或环境变量凭证，请修改 Pi 配置；暂不执行凭证命令。".into());
     }
     let resolved = if let Some(name) = raw.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
         std::env::var(name).map_err(|_| format!("Pi 所需的环境变量 {name} 未设置。"))?
@@ -282,12 +279,12 @@ mod tests {
             .join(uuid::Uuid::new_v4().to_string());
         let source = root.join("source");
         std::fs::create_dir_all(&source).unwrap();
-        let text = json!({"providers":{"cc-switch-one":{"name":" 火山 Agent Plan ","apiKey":"test-secret"},"blank":{"name":" "},"legacy":{}}}).to_string();
+        let text = json!({"providers":{"custom-one":{"name":" 火山 Agent Plan ","apiKey":"test-secret"},"blank":{"name":" "},"legacy":{}}}).to_string();
         std::fs::write(source.join("models.json"), &text).unwrap();
         let config = prepare_config(&source, &root.join("prepared")).unwrap();
         assert_eq!(
             config.provider_names,
-            HashMap::from([("cc-switch-one".into(), "火山 Agent Plan".into())])
+            HashMap::from([("custom-one".into(), "火山 Agent Plan".into())])
         );
         assert_eq!(
             std::fs::read_to_string(source.join("models.json")).unwrap(),
@@ -407,8 +404,27 @@ mod tests {
     }
 
     #[test]
+    fn malformed_models_report_the_source_config_file() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../work/invalid-model-config-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("models.json"), "invalid json").unwrap();
+        assert_eq!(
+            prepare_config(&source, &root.join("prepared"))
+                .err()
+                .unwrap(),
+            "本机 Pi 的 models.json 格式有误，请检查配置文件。"
+        );
+    }
+
+    #[test]
     fn credential_commands_are_not_executed() {
         let mut value = Value::String("!print-private-key".into());
-        assert!(protect_secret(&mut value, &mut HashMap::new(), &mut Vec::new()).is_err());
+        assert_eq!(
+            protect_secret(&mut value, &mut HashMap::new(), &mut Vec::new()).unwrap_err(),
+            "当前仅支持 API Key 或环境变量凭证，请修改 Pi 配置；暂不执行凭证命令。"
+        );
     }
 }

@@ -113,7 +113,7 @@ export function ModelSettings() {
         默认模型仅对之后新建的对话生效，已有会话保持各自的模型，也可以在消息输入区单独切换。
       </p>
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
-        在 Pi 或 CC Switch 中管理模型和密钥，更新后点击刷新即可读取。
+        在 Pi 配置目录中管理模型和凭证，更新后点击刷新即可读取。
       </p>
     </div>
   )
