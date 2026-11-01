@@ -179,6 +179,15 @@ pub enum AppTheme {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "lowercase")]
+pub enum WindowBackground {
+    #[default]
+    Mica,
+    Acrylic,
+    Solid,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "lowercase")]
 pub enum PermissionMode {
     #[default]
     Ask,
@@ -235,6 +244,7 @@ pub struct ProxyTestResult {
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub theme: AppTheme,
+    pub window_background: WindowBackground,
     pub sidebar_open: bool,
     pub inspector_open: bool,
     pub navigation_width: f64,
@@ -263,6 +273,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: AppTheme::System,
+            window_background: WindowBackground::Mica,
             sidebar_open: true,
             inspector_open: false,
             navigation_width: 300.0,
@@ -292,6 +303,9 @@ pub struct AppSettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub theme: Option<AppTheme>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub window_background: Option<WindowBackground>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub sidebar_open: Option<bool>,
@@ -562,6 +576,7 @@ fn export_frontend_types() {
         Selection::decl(),
         SessionPreference::decl(),
         AppTheme::decl(),
+        WindowBackground::decl(),
         PermissionMode::decl(),
         ProxyMode::decl(),
         ProxySettings::decl(),

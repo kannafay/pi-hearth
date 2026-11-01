@@ -274,14 +274,70 @@ test('other desktop platforms retain their native automatic-theme mode', () => {
   expect(vi.mocked(setWindowTheme).mock.calls).toEqual([[null], ['light'], [null]])
 })
 
-test('Windows desktop exposes the native backdrop through both themes and cleans up on unmount', () => {
+test('Windows desktop exposes the native backdrop through both themes and cleans up on unmount', async () => {
   vi.mocked(isDesktop).mockReturnValue(true)
   const { unmount } = renderHook(useTheme)
+  await act(async () => {})
   expect(document.documentElement).toHaveAttribute('data-native-backdrop')
   act(() => useWorkspaceStore.getState().setTheme('dark'))
+  await act(async () => {})
   expect(document.documentElement).toHaveAttribute('data-native-backdrop')
   unmount()
   expect(document.documentElement).not.toHaveAttribute('data-native-backdrop')
+})
+
+test('materials switch immediately in the running window and remain selected across theme changes', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  renderHook(useTheme)
+  await act(async () => {})
+  finishThemeFrame()
+  for (const background of ['solid', 'acrylic', 'mica'] as const) {
+    act(() => useWorkspaceStore.setState({ windowBackground: background }))
+    expect(vi.mocked(setWindowTheme).mock.calls.at(-1)?.[2]).toBe(background)
+    await act(async () => {})
+    expect(document.documentElement.hasAttribute('data-native-backdrop')).toBe(
+      background !== 'solid',
+    )
+    if (background !== 'solid')
+      expect(document.documentElement).toHaveAttribute('data-native-backdrop', background)
+    expect(document.documentElement).not.toHaveClass('dark')
+    finishThemeFrame()
+    act(() => useWorkspaceStore.getState().setTheme('dark'))
+    expect(vi.mocked(setWindowTheme).mock.calls.at(-1)).toEqual([
+      'dark',
+      expect.any(String),
+      background,
+    ])
+    await act(async () => {})
+    expect(document.documentElement).toHaveClass('dark')
+    expect(document.documentElement.hasAttribute('data-native-backdrop')).toBe(
+      background !== 'solid',
+    )
+    finishThemeFrame()
+    act(() => useWorkspaceStore.getState().setTheme('light'))
+    await act(async () => {})
+    finishThemeFrame()
+  }
+})
+
+test('a stale material preparation cannot replace the latest background', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  renderHook(useTheme)
+  await act(async () => {})
+  finishThemeFrame()
+  const pending: (() => void)[] = []
+  vi.mocked(setWindowTheme).mockImplementation(
+    () => new Promise<void>((resolve) => pending.push(resolve)),
+  )
+  act(() => useWorkspaceStore.setState({ windowBackground: 'solid' }))
+  expect(document.documentElement).toHaveAttribute('data-native-backdrop')
+  act(() => useWorkspaceStore.setState({ windowBackground: 'acrylic' }))
+  await act(async () => pending[1]())
+  expect(document.documentElement).toHaveAttribute('data-native-backdrop')
+  finishThemeFrame()
+  await act(async () => pending[0]())
+  expect(document.documentElement).toHaveAttribute('data-native-backdrop')
+  expect(document.documentElement).not.toHaveAttribute('data-theme-changing')
 })
 
 test('browser previews keep their opaque shell background', () => {

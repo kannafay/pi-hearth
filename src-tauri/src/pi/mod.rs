@@ -24,6 +24,7 @@ pub use catalog::WorkspaceManager;
 pub use client::PiManager;
 use serde_json::json;
 use tauri::{State, ipc::Channel};
+pub(crate) use types::WindowBackground;
 use types::{PiEvent, RuntimeSnapshot, ToolLogPage};
 
 #[tauri::command]

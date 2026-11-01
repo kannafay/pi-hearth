@@ -58,6 +58,19 @@ test('Windows presentation preparation and completion carry the same request ide
   ])
 })
 
+test.each(['mica', 'acrylic', 'solid'] as const)(
+  'native theme preparation includes the selected %s material',
+  async (background) => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    await setWindowTheme('dark', 'material-request', background)
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('set_window_theme', {
+      theme: 'dark',
+      transitionId: 'material-request',
+      background,
+    })
+  },
+)
+
 test('native window theme can switch appearance and return to following the system', async () => {
   vi.mocked(isTauri).mockReturnValue(true)
   await setWindowTheme('dark')

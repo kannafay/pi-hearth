@@ -14,6 +14,7 @@ vi.mock('@/lib/desktop', () => ({ isDesktop: () => true }))
 
 const saved: AppSettings = {
   theme: 'dark',
+  windowBackground: 'acrylic',
   sidebarOpen: false,
   inspectorOpen: true,
   navigationWidth: 312,
@@ -65,6 +66,31 @@ test('startup restores SQL preferences before the workspace becomes ready', asyn
   })
   expect(useConversationStore.getState().requestedThinkingLevel).toBe(thinkingLevel)
   expect(updateAppSettings).not.toHaveBeenCalled()
+})
+
+test('the window background survives restart without changing the theme or active conversation', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  const conversation = useConversationStore.getState()
+  const stored: AppSettings = { ...saved, windowBackground: 'solid' }
+  vi.mocked(updateAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().setWindowBackground('solid')
+  expect(updateAppSettings).toHaveBeenCalledExactlyOnceWith({ windowBackground: 'solid' })
+  expect(useWorkspaceStore.getState()).toMatchObject({ windowBackground: 'solid', theme: 'dark' })
+  expect(useConversationStore.getState()).toBe(conversation)
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true)
+  vi.mocked(loadAppSettings).mockResolvedValueOnce(stored)
+  await useWorkspaceStore.getState().hydrateSettings()
+  expect(useWorkspaceStore.getState().windowBackground).toBe('solid')
+})
+
+test('a rejected background write preserves the saved choice and releases the pending state', async () => {
+  await useWorkspaceStore.getState().hydrateSettings()
+  vi.mocked(updateAppSettings).mockRejectedValueOnce('disk full')
+  await expect(useWorkspaceStore.getState().setWindowBackground('solid')).rejects.toBe('disk full')
+  expect(useWorkspaceStore.getState()).toMatchObject({
+    windowBackground: 'acrylic',
+    windowBackgroundPending: false,
+  })
 })
 
 test('the legacy thinking choice is imported only when SQL has no preference', async () => {

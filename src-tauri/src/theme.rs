@@ -1,3 +1,4 @@
+use crate::pi::WindowBackground;
 use std::{
     ffi::c_void,
     mem::size_of,
@@ -34,6 +35,7 @@ pub fn set_window_theme(
     window: tauri::WebviewWindow,
     theme: Option<tauri::Theme>,
     transition_id: Option<&str>,
+    background: Option<WindowBackground>,
 ) -> Result<(), String> {
     if let Some(request) = transition_id {
         presentation::begin(&window, request);
@@ -60,8 +62,12 @@ pub fn set_window_theme(
         && backdrop > DWMSBT_NONE;
     // Recreate the existing material in its final color instead of crossfading it.
     let detached = has_backdrop && set_attribute(DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_NONE) >= 0;
-    let result = window.set_theme(theme).map_err(|error| error.to_string());
-    if detached {
+    let mut result = window.set_theme(theme).map_err(|error| error.to_string());
+    if result.is_ok()
+        && let Some(background) = background
+    {
+        result = apply_background(&window, background).map_err(|error| error.to_string());
+    } else if detached {
         set_attribute(DWMWA_SYSTEMBACKDROP_TYPE, backdrop);
     }
     if disabled {
@@ -71,6 +77,20 @@ pub fn set_window_theme(
         presentation::finish(&window, transition_id);
     }
     result
+}
+
+fn apply_background(
+    window: &tauri::WebviewWindow,
+    background: WindowBackground,
+) -> tauri::Result<()> {
+    // Clear the previous material before switching between Mica, Acrylic and solid.
+    window.set_effects(None)?;
+    let effect = match background {
+        WindowBackground::Mica => tauri::window::Effect::Mica,
+        WindowBackground::Acrylic => tauri::window::Effect::Acrylic,
+        WindowBackground::Solid => return Ok(()),
+    };
+    window.set_effects(tauri::window::EffectsBuilder::new().effect(effect).build())
 }
 
 // Read the OS preference rather than the WebView2 profile's forced color scheme.

@@ -25,12 +25,14 @@ fn set_window_theme(
     window: tauri::WebviewWindow,
     theme: Option<tauri::Theme>,
     transition_id: Option<String>,
+    background: Option<pi::WindowBackground>,
 ) -> Result<(), String> {
     #[cfg(windows)]
-    return theme::set_window_theme(window, theme, transition_id.as_deref());
+    return theme::set_window_theme(window, theme, transition_id.as_deref(), background);
     #[cfg(not(windows))]
     {
         let _ = transition_id;
+        let _ = background;
         window.set_theme(theme).map_err(|error| error.to_string())
     }
 }

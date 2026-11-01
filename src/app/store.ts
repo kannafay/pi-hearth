@@ -3,6 +3,7 @@ import { shallow } from 'zustand/vanilla/shallow'
 import type {
   AppSettingsPatch,
   AppTheme,
+  WindowBackground,
   Attachment,
   ModelInfo,
   PermissionMode,
@@ -117,6 +118,9 @@ interface WorkspaceState {
   settingsLoading: boolean
   hydrateSettings: () => Promise<void>
   theme: Theme
+  windowBackground: WindowBackground
+  windowBackgroundPending: boolean
+  setWindowBackground: (background: WindowBackground) => Promise<void>
   defaultModel: ModelInfo | null
   defaultModelPending: boolean
   setDefaultModel: (model: ModelInfo) => Promise<void>
@@ -551,6 +555,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       useConversationStore.setState({ requestedThinkingLevel: thinkingLevel })
       set({
         theme: settings.theme,
+        windowBackground: settings.windowBackground ?? 'mica',
         defaultModel: settings.defaultModel ?? null,
         defaultPermission: settings.defaultPermission ?? 'ask',
         sidebarOpen: settings.sidebarOpen,
@@ -577,6 +582,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
   theme: 'system',
+  windowBackground: 'mica',
+  windowBackgroundPending: false,
+  setWindowBackground: async (background) => {
+    if (get().windowBackgroundPending || get().windowBackground === background) return
+    set({ windowBackgroundPending: true })
+    try {
+      const settings = await updateAppSettings({ windowBackground: background })
+      set({ windowBackground: settings.windowBackground })
+    } finally {
+      set({ windowBackgroundPending: false })
+    }
+  },
   defaultModel: null,
   defaultModelPending: false,
   defaultPermission: 'ask',

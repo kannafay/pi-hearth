@@ -26,6 +26,7 @@ vi.mock('@/lib/desktop', () => ({
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
   openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
   resetWindowSize: vi.fn().mockResolvedValue(undefined),
+  finishWindowThemeChange: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
 vi.mock('@/lib/resources', () => ({ loadResourceCatalog: vi.fn() }))
@@ -62,6 +63,7 @@ test('browser preview shows its limits without invoking the desktop bridge', asy
   render(<SettingsHarness />)
   const reset = screen.getByRole('button', { name: '重置窗口大小' })
   expect(reset).toBeDisabled()
+  expect(screen.getByRole('combobox', { name: '窗口背景' })).toBeDisabled()
   await user.click(reset)
   expect(resetWindowSize).not.toHaveBeenCalled()
   await user.click(screen.getByRole('tab', { name: '存储' }))

@@ -37,6 +37,7 @@ import { StorageLocationSettings } from './storage-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
 import { PiRuntimeSettings } from './pi-runtime-settings'
 import { WindowSizeSettings } from './window-size-settings'
+import { WindowBackgroundSettings } from './window-background-settings'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
 import { ResourceSettings } from './resource-settings'
@@ -235,6 +236,7 @@ export function SettingsDialog({
                   </Select>
                 }
               />
+              <WindowBackgroundSettings />
               <WindowSizeSettings />
             </SettingsPanel>
             <SettingsPanel

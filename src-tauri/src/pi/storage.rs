@@ -555,7 +555,7 @@ pub(super) async fn save_search_documents(
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::{AppTheme, ModelInfo};
+    use super::super::types::{AppTheme, ModelInfo, WindowBackground};
     use super::*;
     use serde_json::json;
     use std::path::PathBuf;
@@ -566,6 +566,51 @@ mod tests {
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[tokio::test]
+    async fn window_background_defaults_for_existing_settings_and_survives_reopening() {
+        let data = fixture();
+        update_settings(
+            &data,
+            AppSettingsPatch {
+                theme: Some(AppTheme::Dark),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        // Existing databases have no material preference; preserve their Mica appearance.
+        Connection::open(data.join("app.db"))
+            .unwrap()
+            .execute("DELETE FROM app_settings WHERE key='windowBackground'", [])
+            .unwrap();
+        assert_eq!(
+            settings(&data).await.unwrap().window_background,
+            WindowBackground::Mica
+        );
+        for background in [
+            WindowBackground::Acrylic,
+            WindowBackground::Solid,
+            WindowBackground::Mica,
+        ] {
+            update_settings(
+                &data,
+                AppSettingsPatch {
+                    window_background: Some(background),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+            let reopened = settings(&data).await.unwrap();
+            assert_eq!(reopened.window_background, background);
+            assert!(matches!(reopened.theme, AppTheme::Dark));
+        }
+        assert!(
+            serde_json::from_value::<AppSettingsPatch>(json!({"windowBackground":"unknown"}))
+                .is_err()
+        );
     }
 
     #[tokio::test]

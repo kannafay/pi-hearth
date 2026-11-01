@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
+import type { WindowBackground } from './generated/pi'
 
 export function isDesktop() {
   return isTauri()
@@ -47,9 +48,17 @@ export async function resetWindowSize() {
   await invoke<void>('window_reset_size')
 }
 
-export async function setWindowTheme(theme: 'light' | 'dark' | null, transitionId?: string) {
+export async function setWindowTheme(
+  theme: 'light' | 'dark' | null,
+  transitionId?: string,
+  background?: WindowBackground,
+) {
   if (isDesktop())
-    await invoke<void>('set_window_theme', { theme, ...(transitionId ? { transitionId } : {}) })
+    await invoke<void>('set_window_theme', {
+      theme,
+      ...(transitionId ? { transitionId } : {}),
+      ...(background ? { background } : {}),
+    })
 }
 
 export async function finishWindowThemeChange(transitionId: string) {

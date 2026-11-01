@@ -6,6 +6,7 @@ export function projectLocationChange(directory: string): ProjectLocationChange 
   return {
     settings: {
       theme: state.theme,
+      windowBackground: state.windowBackground,
       sidebarOpen: state.sidebarOpen,
       inspectorOpen: state.inspectorOpen,
       navigationWidth: state.navigationWidth,

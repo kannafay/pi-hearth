@@ -276,6 +276,14 @@ select {
   background: transparent;
 }
 
+:root[data-native-backdrop='acrylic'] .workspace-shell {
+  background: color-mix(in srgb, var(--shell-tint) 40%, transparent);
+}
+
+:root.dark[data-native-backdrop='acrylic'] .workspace-shell {
+  background: color-mix(in srgb, var(--shell-tint) 80%, transparent);
+}
+
 .workspace-navigation {
   --muted: var(--sidebar-row-selected);
   --sidebar-accent: var(--muted);
