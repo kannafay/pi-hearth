@@ -422,6 +422,7 @@ select {
   pointer-events: none;
 }
 
+/* The row paints the surface once; the title mask clears space for actions. */
 :is(.sidebar-session-actions, .sidebar-project-actions) {
   position: absolute;
   inset: 0 0 0 auto;
@@ -431,18 +432,6 @@ select {
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease-out;
-}
-
-:is(.sidebar-session-actions, .sidebar-project-actions)::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 0 -1.5rem;
-  z-index: -1;
-  border-radius: inherit;
-  background-color: var(--sidebar-row-surface);
-  mask-image: linear-gradient(to left, #000 0%, #000 calc(100% - 1.5rem), transparent 100%);
-  pointer-events: none;
-  transition: background-color 160ms ease-out;
 }
 
 .sidebar-session-progress {
@@ -455,7 +444,12 @@ select {
   padding-inline-end: 1.5rem;
 }
 
-.sidebar-session-row:is(:hover, :has(:focus-visible)) .sidebar-session-progress {
+.sidebar-session-row:is(
+    :hover,
+    :has(:focus-visible),
+    :has([data-slot='dropdown-menu-trigger'][aria-expanded='true'])
+  )
+  .sidebar-session-progress {
   opacity: 0;
 }
 
