@@ -123,7 +123,6 @@
 .dark {
   --selection-hover: oklch(1 0 0 / 7%);
   --selection-background: oklch(1 0 0 / 18%);
-  --selection-border: oklch(1 0 0 / 14%);
   --sidebar-row-selected: var(--selection-background);
   --floating-panel-background: var(--popover);
   --floating-panel-overlay: oklch(0 0 0 / 20%);
@@ -346,10 +345,6 @@ select {
   color: var(--foreground);
 }
 
-.dark .sidebar-session-row[data-selected='true']::before {
-  box-shadow: inset 0 0 0 1px var(--selection-border);
-}
-
 .sidebar-row-title {
   --sidebar-title-tail-opacity: 1;
   mask-image: linear-gradient(
@@ -522,16 +517,12 @@ select {
 
 .dark .sidebar-tab-indicator {
   background: var(--sidebar-tab-background);
-  box-shadow:
-    0 1px 3px oklch(0 0 0 / 18%),
-    inset 0 0 0 1px var(--selection-border);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 18%);
 }
 
 .dark [data-slot='tabs-list'][data-variant='default'] [data-slot='tabs-trigger'][data-active] {
   border-color: transparent;
   background: var(--selection-background);
-  outline: 1px solid var(--selection-border);
-  outline-offset: -1px;
 }
 
 .dark
