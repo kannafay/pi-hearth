@@ -1,6 +1,6 @@
 use super::{
     catalog,
-    client::{PiManager, pi_cli_path},
+    client::{PiManager, pi_runtime_path},
     config::{local_agent_directory, prepare_config, redact},
     types::{ModelInfo, ResourceCatalog},
 };
@@ -77,31 +77,31 @@ fn find(catalog: &ResourceCatalog, kind: &str, source: &str, name: &str) -> Resu
 }
 
 #[tauri::command]
-pub fn pi_cli_version() -> Result<String, String> {
-    cli_version(&pi_cli_path()?)
+pub fn pi_runtime_version() -> Result<String, String> {
+    runtime_version(&pi_runtime_path()?)
 }
 
-fn cli_version(cli: &Path) -> Result<String, String> {
-    let package = cli
+fn runtime_version(entrypoint: &Path) -> Result<String, String> {
+    let package = entrypoint
         .ancestors()
         .nth(3)
-        .ok_or("无法定位 Pi CLI 版本信息。")?
+        .ok_or("无法定位 Pi 运行时版本信息。")?
         .join("package.json");
-    let bytes = std::fs::read(package).map_err(|_| "无法读取 Pi CLI 版本信息。")?;
+    let bytes = std::fs::read(package).map_err(|_| "无法读取 Pi 运行时版本信息。")?;
     let package: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|_| "Pi CLI 版本信息格式有误。")?;
+        serde_json::from_slice(&bytes).map_err(|_| "Pi 运行时版本信息格式有误。")?;
     package["version"]
         .as_str()
         .filter(|version| !version.trim().is_empty())
         .map(str::to_owned)
-        .ok_or("Pi CLI 版本信息缺少版本号。".into())
+        .ok_or("Pi 运行时版本信息缺少版本号。".into())
 }
 
 #[tauri::command]
 pub fn pi_config_directory(open: bool) -> Result<String, String> {
     let directory: PathBuf = local_agent_directory()?.components().collect();
     if open {
-        std::fs::create_dir_all(&directory).map_err(|_| "无法创建 Pi CLI 配置目录。")?;
+        std::fs::create_dir_all(&directory).map_err(|_| "无法创建 Pi 配置目录。")?;
         catalog::open_path(&directory)?;
     }
     Ok(directory.to_string_lossy().into())
@@ -202,18 +202,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_comes_from_the_cli_package_that_owns_the_runtime_entrypoint() {
+    fn version_comes_from_the_package_that_owns_the_runtime_entrypoint() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../work/pi-version-test")
             .join(uuid::Uuid::new_v4().to_string());
         std::fs::create_dir_all(root.join("dist/bundle")).unwrap();
         std::fs::write(root.join("package.json"), r#"{"version":"7.8.9"}"#).unwrap();
         assert_eq!(
-            cli_version(&root.join("dist/bundle/cli.js")).unwrap(),
+            runtime_version(&root.join("dist/bundle/cli.js")).unwrap(),
             "7.8.9"
         );
-        std::fs::write(root.join("package.json"), "{}").unwrap();
-        assert!(cli_version(&root.join("dist/bundle/cli.js")).is_err());
+        for (contents, message) in [
+            ("{}", "Pi 运行时版本信息缺少版本号。"),
+            (r#"{"version":" "}"#, "Pi 运行时版本信息缺少版本号。"),
+            ("invalid json", "Pi 运行时版本信息格式有误。"),
+        ] {
+            std::fs::write(root.join("package.json"), contents).unwrap();
+            assert_eq!(
+                runtime_version(&root.join("dist/bundle/cli.js")).unwrap_err(),
+                message
+            );
+        }
+        assert_eq!(
+            runtime_version(&root.join("missing/dist/bundle/cli.js")).unwrap_err(),
+            "无法读取 Pi 运行时版本信息。"
+        );
+        assert_eq!(
+            runtime_version(Path::new("cli.js")).unwrap_err(),
+            "无法定位 Pi 运行时版本信息。"
+        );
     }
 
     #[test]

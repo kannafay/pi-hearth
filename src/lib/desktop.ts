@@ -20,9 +20,9 @@ export async function getPiConfigDirectory() {
   return invoke<string>('pi_config_directory', { open: false })
 }
 
-export async function getPiCliVersion() {
+export async function getPiRuntimeVersion() {
   requireDesktop()
-  return invoke<string>('pi_cli_version')
+  return invoke<string>('pi_runtime_version')
 }
 
 export type DirectoryApplication = 'vscode' | 'explorer' | 'terminal'

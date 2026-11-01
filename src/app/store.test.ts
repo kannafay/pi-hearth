@@ -27,7 +27,7 @@ const session: SessionInfo = {
   path: 'history.jsonl',
   id: 'native-id',
   cwd: 'D:\\项目',
-  title: 'CLI history',
+  title: 'Pi history',
   modified: 1,
   messageCount: 3,
 }
@@ -228,7 +228,7 @@ test('projects can contain multiple sessions and each open selects the exact fil
   })
 })
 
-test('external CLI changes refresh idle history and never reopen a running task', async () => {
+test('external Pi session changes refresh idle history and never reopen a running task', async () => {
   useWorkspaceStore.setState({ ...catalog, initialized: true, projectPath: session.cwd })
   useConversationStore.setState({ sessionFile: session.path })
   vi.mocked(loadCatalog).mockResolvedValue({ ...catalog, sessions: [{ ...session, modified: 2 }] })

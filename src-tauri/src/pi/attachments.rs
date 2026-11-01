@@ -555,7 +555,7 @@ pub fn attachment_release(manager: State<'_, AttachmentManager>, ids: Vec<String
     manager.release(&ids);
 }
 
-// Pi CLI stores @file input as leading <file> blocks plus native image content.
+// Pi stores @file input as leading <file> blocks plus native image content.
 pub fn restored_user(raw: &Value) -> (String, Option<Vec<Attachment>>) {
     let mut text = raw["content"]
         .as_str()
@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn native_cli_image_and_plain_text_history_remain_readable() {
+    fn native_pi_image_and_plain_text_history_remain_readable() {
         let (text, attachments) = restored_user(&json!({"content":"ordinary message"}));
         assert_eq!(text, "ordinary message");
         assert!(attachments.is_none());

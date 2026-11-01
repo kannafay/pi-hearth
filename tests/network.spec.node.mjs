@@ -14,7 +14,9 @@ const tls = {
   cert: await readFile(certificate),
   key: await readFile('tests/fixtures/network/localhost-key.pem'),
 }
-const cli = path.resolve('node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js')
+const runtimeEntrypoint = path.resolve(
+  'node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js',
+)
 const dispatcher = path.resolve(
   'node_modules/@earendil-works/pi-coding-agent/dist/core/http-dispatcher.js',
 )
@@ -299,7 +301,7 @@ for (const kind of ['http', 'socks5']) {
     const child = spawn(
       process.execPath,
       [
-        cli,
+        runtimeEntrypoint,
         '--mode',
         'rpc',
         '--offline',

@@ -44,7 +44,7 @@ test('thoughts, intermediate text and tools stay ordered while the final answer 
   )
 })
 
-test('each user message starts an independent turn in imported CLI history', () => {
+test('each user message starts an independent turn in native Pi history', () => {
   const messages = [
     message('u1', 'user', '第一轮'),
     message('a1', 'assistant', '答复一'),

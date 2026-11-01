@@ -3,7 +3,7 @@ import { FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FieldError } from '@/components/ui/field'
 import {
-  getPiCliVersion,
+  getPiRuntimeVersion,
   getPiConfigDirectory,
   isDesktop,
   openPiConfigDirectory,
@@ -11,7 +11,7 @@ import {
 import { toast } from '@/lib/toast'
 import { SettingsRow } from './settings-row'
 
-export function PiCliSettings() {
+export function PiRuntimeSettings() {
   const desktop = isDesktop()
   const [directory, setDirectory] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
@@ -22,7 +22,7 @@ export function PiCliSettings() {
   useEffect(() => {
     if (!desktop) return
     let disposed = false
-    getPiCliVersion().then(
+    getPiRuntimeVersion().then(
       (value) => {
         if (!disposed) setVersion(value)
       },
@@ -64,12 +64,12 @@ export function PiCliSettings() {
         <FieldError>{versionError}</FieldError>
       </SettingsRow>
       <SettingsRow
-        title="Pi CLI 配置目录"
+        title="Pi 配置目录"
         description={
           directory ? (
             <Button
               variant="link"
-              aria-label="打开 Pi CLI 配置目录"
+              aria-label="打开 Pi 配置目录"
               title={directory}
               disabled={opening}
               className="h-auto max-w-full justify-start gap-2 rounded-sm border-0 p-0 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground"

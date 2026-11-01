@@ -133,7 +133,7 @@ pub fn run() {
             pi::catalog::workspace_change_projects_directory,
             pi::files::workspace_files_directory,
             pi::resources::pi_config_directory,
-            pi::resources::pi_cli_version,
+            pi::resources::pi_runtime_version,
             pi::resources::pi_resources,
             pi::resources::pi_resource_toggle,
             pi::resources::pi_resource_open,

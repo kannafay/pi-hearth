@@ -195,7 +195,7 @@ test('empty directories are quiet and unsupported skill packages or filters are 
 
 test('the native helper resources action resolves SDK modules and returns a JSON catalog', async () => {
   const f = await fixture()
-  await skill(path.join(f.agent, 'skills/cli'), 'cli')
+  await skill(path.join(f.agent, 'skills/user-skill'), 'user-skill')
   const child = spawnSync(
     process.execPath,
     ['runtime/session-catalog.mjs', path.join(sdkRoot, 'core/session-manager.js')],
@@ -207,7 +207,7 @@ test('the native helper resources action resolves SDK modules and returns a JSON
     },
   )
   assert.equal(child.status, 0, child.stderr)
-  assert.equal(JSON.parse(child.stdout).skills[0].name, 'cli')
+  assert.equal(JSON.parse(child.stdout).skills[0].name, 'user-skill')
 })
 
 test('resource enablement inherits Pi defaults with independent desktop overrides', async () => {

@@ -15,7 +15,7 @@
 | Markdown | Streamdown + Shiki | 流式 Markdown 和代码高亮 |
 | 文件与差异 | Monaco Editor | 按需加载的只读文件预览与差异查看 |
 | 代理引擎 | Pi Coding Agent | 模型接入、上下文、工具循环和会话持久化 |
-| Pi 运行时 | 随应用分发的 Node.js LTS | 启动固定版本 Pi，无需用户单独安装 Node.js |
+| Pi 运行时 | Node.js LTS + 固定版本 Pi | 开发阶段使用本机 Node.js 与项目依赖，发行目标为随应用分发 |
 | 前后端通信 | Tauri Commands + Channels | 控制请求与有序流式数据传输 |
 | Pi 通信 | stdin / stdout JSONL RPC | 长驻子进程的命令、响应和事件 |
 | 应用数据库 | SQLite + SQLx | 项目、会话索引、运行记录和普通设置 |
@@ -34,6 +34,8 @@ React 作为本地单页界面运行，前端通过 Tauri 调用 Rust。本地�
 
 Pi 通过语言无关的 RPC 协议接入。Rust 统一管理桌面能力、子进程和持久化，模型调用、上下文压缩与工具循环由 Pi 承担。
 
+Pi Hearth 使用 Pi 包提供的运行时能力。当前由 Rust 启动项目依赖中的 `dist/bundle/cli.js --mode rpc`，不会调用全局 `pi` 命令；配置目录和原生会话格式也来自 Pi。
+
 SQLite 只保存应用数据和索引，完整会话以 Pi 会话文件为准。Zustand 保存界面状态和可重建的展示数据，API Key 保存于系统凭证库。具体归属见[整体架构](architecture.md)。
 
 Monaco 按需加载，首版用于只读预览与差异查看。桌面端自动化测试依赖只加入测试构建。
@@ -42,6 +44,8 @@ Monaco 按需加载，首版用于只读预览与差异查看。桌面端自动�
 
 - Tauri 使用 2.x；其余依赖在工程初始化时选择相互兼容的已发布版本，并提交锁文件。
 - Node.js 选择满足所选 Pi 版本要求的 LTS 版本，Pi 使用固定发行版本。
+- 当前通过 `pnpm install` 安装 `@earendil-works/pi-coding-agent` 1.3.0；无需全局安装 Pi。
+- Node.js 与 Pi 的独立打包尚未接入，随安装包分发运行时属于发行目标。
 - 应用、Node.js、Pi 与随附扩展作为同一套版本验证和发布，运行时升级随应用版本进行。
 - Git、Shell 和具体项目所需开发工具使用本机环境，启动时检测路径、版本和缺失依赖。
 - Windows、macOS 和 Linux 分别构建并验证对应产物，平台支持范围以实际发布结果为准。

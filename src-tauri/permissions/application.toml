@@ -33,7 +33,7 @@ commands.allow = [
   "workspace_change_projects_directory",
   "workspace_files_directory",
   "pi_config_directory",
-  "pi_cli_version",
+  "pi_runtime_version",
   "pi_resources",
   "pi_resource_toggle",
   "pi_resource_open",

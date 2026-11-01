@@ -39,8 +39,8 @@ function session(cwd, name, directory) {
 }
 
 test('all native project sessions and existing desktop sessions are discovered without copying', async () => {
-  const a = session(first, 'CLI one')
-  const b = session(first, 'CLI two')
+  const a = session(first, 'Pi one')
+  const b = session(first, 'Pi two')
   const c = session(second, 'second project')
   const old = session(first, 'desktop legacy', legacy)
   const found = await catalog({ legacyDir: legacy, projects: [first, second] }, sdk, agent)
@@ -50,7 +50,7 @@ test('all native project sessions and existing desktop sessions are discovered w
     new Set([a, b, c, old].map((item) => item.getSessionId())),
   )
   assert.equal(await sessionDirectory(first, agent, sdk), a.getSessionDir())
-  a.appendMessage({ role: 'user', content: 'CLI added', timestamp: Date.now() })
+  a.appendMessage({ role: 'user', content: 'Pi added', timestamp: Date.now() })
   const updated = await catalog({ legacyDir: legacy, projects: [] }, sdk, agent)
   assert.ok(
     updated.find((item) => item.id === a.getSessionId()).messageCount >

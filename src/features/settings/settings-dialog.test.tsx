@@ -8,7 +8,7 @@ import { useMediaQuery } from '@/app/use-media-query'
 import { SettingsDialog } from '@/features/settings/settings-dialog'
 import {
   getAppVersion,
-  getPiCliVersion,
+  getPiRuntimeVersion,
   isDesktop,
   openPiConfigDirectory,
   setWindowTheme,
@@ -17,7 +17,7 @@ import { loadResourceCatalog } from '@/lib/resources'
 
 vi.mock('@/lib/desktop', () => ({
   getAppVersion: vi.fn(),
-  getPiCliVersion: vi.fn().mockResolvedValue('1.3.0'),
+  getPiRuntimeVersion: vi.fn().mockResolvedValue('1.3.0'),
   getPiConfigDirectory: vi.fn().mockResolvedValue('C:\\Users\\admin\\.pi\\agent'),
   openPiConfigDirectory: vi.fn().mockResolvedValue('C:\\Users\\admin\\.pi\\agent'),
   isDesktop: vi.fn(),
@@ -48,7 +48,7 @@ beforeEach(() => {
   vi.mocked(getAppVersion).mockReset()
   vi.mocked(loadResourceCatalog).mockReset()
   vi.mocked(setWindowTheme).mockClear()
-  vi.mocked(getPiCliVersion).mockClear()
+  vi.mocked(getPiRuntimeVersion).mockClear()
   vi.mocked(openPiConfigDirectory).mockClear()
 })
 
@@ -79,14 +79,16 @@ test('About shows the app and runtime versions and opens the resolved Pi configu
   vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
   const user = userEvent.setup()
   render(<SettingsHarness />)
-  expect(getPiCliVersion).not.toHaveBeenCalled()
+  expect(getPiRuntimeVersion).not.toHaveBeenCalled()
   await user.click(screen.getByRole('tab', { name: '关于' }))
   expect(screen.getByText('Pi 运行时版本')).toBeVisible()
-  expect(screen.queryByText('Pi CLI 版本')).not.toBeInTheDocument()
+  expect(screen.getByText('Pi 配置目录')).toBeVisible()
+  expect(screen.getByRole('dialog', { name: '设置' })).not.toHaveTextContent(/Pi CLI/)
+  expect(screen.getByText(/由 Pi 运行时提供支持/)).toBeVisible()
   expect(await screen.findByText('1.3.0')).toBeVisible()
   expect(screen.getByText('0.1.0')).toBeVisible()
   expect(screen.getByText('C:\\Users\\admin\\.pi\\agent')).toBeVisible()
-  await user.click(screen.getByRole('button', { name: '打开 Pi CLI 配置目录' }))
+  await user.click(screen.getByRole('button', { name: '打开 Pi 配置目录' }))
   expect(openPiConfigDirectory).toHaveBeenCalledExactlyOnceWith()
 })
 

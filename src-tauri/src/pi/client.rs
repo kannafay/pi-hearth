@@ -161,7 +161,7 @@ impl PiClient {
         source_agent_dir: &Path,
     ) -> Result<Arc<Self>, String> {
         let config_revision = configuration_revision(source_agent_dir, Path::new(&project_path))?;
-        let cli = pi_cli_path()?;
+        let entrypoint = pi_runtime_path()?;
         let instance_id = Uuid::new_v4().to_string();
         let action_token = Uuid::new_v4().to_string();
         let output = ToolOutput::new(&data_dir.join("tool-output").join(&instance_id)).await?;
@@ -220,7 +220,7 @@ impl PiClient {
         std::fs::create_dir_all(&sessions).map_err(|_| "无法创建 Pi 会话目录。")?;
         let mut command = Command::new("node");
         command
-            .arg(&cli)
+            .arg(&entrypoint)
             .args([
                 "--mode",
                 "rpc",
@@ -255,7 +255,8 @@ impl PiClient {
             .env("HEARTH_SOURCE_AGENT_DIR", source_agent_dir)
             .env(
                 "HEARTH_PI_MODULES",
-                cli.parent()
+                entrypoint
+                    .parent()
                     .and_then(Path::parent)
                     .ok_or("缺少 Pi 模块目录。")?,
             )
@@ -1323,7 +1324,7 @@ fn emit(channel: &Channel<PiEvent>, events: Vec<PiEvent>) {
     }
 }
 
-pub(super) fn pi_cli_path() -> Result<PathBuf, String> {
+pub(super) fn pi_runtime_path() -> Result<PathBuf, String> {
     // The development runtime is pinned in package.json. Release sidecars are a
     // separate packaging step; never silently run an arbitrary global Pi version.
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
