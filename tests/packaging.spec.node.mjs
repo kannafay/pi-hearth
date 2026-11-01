@@ -104,6 +104,15 @@ test('Windows setup uses Chinese without a language dialog or administrator inst
     assert((await readFile(new URL(`../src-tauri/${file}`, import.meta.url))).length > 0)
 })
 
+test('interactive setup introduces Pi Hearth before choosing a directory or installing files', async () => {
+  const template = await readFile(
+    new URL('../src-tauri/installer/installer.nsi', import.meta.url),
+    'utf8',
+  )
+  const pages = [...template.matchAll(/^!insertmacro MUI_PAGE_(\w+)/gm)].map((match) => match[1])
+  assert.deepEqual(pages, ['WELCOME', 'DIRECTORY', 'STARTMENU', 'INSTFILES', 'FINISH'])
+})
+
 test('installer branding uses high-resolution native bitmaps without a rasterized wordmark', async () => {
   const config = JSON.parse(
     await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),

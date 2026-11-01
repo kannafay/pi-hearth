@@ -19,7 +19,7 @@ Node.js 版本与校验值位于 `runtime/windows-runtime.json`。Pi 版本同�
 
 ## 安装与启动
 
-NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，直接进入简体中文界面，无语言选择与独立欢迎页。首次安装为“选择位置 → 安装 → 完成”三步；已有安装时保留维护与覆盖安装选择。安装成功后自动显示完成页，可选择启动应用与创建桌面快捷方式。
+NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，直接进入简体中文欢迎页，无语言选择弹窗。首次安装为“欢迎 → 选择位置 → 安装 → 完成”四步：欢迎页点击“下一步”，选择位置后点击“安装”；选择位置时可用“上一步”返回欢迎页。已有安装时保留维护与覆盖安装选择。安装成功后自动显示完成页，可选择启动应用与创建桌面快捷方式。静默与被动安装跳过欢迎页。
 
 默认安装位置为 `%LOCALAPPDATA%\Programs\Pi Hearth`，可通过输入框或“浏览”修改。程序文件与既有应用数据目录分开；重新安装沿用之前的安装位置。卸载默认保留会话与配置，可选清理安装位置记录与旧版应用标识对应的数据。
 
@@ -27,9 +27,9 @@ NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，�
 
 ## 安装界面维护
 
-界面配置位于 `src-tauri/tauri.windows.conf.json`，中文提示与安装模板位于 `src-tauri/installer/`。模板基于 [Tauri CLI 2.12.4 的官方模板](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)（Git blob `75efe3da953fb6914a08359705d94d9ee8732542`），沿用其安装、更新、WebView2、快捷方式与卸载流程；MIT 许可随源码保留。自定义部分为品牌、中文页面、跳过欢迎页、成功后直接显示完成页、默认程序目录，以及发布者名称变更后从卸载记录恢复旧安装路径。升级 CLI 时需对照上游模板合并修复，再验证安装与卸载。
+界面配置位于 `src-tauri/tauri.windows.conf.json`，中文提示与安装模板位于 `src-tauri/installer/`。模板基于 [Tauri CLI 2.12.4 的官方模板](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)（Git blob `75efe3da953fb6914a08359705d94d9ee8732542`），沿用其安装、更新、WebView2、快捷方式与卸载流程；MIT 许可随源码保留。自定义部分为品牌、中文欢迎与完成页、成功后直接显示完成页、默认程序目录，以及发布者名称变更后从卸载记录恢复旧安装路径。升级 CLI 时需对照上游模板合并修复，再验证安装与卸载。
 
-安装窗口使用 `compact-ui.rc` 定义的紧凑布局，窗口高度从 222 缩至 198 个对话框单位，按 Windows 字体和 DPI 自动缩放；目录输入、进度与完成页一并适配。`appearance.nsh` 负责原生品牌字体与完成页布局，两个完成选项按原生复选框高度紧凑排列。
+安装窗口使用 `compact-ui.rc` 定义的紧凑布局，窗口高度从 222 缩至 198 个对话框单位，按 Windows 字体和 DPI 自动缩放；目录输入、进度、欢迎页与完成页一并适配。`appearance.nsh` 为欢迎页和完成页提供一致的小标志、原生品牌文字与侧栏布局，离开欢迎页时恢复普通页顶栏；两个完成选项按原生复选框高度紧凑排列。
 
 品牌标志直接从 `public/pi.svg` 绘制为高分辨率位图，标题图片为 192 × 192，侧图为 492 × 846；“Pi Hearth”等品牌文字由 Windows 原生控件绘制，避免整张低分辨率图片被放大。BMP 和仅含窗口资源的 `compact-ui.dll` 提交到仓库，正常打包无需重新生成。
 

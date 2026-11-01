@@ -172,7 +172,13 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_LANGDLL_REGISTRY_VALUENAME "Installer Language"
 
 ; Installer pages, must be ordered as they appear
-; Start with the installation directory; no separate welcome page.
+; 1. Welcome page
+!define MUI_WELCOMEPAGE_TITLE "欢迎安装 Pi Hearth"
+!define MUI_WELCOMEPAGE_TEXT "你的 AI 编程工作台。$\r$\n$\r$\n在本地管理项目、对话与工具。$\r$\n$\r$\n点击“下一步”选择安装位置。"
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW HearthWelcomeShow
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE HearthWelcomeLeave
+!insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
@@ -426,12 +432,6 @@ FunctionEnd
 Function HearthDirectoryShow
   GetDlgItem $0 $HWNDPARENT 1
   SendMessage $0 ${WM_SETTEXT} 0 "STR:安装(&I)"
-  ReadRegStr $1 SHCTX "${UNINSTKEY}" "UninstallString"
-  ${If} $1 == ""
-  ${AndIf} $WixMode != 1
-    GetDlgItem $0 $HWNDPARENT 3
-    ShowWindow $0 ${SW_HIDE}
-  ${EndIf}
 FunctionEnd
 
 ; 6. Start menu shortcut page
