@@ -67,7 +67,7 @@ function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
     <ToastPrimitive.Content
       data-slot="toast-content"
       className={cn(
-        'flex h-full items-center gap-3 overflow-hidden p-4 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100',
+        'flex items-start gap-3 overflow-hidden p-4 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100',
         className,
       )}
       {...props}
@@ -165,7 +165,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   return (
     <span
       data-slot="toast-icon"
-      className="shrink-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
+      className="mt-0.5 shrink-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
     >
       {icon}
     </span>
@@ -211,12 +211,12 @@ function ToastNotice({
       <ToastContent>
         <ToastIcon type={toastItem.type} />
         <ToastTitle
-          className="min-w-0 flex-1 truncate font-normal text-muted-foreground"
+          className="max-h-64 min-w-0 flex-1 overflow-y-auto font-normal whitespace-pre-wrap wrap-anywhere text-muted-foreground"
           title={typeof message === 'string' ? message : undefined}
         >
           {message}
         </ToastTitle>
-        <ToastClose />
+        <ToastClose className="-mt-1" />
       </ToastContent>
     </Toast>
   )

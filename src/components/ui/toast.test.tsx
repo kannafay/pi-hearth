@@ -8,34 +8,45 @@ import { Toaster } from './toast'
 
 afterEach(() => vi.useRealTimers())
 
-test('operation errors are portalled, deduplicated, and dismissible without taking input focus', async () => {
-  const user = userEvent.setup()
-  const { container } = render(
-    <>
-      <Toaster />
-      <textarea aria-label="草稿" defaultValue="保留草稿" />
-    </>,
-  )
-  const input = screen.getByRole('textbox', { name: '草稿' })
-  await user.click(input)
-  act(() => {
-    toast.error(new Error('执行失败，请重试。'))
-    toast.error('Error: 执行失败，请重试。')
-  })
-  const notice = screen.getByRole('dialog', { name: '执行失败，请重试。' })
-  expect(notice).toHaveAttribute('data-type', 'error')
-  expect(within(notice).queryByText('操作失败')).not.toBeInTheDocument()
-  expect(within(notice).queryByRole('button', { name: '复制' })).not.toBeInTheDocument()
-  expect(screen.getAllByRole('dialog')).toHaveLength(1)
-  expect(screen.getByRole('region', { name: '操作通知' })).toContainElement(notice)
-  expect(container).not.toContainElement(notice)
-  expect(input).toHaveFocus()
-  expect(input).toHaveValue('保留草稿')
-  await user.hover(notice)
-  expect(within(notice).getAllByRole('button')).toHaveLength(1)
-  await user.click(within(notice).getByRole('button', { name: '关闭通知' }))
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-})
+test.each([
+  '执行失败，请重试。',
+  '没有可用模型，请在 CC Switch 中配置 Pi 的提供商与 API Key，然后重新连接。',
+  `连接服务失败，请检查以下地址：\nhttps://example.test/${'long-path-segment'.repeat(24)}`,
+])(
+  'operation error %s preserves its full content, deduplication, and focus when dismissed',
+  async (message) => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <>
+        <Toaster />
+        <textarea aria-label="草稿" defaultValue="保留草稿" />
+      </>,
+    )
+    const input = screen.getByRole('textbox', { name: '草稿' })
+    await user.click(input)
+    act(() => {
+      toast.error(new Error(message))
+      toast.error(`Error: ${message}`)
+    })
+    const notice = screen.getByRole('dialog', { name: message })
+    expect(within(notice).getByText(message, { normalizer: (value) => value })).toHaveTextContent(
+      message,
+      { normalizeWhitespace: false },
+    )
+    expect(notice).toHaveAttribute('data-type', 'error')
+    expect(within(notice).queryByText('操作失败')).not.toBeInTheDocument()
+    expect(within(notice).queryByRole('button', { name: '复制' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getByRole('region', { name: '操作通知' })).toContainElement(notice)
+    expect(container).not.toContainElement(notice)
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue('保留草稿')
+    await user.hover(notice)
+    expect(within(notice).getAllByRole('button')).toHaveLength(1)
+    await user.click(within(notice).getByRole('button', { name: '关闭通知' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  },
+)
 
 test.each([
   ['Nothing to compact (session too small)', '当前会话内容较少，暂时无需压缩。'],
