@@ -81,7 +81,7 @@
   --workspace-border: oklch(0.94 0.002 300);
   --caption-hover: oklch(0 0 0 / 4%);
   --caption-pressed: oklch(0 0 0 / 7%);
-  --titlebar-hover: var(--sidebar-row-hover);
+  --titlebar-hover: var(--caption-hover);
   --background: oklch(1 0 0);
   --composer-background: var(--background);
   --composer-project-background: oklch(0.98 0 0);
@@ -129,7 +129,7 @@
   --workspace-border: oklch(1 0 0 / 9%);
   --caption-hover: oklch(1 0 0 / 7%);
   --caption-pressed: oklch(1 0 0 / 11%);
-  --titlebar-hover: var(--sidebar-row-hover);
+  --titlebar-hover: var(--caption-hover);
   --background: #181818;
   --composer-background: #363636;
   --composer-project-background: #2f2f2f;

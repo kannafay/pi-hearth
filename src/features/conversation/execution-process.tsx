@@ -57,15 +57,17 @@ function ProcessTextContent({ text }: { text: string }) {
 const ProcessTextRecord = memo(function ProcessTextRecord({
   id,
   text,
+  streaming,
   stateKey,
 }: {
   id: string
   text: string
+  streaming: boolean
   stateKey?: string
 }) {
   const [open, setOpen, headerRef] = useExecutionRecord(
     `thinking:${stateKey ?? ''}:${id}:expanded`,
-    'finished',
+    streaming ? 'active' : 'finished',
   )
   return (
     <ExecutionRecord
@@ -74,6 +76,7 @@ const ProcessTextRecord = memo(function ProcessTextRecord({
       open={open}
       onOpenChange={setOpen}
       headerRef={headerRef}
+      follow={streaming}
     >
       <ProcessTextContent text={text} />
     </ExecutionRecord>
@@ -99,7 +102,13 @@ const ProcessRecords = memo(function ProcessRecords({
         />
       </div>
     ) : (
-      <ProcessTextRecord key={item.id} id={item.id} text={item.text} stateKey={stateKey} />
+      <ProcessTextRecord
+        key={item.id}
+        id={item.id}
+        text={item.text}
+        streaming={item.streaming}
+        stateKey={stateKey}
+      />
     )
   if (items.length >= 24)
     return (
@@ -135,12 +144,17 @@ export function ExecutionProcess({
     null,
   )
   useEffect(() => {
-    if (active && choice) setChoice(null)
+    if (!choice || choice.active === active) return
+    // A new run starts folded; completing a run preserves the reader's choice.
+    setChoice(active ? null : { active: false, open: choice.open })
   }, [active, choice, setChoice])
   const tools = items.flatMap((item) => (item.kind === 'tool' ? [item.tool] : []))
-  // Live work is represented by one changing status. Its archive is available after the turn ends.
-  const open = !active && choice?.open === true
+  const open = choice?.open === true && (!active || choice.active)
   const approvals = active ? tools.filter((tool) => tool.status === 'awaiting_approval') : []
+  // Pending decisions stay outside the virtualized details so their actions remain available.
+  const details = approvals.length
+    ? items.filter((item) => item.kind !== 'tool' || item.tool.status !== 'awaiting_approval')
+    : items
   const failures = tools.filter((tool) => tool.status === 'failed').length
   const elapsed =
     startedAt !== undefined && finishedAt !== undefined
@@ -154,11 +168,11 @@ export function ExecutionProcess({
       <Collapsible open={open} onOpenChange={(open) => setChoice({ active, open })}>
         <CollapsibleTrigger
           aria-label="执行过程"
-          disabled={active || !items.length}
+          disabled={!items.length}
           className="flex w-full items-center gap-2 border-b border-border/60 pt-1 pb-2 text-left text-[14px] text-muted-foreground transition-colors duration-160 ease-out outline-none enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
         >
           <ElapsedTime active={active} startedAt={startedAt} finishedAt={finishedAt} />
-          {!active && items.length > 0 && (
+          {items.length > 0 && (
             <ChevronRight
               aria-hidden
               className="conversation-disclosure-chevron size-3.5 shrink-0 in-data-panel-open:rotate-90"
@@ -169,7 +183,7 @@ export function ExecutionProcess({
           ) : null}
         </CollapsibleTrigger>
         <CollapsibleContent className="execution-process-content">
-          <ProcessRecords items={items} stateKey={stateKey} />
+          <ProcessRecords items={details} stateKey={stateKey} />
         </CollapsibleContent>
       </Collapsible>
       {active && status && <ResponseWaiting text={status.replace(/(?:…|\.{3})$/, '')} />}

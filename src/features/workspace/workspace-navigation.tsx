@@ -286,7 +286,7 @@ export function WorkspaceNavigationContent({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="sidebar-session-action size-6 text-muted-foreground hover:text-muted-foreground aria-expanded:text-muted-foreground"
+                    className="sidebar-session-action size-6 text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
                     aria-label={`${session.title} 会话菜单`}
                     disabled={!desktop || Boolean(workspace.sessionActionPending)}
                   />
@@ -527,7 +527,7 @@ export function WorkspaceNavigationContent({
                                 <Button
                                   size="icon-xs"
                                   variant="ghost"
-                                  className="sidebar-project-action size-6 text-muted-foreground hover:text-muted-foreground aria-expanded:text-muted-foreground"
+                                  className="sidebar-project-action size-6 text-muted-foreground hover:text-foreground aria-expanded:text-foreground"
                                   aria-label={`${project.name} 项目菜单`}
                                 />
                               }

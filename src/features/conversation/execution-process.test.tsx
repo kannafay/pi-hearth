@@ -111,7 +111,7 @@ test('approaching a folded archive does not mount its records or parse thinking'
   ).not.toBeInTheDocument()
   expect(split).not.toHaveBeenCalled()
 })
-test('live work stays collapsed with one changing status and no disclosure arrow', async () => {
+test('live thinking can be expanded, updates in place and stays open after completion', async () => {
   const user = userEvent.setup()
   const thought = {
     kind: 'thinking' as const,
@@ -124,30 +124,117 @@ test('live work stays collapsed with one changing status and no disclosure arrow
   )
   const trigger = screen.getByRole('button', { name: '执行过程' })
   const status = screen.getByRole('status')
-  expect(trigger).toBeDisabled()
+  expect(trigger).toBeEnabled()
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  expect(trigger.querySelector('svg')).toBeNull()
+  expect(trigger.querySelector('svg')).not.toBeNull()
   expect(status).toHaveTextContent('正在思考')
   expect(status.closest('[data-execution-process]')).toContainElement(trigger)
   expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
   expect(screen.queryByText(thought.text)).not.toBeInTheDocument()
   await user.click(trigger)
-  expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  view.rerender(
-    <ExecutionProcess stateKey="turn" items={[thought]} active status="正在编辑文件…" />,
-  )
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  expect(screen.getByText(thought.text)).toBeVisible()
+  const next = { ...thought, text: '内部思考内容。\n\n继续分析新的信息。' }
+  view.rerender(<ExecutionProcess stateKey="turn" items={[next]} active status="正在编辑文件…" />)
   expect(screen.getByRole('status')).toBe(status)
   expect(status).toHaveTextContent('正在编辑文件')
-  view.rerender(<ExecutionProcess stateKey="turn" items={[thought]} active={false} />)
+  expect(screen.getByText('继续分析新的信息。')).toBeVisible()
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  view.rerender(
+    <ExecutionProcess stateKey="turn" items={[{ ...next, streaming: false }]} active={false} />,
+  )
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
   expect(trigger).toBeEnabled()
   expect(trigger.querySelector('svg')).not.toBeNull()
-  expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  await user.click(trigger)
-  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'false')
-  await user.click(screen.getByRole('button', { name: '思考' }))
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText(thought.text)).toBeVisible()
 })
+
+test('manually folded live thinking stays folded when more text arrives', async () => {
+  const user = userEvent.setup()
+  const thought = { kind: 'thinking' as const, id: 'live', text: '第一段', streaming: true }
+  const view = render(<ExecutionProcess items={[thought]} active />)
+  const process = screen.getByRole('button', { name: '执行过程' })
+  await user.click(process)
+  const thinking = screen.getByRole('button', { name: '思考' })
+  await user.click(thinking)
+  await user.click(thinking)
+  view.rerender(<ExecutionProcess items={[{ ...thought, text: '第二段' }]} active />)
+  expect(thinking).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('第二段')).not.toBeInTheDocument()
+  await user.click(process)
+  view.rerender(<ExecutionProcess items={[{ ...thought, text: '第三段' }]} active />)
+  expect(process).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('live disclosure choices survive virtual remounts without changing the stream', async () => {
+  const user = userEvent.setup()
+  const local = new Map<string, unknown>()
+  const content = (text: string) => (
+    <ConversationLocalState initial={local}>
+      <ExecutionProcess
+        stateKey="stream"
+        active
+        items={[{ kind: 'thinking', id: 'live', text, streaming: true }]}
+      />
+    </ConversationLocalState>
+  )
+  const view = render(content('开始分析'))
+  await user.click(screen.getByRole('button', { name: '执行过程' }))
+  await user.click(screen.getByRole('button', { name: '思考' }))
+  view.unmount()
+  render(content('继续分析'))
+  expect(screen.getByRole('button', { name: '执行过程' })).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('button', { name: '思考' })).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByText('继续分析')).toBeVisible()
+})
+
+test.each([0, 30])(
+  'opening live process details with %s earlier records keeps one approval available',
+  async (earlier) => {
+    const user = userEvent.setup()
+    render(
+      <ExecutionProcess
+        active
+        items={[
+          ...Array.from({ length: earlier }, (_, index) => ({
+            kind: 'thinking' as const,
+            id: `earlier-${index}`,
+            text: '先前的思考内容',
+            streaming: false,
+          })),
+          {
+            kind: 'tool',
+            id: 'approval',
+            tool: {
+              id: 'approval',
+              toolCallId: 'call',
+              runId: 'run',
+              name: 'write',
+              summary: 'test.txt',
+              arguments: '{}',
+              argumentsTruncated: false,
+              output: '',
+              outputTruncated: false,
+              status: 'awaiting_approval',
+              approvalId: 'approve',
+              durationMs: null,
+            },
+          },
+        ]}
+      />,
+    )
+    const approval = await screen.findByRole('button', { name: '允许本次' })
+    expect(approval).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '执行过程' }))
+    expect(screen.getByRole('button', { name: '允许本次' })).toBe(approval)
+    expect(screen.getAllByRole('button', { name: '允许本次' })).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: '执行过程' }))
+    expect(await screen.findByRole('button', { name: '允许本次' })).toBeVisible()
+  },
+)
 
 test('resuming work clears an opened archive even across virtual remounts', async () => {
   const user = userEvent.setup()

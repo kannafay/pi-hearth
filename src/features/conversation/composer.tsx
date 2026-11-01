@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react'
-import { ArrowUp, ListPlus, LoaderCircle, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, ListPlus, LoaderCircle, Paperclip, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/icon-button'
 import { Textarea } from '@/components/ui/textarea'
@@ -32,6 +32,7 @@ import { ComposerCompletionMenu } from './composer-completion-menu'
 import { slashCommand } from './composer-completion'
 import { toast } from '@/lib/toast'
 import { ContextUsageIndicator } from './context-usage'
+import { QueuedMessages } from './queued-messages'
 
 export function Composer({
   onSendStart,
@@ -295,42 +296,6 @@ export function Composer({
           设置将从下一条消息开始生效，当前回答保持不变。
         </p>
       )}
-      {queuedMessages.length > 0 && (
-        <div
-          aria-label="待发送消息"
-          className="mb-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2"
-        >
-          <p role="status" className="mb-1 text-xs text-muted-foreground">
-            待发送 {queuedMessages.length} 条 ·{' '}
-            {status === 'disconnected' ? '连接已断开，以下消息尚未发送' : '当前回复结束后依次处理'}
-          </p>
-          <ol className="max-h-32 space-y-1 overflow-y-auto">
-            {queuedMessages.map((message, index) => (
-              <li key={message.id} className="flex items-center gap-2 text-xs">
-                <span aria-hidden className="text-muted-foreground">
-                  {index + 1}.
-                </span>
-                <span
-                  className="min-w-0 flex-1 truncate"
-                  title={message.text || message.attachments.map((file) => file.name).join('、')}
-                >
-                  {message.text || message.attachments.map((file) => file.name).join('、')}
-                  {message.text &&
-                    message.attachments.length > 0 &&
-                    ` · ${message.attachments.length} 个附件`}
-                </span>
-                <IconButton
-                  label={`取消排队消息 ${index + 1}`}
-                  disabled={!instanceId}
-                  onClick={() => void removeQueuedMessage(message.id).catch(toast.error)}
-                >
-                  <X className="size-3" />
-                </IconButton>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
       {busy && activity === '正在压缩上下文…' && (
         <p
           role="status"
@@ -355,6 +320,15 @@ export function Composer({
           </div>
         </div>
       </div>
+      {queuedMessages.length > 0 && (
+        <QueuedMessages
+          key={sessionFile ?? instanceId ?? 'new'}
+          messages={queuedMessages}
+          connected={Boolean(instanceId)}
+          disconnected={status === 'disconnected'}
+          onRemove={removeQueuedMessage}
+        />
+      )}
       <div className="relative">
         <ComposerCompletionMenu completion={completion} />
         <div

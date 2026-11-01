@@ -133,7 +133,12 @@ test('the queue shows pending text and attachments and cancels only the selected
   })
   const user = userEvent.setup()
   render(<Composer onSendStart={() => {}} />)
-  expect(screen.getByText('待发送 2 条 · 当前回复结束后依次处理')).toBeVisible()
+  const queue = screen.getByRole('button', { name: '待发送消息' })
+  expect(queue).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByText('待发送 2 条')).toBeVisible()
+  expect(screen.queryByText('追加问题')).not.toBeInTheDocument()
+  await user.click(queue)
+  expect(queue).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('追加问题')).toBeVisible()
   expect(screen.getByText('notes.txt')).toBeVisible()
   expect(screen.getByRole('button', { name: '停止生成' })).toHaveAttribute(
@@ -142,6 +147,36 @@ test('the queue shows pending text and attachments and cancels only the selected
   )
   await user.click(screen.getByRole('button', { name: '取消排队消息 2' }))
   expect(removeQueuedMessage).toHaveBeenCalledExactlyOnceWith('third')
+})
+
+test('switching sessions resets the compact queue and clearing it retains the draft', async () => {
+  runningReply()
+  useConversationStore.setState({
+    sessionFile: 'first.jsonl',
+    queuedMessages: [{ id: 'queued-first', text: '第一个会话的队列', attachments: [] }],
+  })
+  useWorkspaceStore.setState({ draft: '保留草稿' })
+  const user = userEvent.setup()
+  render(<Composer onSendStart={() => {}} />)
+  await user.click(screen.getByRole('button', { name: '待发送消息' }))
+  expect(screen.getByText('第一个会话的队列')).toBeVisible()
+  act(() =>
+    useConversationStore.setState({
+      sessionFile: 'second.jsonl',
+      queuedMessages: [{ id: 'queued-second', text: '第二个会话的队列', attachments: [] }],
+    }),
+  )
+  expect(screen.getByRole('button', { name: '待发送消息' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  expect(screen.queryByText('第一个会话的队列')).not.toBeInTheDocument()
+  expect(screen.queryByText('第二个会话的队列')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '待发送消息' }))
+  expect(screen.getByText('第二个会话的队列')).toBeVisible()
+  act(() => useConversationStore.setState({ queuedMessages: [] }))
+  expect(screen.queryByRole('button', { name: '待发送消息' })).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '消息草稿' })).toHaveValue('保留草稿')
 })
 
 test('a rejected queue submission preserves the draft and its attachments', async () => {

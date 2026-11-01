@@ -502,7 +502,7 @@ test('streaming deltas do not keep inserting a waiting indicator below the outpu
   expect(reply.getByText(text)).toBeVisible()
 })
 
-test('progress and tool history stay collapsed while the process status tracks the live work', async () => {
+test('progress starts folded but can be read live while status and the answer continue updating', async () => {
   const { user: prompt, progress, tool, answer } = processFixture()
   useConversationStore.setState({ instanceId: 'pi-1', status: 'ready' })
   const user = userEvent.setup()
@@ -511,6 +511,7 @@ test('progress and tool history stay collapsed while the process status tracks t
   const status = screen.getByRole('status')
   const trigger = screen.getByRole('button', { name: '执行过程' })
   expect(status.closest('[data-execution-process]')).toContainElement(trigger)
+  expect(trigger).toBeDisabled()
   receive(2, {
     type: 'message_started',
     message: { ...progress, text: '', thinking: '', phase: 'commentary', status: 'streaming' },
@@ -533,8 +534,10 @@ test('progress and tool history stay collapsed while the process status tracks t
   expect(status).toHaveTextContent('正在编辑文件')
   expect(screen.getAllByRole('status')).toHaveLength(1)
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  expect(trigger.querySelector('svg')).toBeNull()
+  expect(trigger).toBeEnabled()
   expect(screen.queryByRole('region', { name: '执行过程详情' })).not.toBeInTheDocument()
+  await user.click(trigger)
+  expect(screen.getByText(progress.text)).toBeVisible()
   receive(7, { type: 'tool_changed', tool: { ...tool, name: 'edit', status: 'complete' } })
   expect(status).toHaveTextContent('等待回复')
   receive(8, {
@@ -550,13 +553,11 @@ test('progress and tool history stay collapsed while the process status tracks t
   })
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
   expect(screen.getByText(answer.text)).toBeVisible()
-  expect(trigger.querySelector('svg')).toBeNull()
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
   receive(10, { type: 'message_completed', message: { ...answer, phase: 'final_answer' } })
   receive(11, { type: 'run_finished', status: 'complete', error: null })
-  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(trigger).toBeEnabled()
-  expect(trigger.querySelector('svg')).not.toBeNull()
-  await user.click(trigger)
   const archive = screen.getByRole('region', { name: '执行过程详情' })
   expect(within(archive).getByText(progress.text)).toBeVisible()
   expect(within(archive).getByRole('button', { name: /修改文件/ })).toHaveAttribute(
@@ -678,7 +679,7 @@ test('only outstanding approvals are exposed, with actions visible before openin
   })
   expect(screen.getByRole('status')).toHaveTextContent('等待确认')
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  expect(trigger.querySelector('svg')).toBeNull()
+  expect(trigger).toBeEnabled()
   expect(screen.getByRole('button', { name: '允许本次' })).toBeEnabled()
   expect(screen.getByRole('button', { name: '拒绝' })).toBeEnabled()
   expect(screen.queryByText(tool.arguments)).not.toBeInTheDocument()
