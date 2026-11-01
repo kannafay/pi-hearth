@@ -6,7 +6,16 @@
     "publisher": "Pi Hearth",
     "targets": ["nsis"],
     "resources": {
-      "bundle-runtime/": "runtime/"
+      "bundle-runtime/": "runtime/",
+      "../LICENSE": "LICENSE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../node_modules/@fontsource-variable/geist/LICENSE": "licenses/Geist-OFL.txt",
+      "../node_modules/lucide-react/LICENSE": "licenses/Lucide-ISC.txt",
+      "../node_modules/@base-ui/react/LICENSE": "licenses/Base-UI-MIT.txt",
+      "../node_modules/react/LICENSE": "licenses/React-MIT.txt",
+      "../node_modules/react-dom/LICENSE": "licenses/React-DOM-MIT.txt",
+      "installer/LICENSE.tauri.txt": "licenses/Tauri-installer-MIT.txt",
+      "installer/LICENSE.nsis.txt": "licenses/NSIS-UI-zlib.txt"
     },
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper" },

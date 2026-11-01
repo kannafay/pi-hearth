@@ -142,6 +142,29 @@ test('the distribution carries the Pi upstream copyright and permission notice',
   assert(license.includes('The above copyright notice and this permission notice'))
 })
 
+test('Windows installers carry the project license, notices and UI dependency licenses', async () => {
+  const config = JSON.parse(
+    await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),
+  )
+  const resources = config.bundle.resources
+  for (const destination of [
+    'LICENSE',
+    'THIRD_PARTY_NOTICES.md',
+    'licenses/Geist-OFL.txt',
+    'licenses/Lucide-ISC.txt',
+    'licenses/Base-UI-MIT.txt',
+    'licenses/React-MIT.txt',
+    'licenses/React-DOM-MIT.txt',
+    'licenses/Tauri-installer-MIT.txt',
+    'licenses/NSIS-UI-zlib.txt',
+  ]) {
+    const source = Object.keys(resources).find((file) => resources[file] === destination)
+    assert(source, `installer is missing ${destination}`)
+    const text = await readFile(new URL(`../src-tauri/${source}`, import.meta.url), 'utf8')
+    assert(text.trim().length > 100, `${destination} must contain the original license text`)
+  }
+})
+
 test('Windows setup uses Chinese without a language dialog or administrator installation mode', async () => {
   const config = JSON.parse(
     await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),

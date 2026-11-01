@@ -4,6 +4,12 @@
 
 项目已接入 Pi RPC，支持读取本机 Pi 模型配置、普通对话、多项目会话、Pi 原生历史恢复、Markdown 流式回复、模型切换、文件读写和命令执行。对话中可展开工具记录，查看参数、实时输出与结果，并停止任务。Git 服务仍按文档规划接入。产品只面向电脑端，首轮开发与验证以 Windows 为主。
 
+## 下载与安装
+
+Windows x64 用户可在 [GitHub Releases](https://github.com/kannafay/pi-hearth/releases/latest) 下载 `Pi.Hearth_0.1.0_x64-setup.exe`，选择安装位置后即可安装。安装包自带 Node.js 与 Pi 运行时，无需安装开发环境或全局 Pi 命令；使用前仍需配置模型和凭证。
+
+发布页同时提供 `SHA256SUMS` 校验文件。安装包暂未签名；系统缺少 WebView2 时，安装过程需要联网下载该组件。其他平台请使用源码，目前仅提供 Windows x64 安装包。
+
 ## 核心方案
 
 **Tauri 2 + Rust + React / TypeScript + Pi RPC + SQLite**。

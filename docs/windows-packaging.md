@@ -27,6 +27,8 @@ NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，�
 
 随包嵌入 WebView2 Bootstrapper：系统已有 WebView2 时复用，缺少时由安装流程下载并安装，因此首次安装 WebView2 需要联网。安装包未做代码签名。
 
+安装目录根部包含项目 `LICENSE`、`THIRD_PARTY_NOTICES.md`，`licenses/` 包含界面组件、图标、字体与安装界面资源的许可文本。Node.js 与 Pi 的许可文件保留在 `runtime/` 中。
+
 ## 安装界面维护
 
 界面配置位于 `src-tauri/tauri.windows.conf.json`，中文提示与安装模板位于 `src-tauri/installer/`。模板基于 [Tauri CLI 2.12.4 的官方模板](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)（Git blob `75efe3da953fb6914a08359705d94d9ee8732542`），沿用其安装、更新、WebView2、快捷方式与卸载流程；MIT 许可随源码保留。自定义部分为品牌、中文欢迎与完成页、成功后直接显示完成页、默认程序目录，以及发布者名称变更后从卸载记录恢复旧安装路径。升级 CLI 时需对照上游模板合并修复，再验证安装与卸载。

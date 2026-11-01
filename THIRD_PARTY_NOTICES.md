@@ -13,6 +13,8 @@ Pi Hearth 自有代码采用根目录的 [MIT 许可证](LICENSE)。第三方代
 
 Node.js、Pi 及其生产依赖保留各自的许可声明。构建时会将这些声明随运行时一起打包，安装目录内的 `runtime/THIRD_PARTY_NOTICES.md`、`runtime/node/LICENSE`、`runtime/licenses/` 和各依赖的许可文件可供查阅。打包过程见 [Windows 打包文档](docs/windows-packaging.md)。
 
+安装目录根部同时包含 Pi Hearth 的 `LICENSE` 和本说明。`licenses/` 保存 Geist 字体、Lucide 图标、Base UI、React、React DOM，以及 Tauri 安装模板和 NSIS UI 资源的原始许可文本。
+
 ## 其他依赖
 
 前端与 Rust 依赖的具体版本由 `pnpm-lock.yaml` 和 `src-tauri/Cargo.lock` 锁定，许可证以各组件随附的声明为准。例如，Geist 字体采用 SIL OFL-1.1，Lucide 图标采用 ISC，shadcn/ui 组件采用 MIT。这些依赖的许可不会因 Pi Hearth 开源而改变。
