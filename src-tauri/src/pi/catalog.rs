@@ -15,7 +15,6 @@ use std::{
 use tauri::{Manager, State, ipc::Channel};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    process::Command,
     sync::{Mutex, watch},
     time::timeout,
 };
@@ -102,12 +101,8 @@ pub(super) async fn helper_with_environment(
                 .map_err(|_| "无法准备 Pi 会话适配器。")?;
         }
     }
-    let sdk = dunce::canonicalize(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js"),
-    )
-    .map_err(|_| "缺少 Pi 运行时，请运行 pnpm install。")?;
-    let mut command = Command::new("node");
+    let sdk = crate::runtime::pi_file("dist/core/session-manager.js")?;
+    let mut command = crate::runtime::command()?;
     command
         .arg(helper_path)
         .arg(sdk)

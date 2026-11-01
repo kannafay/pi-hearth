@@ -1,0 +1,12 @@
+{
+  "name": "@pi-hearth/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "*.mjs"
+  ],
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.3.0"
+  }
+}

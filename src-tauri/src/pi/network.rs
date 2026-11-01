@@ -7,7 +7,7 @@ use base64::Engine;
 use serde_json::{Value, json};
 use std::{collections::HashMap, path::Path, process::Stdio, time::Duration};
 use tauri::Url;
-use tokio::{io::AsyncWriteExt, process::Command, sync::Mutex, time::timeout};
+use tokio::{io::AsyncWriteExt, sync::Mutex, time::timeout};
 
 const PROXY_KEYS: [&str; 6] = [
     "HTTP_PROXY",
@@ -214,12 +214,8 @@ pub(super) async fn test(
                 .map_err(|_| "无法准备网络测试。")?;
         }
     }
-    let dispatcher = dunce::canonicalize(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../node_modules/@earendil-works/pi-coding-agent/dist/core/http-dispatcher.js"),
-    )
-    .map_err(|_| "缺少 Pi 网络运行时，请运行 pnpm install。")?;
-    let mut command = Command::new("node");
+    let dispatcher = crate::runtime::pi_file("dist/core/http-dispatcher.js")?;
+    let mut command = crate::runtime::command()?;
     command
         .arg(script)
         .arg(dispatcher)

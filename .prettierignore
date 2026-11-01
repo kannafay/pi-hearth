@@ -4,6 +4,7 @@ src-tauri/target/
 src-tauri/vendor/
 src-tauri/gen/
 src-tauri/icons/
+src-tauri/bundle-runtime/
 pnpm-lock.yaml
 Cargo.lock
 docs/

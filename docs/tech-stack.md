@@ -15,7 +15,7 @@
 | Markdown | Streamdown + Shiki | 流式 Markdown 和代码高亮 |
 | 文件与差异 | Monaco Editor | 按需加载的只读文件预览与差异查看 |
 | 代理引擎 | Pi Coding Agent | 模型接入、上下文、工具循环和会话持久化 |
-| Pi 运行时 | Node.js LTS + 固定版本 Pi | 开发阶段使用本机 Node.js 与项目依赖，发行目标为随应用分发 |
+| Pi 运行时 | Node.js LTS + 固定版本 Pi | 开发阶段使用项目依赖，Windows x64 安装包随附完整运行时 |
 | 前后端通信 | Tauri Commands + Channels | 控制请求与有序流式数据传输 |
 | Pi 通信 | stdin / stdout JSONL RPC | 长驻子进程的命令、响应和事件 |
 | 应用数据库 | SQLite + SQLx | 项目、会话索引、运行记录和普通设置 |
@@ -45,7 +45,7 @@ Monaco 按需加载，首版用于只读预览与差异查看。桌面端自动�
 - Tauri 使用 2.x；其余依赖在工程初始化时选择相互兼容的已发布版本，并提交锁文件。
 - Node.js 选择满足所选 Pi 版本要求的 LTS 版本，Pi 使用固定发行版本。
 - 当前通过 `pnpm install` 安装 `@earendil-works/pi-coding-agent` 1.3.0；无需全局安装 Pi。
-- Node.js 与 Pi 的独立打包尚未接入，随安装包分发运行时属于发行目标。
+- Windows x64 安装包随附 Node.js、Pi 与全部运行依赖；版本、下载校验和安装检查见 [Windows 打包](windows-packaging.md)。
 - 应用、Node.js、Pi 与随附扩展作为同一套版本验证和发布，运行时升级随应用版本进行。
 - Git、Shell 和具体项目所需开发工具使用本机环境，启动时检测路径、版本和缺失依赖。
 - Windows、macOS 和 Linux 分别构建并验证对应产物，平台支持范围以实际发布结果为准。

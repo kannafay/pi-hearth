@@ -22,7 +22,6 @@ use std::{
 use tauri::ipc::Channel;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    process::Command,
     sync::{Mutex, mpsc, oneshot},
     time::{Instant, timeout},
 };
@@ -218,7 +217,7 @@ impl PiClient {
             .map(|options| options.session_directory.clone())
             .unwrap_or_else(|| data_dir.join("sessions"));
         std::fs::create_dir_all(&sessions).map_err(|_| "无法创建 Pi 会话目录。")?;
-        let mut command = Command::new("node");
+        let mut command = crate::runtime::command()?;
         command
             .arg(&entrypoint)
             .args([
@@ -1325,14 +1324,7 @@ fn select_available_model<'a>(
 }
 
 pub(super) fn pi_runtime_path() -> Result<PathBuf, String> {
-    // The development runtime is pinned in package.json. Release sidecars are a
-    // separate packaging step; never silently run an arbitrary global Pi version.
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
-    if !path.is_file() {
-        return Err("缺少项目 Pi 运行时，请先运行 pnpm install。".into());
-    }
-    dunce::canonicalize(path).map_err(|_| "无法定位 Pi 运行时。".into())
+    crate::runtime::pi_file("dist/bundle/cli.js")
 }
 
 fn configuration_revision(source: &Path, project: &Path) -> Result<u64, String> {

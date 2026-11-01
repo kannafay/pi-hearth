@@ -1,0 +1,19 @@
+{
+  "build": {
+    "beforeBuildCommand": "pnpm runtime:prepare && pnpm build"
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "bundle-runtime/": "runtime/"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    }
+  }
+}

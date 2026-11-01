@@ -36,7 +36,7 @@ React 通过 Commands 发出操作请求，Rust 通过 Channels 发送消息增�
 
 Rust 通过 Pi 的 stdin / stdout JSONL RPC 通信，每条命令使用独立请求 ID 关联响应。持续消费 stdout 协议记录和 stderr 诊断输出，处理分段读取、UTF-8、背压、超时和异常退出。参见 [Pi RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md)。
 
-当前通过本机 Node.js 启动项目固定依赖 `@earendil-works/pi-coding-agent` 的 `dist/bundle/cli.js`，以 RPC 模式运行。该文件是 Pi 包提供的进程入口；应用不查找全局 `pi` 命令，也不要求用户全局安装 Pi。版本查询接口 `pi_runtime_version` 读取实际运行入口所属包的版本。
+通过 Node.js 启动固定依赖 `@earendil-works/pi-coding-agent` 的 `dist/bundle/cli.js`，以 RPC 模式运行。开发模式从项目依赖读取；Windows 安装版从应用目录的 `runtime/` 读取随附 Node.js、Pi 和全部运行依赖。该文件是 Pi 包提供的进程入口；应用不查找全局 `pi` 命令，也不要求用户全局安装 Pi。版本查询接口 `pi_runtime_version` 读取实际运行入口所属包的版本。
 
 应用事件带有项目、会话、运行标识及递增序号。每次运行还绑定进程实例，避免旧进程迟到的事件混入新任务。订阅在发送消息前建立，界面重新连接时先恢复状态快照，再接收后续增量。
 
@@ -115,9 +115,9 @@ Git 面板展示工作目录实际差异。精确归属到某次任务的变更�
 
 ## 打包与更新
 
-以下为发行目标；当前开发阶段使用本机 Node.js 和项目依赖中的 Pi，独立运行时打包尚未接入。
+Windows x64 已接入 NSIS 安装包和随附运行时，构建及验证流程见 [Windows 打包](windows-packaging.md)。其他平台与签名更新仍为后续发行目标。
 
-- 将匹配平台的 Node.js 作为 sidecar 分发，Pi 和随附扩展作为运行资源打包，统一由 Rust 启动。
+- Windows 将固定版本 Node.js、Pi、运行依赖及许可证作为资源分发，统一由 Rust 从应用目录启动。开发模式继续使用项目依赖。
 - 启动时检查运行时资源、工作目录、Shell 和 Git 等依赖；支持中文与含空格路径。
 - Windows 首轮验证后，再分别完成 macOS 与 Linux 的构建、依赖检查和实机测试。
 - 使用 Tauri Updater 校验签名更新包，待任务结束后安装更新。更新包签名与操作系统代码签名分别处理。

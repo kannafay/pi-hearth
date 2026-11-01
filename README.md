@@ -8,7 +8,7 @@
 
 **Tauri 2 + Rust + React / TypeScript + Pi RPC + SQLite**。
 
-React 提供桌面界面，Rust 管理本地服务与 Pi 运行时子进程，Pi 负责模型调用和代理执行。当前开发阶段使用本机 Node.js 和项目依赖中的固定版本 Pi；随安装包分发 Node.js 与 Pi 运行时是发行目标，尚未接入。
+React 提供桌面界面，Rust 管理本地服务与 Pi 运行时子进程，Pi 负责模型调用和代理执行。开发模式使用本机 Node.js 与项目依赖；Windows x64 安装包随附固定版本的 Node.js、Pi 及其运行依赖，安装后从应用目录启动，不需要开发环境或全局 Pi 命令。
 
 ## 输入框命令
 
@@ -29,11 +29,12 @@ React 提供桌面界面，Rust 管理本地服务与 Pi 运行时子进程，Pi
 
 ## 项目文档
 
-| 文档                             | 内容                                                     |
-| -------------------------------- | -------------------------------------------------------- |
-| [技术栈](docs/tech-stack.md)     | 桌面框架、前端、运行时、存储、测试与发布选型             |
-| [整体架构](docs/architecture.md) | 分层职责、通信、会话与进程、数据归属、首版范围和实施阶段 |
-| [界面布局](docs/ui-layout.md)    | 主窗口线框、面板尺寸、对话交互、文件查看、设置和视觉规范 |
+| 文档                                      | 内容                                                     |
+| ----------------------------------------- | -------------------------------------------------------- |
+| [技术栈](docs/tech-stack.md)              | 桌面框架、前端、运行时、存储、测试与发布选型             |
+| [整体架构](docs/architecture.md)          | 分层职责、通信、会话与进程、数据归属、首版范围和实施阶段 |
+| [界面布局](docs/ui-layout.md)             | 主窗口线框、面板尺寸、对话交互、文件查看、设置和视觉规范 |
+| [Windows 打包](docs/windows-packaging.md) | 安装包构建、随附运行时与安装验证                         |
 
 ## 首版目标
 
@@ -76,7 +77,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source wing
 
 工具参数与输出保存在应用数据目录的 `tool-output/` 中。界面保留有界预览，较长内容按需分页加载；Pi 自身截断前的命令输出仍由 Pi 管理。MCP 和技能默认沿用本机 Pi 配置，设置中的开关作为 Pi Hearth 独立覆盖，仅作用于本应用启动的 Pi 运行时，不修改原有 Pi 配置。项目扩展不自动加载；客户端审批模块随 Rust 核心内嵌，加载失败时拒绝连接。
 
-开发阶段通过 `pnpm install` 安装固定的 `@earendil-works/pi-coding-agent` 1.3.0。Rust 通过本机 Node.js 以 RPC 模式启动该包的 `dist/bundle/cli.js`，不查找或启动全局 `pi` 命令。应用依赖 Pi 运行时，但无需全局安装 Pi。
+开发阶段通过 `pnpm install` 安装固定的 `@earendil-works/pi-coding-agent` 1.3.0。Rust 以 RPC 模式启动该包的 `dist/bundle/cli.js`，不查找或启动全局 `pi` 命令。开发模式使用本机 Node.js；Windows 安装版使用自身 `runtime/` 中的 Node.js 与 Pi，缺失或版本不匹配时提示重新安装，不回退到开发目录。详见 [Windows 打包](docs/windows-packaging.md)。
 
 Rust 读取 `PI_CODING_AGENT_DIR` 或默认的 `~/.pi/agent` 配置，将凭证转换为子进程环境变量；原配置保持不变，密钥不传到前端，也不写入客户端的模型文件。该配置目录用于 Pi 运行时，不代表本机安装了全局命令。当前支持 API Key 和环境变量凭证，OAuth 与凭证命令后续接入。
 

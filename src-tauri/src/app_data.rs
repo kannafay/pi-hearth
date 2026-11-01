@@ -182,14 +182,14 @@ pub(crate) fn directory_alias(target: &Path, alias: &Path) -> Result<(), String>
         use std::os::windows::process::CommandExt;
         // Junctions work without administrator rights. Node is also Pi's runtime;
         // pass paths as arguments rather than interpolating them into a shell.
-        let result = std::process::Command::new("node")
+        let result = crate::runtime::command_sync()?
             .arg("-e")
             .arg("require('node:fs').symlinkSync(process.argv[1], process.argv[2], 'junction')")
             .arg(target)
             .arg(alias)
             .creation_flags(0x08000000)
             .output()
-            .map_err(|_| "无法保留工作目录链接，请确认 Node.js 已安装。")?;
+            .map_err(|_| "无法保留工作目录链接，请检查应用运行时。")?;
         if !result.status.success() {
             eprintln!(
                 "保留工作目录链接失败：{}",

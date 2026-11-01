@@ -4,6 +4,8 @@ mod command_permissions;
 mod desktop;
 mod developer;
 mod pi;
+mod runtime;
+pub use runtime::installation_check;
 #[cfg(windows)]
 mod theme;
 #[cfg(not(windows))]
@@ -38,6 +40,12 @@ fn set_window_theme(
 }
 
 pub fn run() {
+    if let Err(message) = runtime::validate() {
+        #[cfg(windows)]
+        runtime::show_error(&message);
+        eprintln!("{message}");
+        std::process::exit(1);
+    }
     let context = tauri::generate_context!();
     #[cfg(windows)]
     let context = {

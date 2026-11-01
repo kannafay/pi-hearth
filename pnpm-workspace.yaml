@@ -1,3 +1,5 @@
+packages:
+  - runtime
 allowBuilds:
   '@google/genai': false
   protobufjs: false
