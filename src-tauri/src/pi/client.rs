@@ -1365,6 +1365,8 @@ pub struct PiManager {
     runtime: Mutex<Option<Arc<PiClient>>>,
     retained: Mutex<Vec<RetainedSession>>,
     read_only: Mutex<Option<(RuntimeSnapshot, ToolOutput)>>,
+    #[cfg(test)]
+    test_source_directory: Option<PathBuf>,
 }
 
 impl Drop for PiManager {
@@ -1708,6 +1710,8 @@ impl PiManager {
                 .last()
                 .map(|entry| entry.client.source_directory.clone());
         }
+        #[cfg(test)]
+        let source_directory = source_directory.or_else(|| self.test_source_directory.clone());
         let mut inherit = None;
         if let Some(current) = runtime.clone() {
             let actions = current.actions.try_lock();
@@ -2618,6 +2622,7 @@ mod tests {
                 runtime: Mutex::new(Some(client)),
                 retained: Mutex::new(Vec::new()),
                 read_only: Mutex::new(None),
+                test_source_directory: Some(source.clone()),
             };
             Self {
                 root,
@@ -2687,15 +2692,9 @@ mod tests {
         let reopened = fixture.open(0).await;
         assert_eq!(reopened.session_id, fixture.initial.session_id);
         assert_eq!(reopened.messages.len(), fixture.initial.messages.len());
-        assert_ne!(
-            fixture
-                .manager
-                .client(&reopened.instance_id)
-                .await
-                .unwrap()
-                .process_id,
-            old_pid
-        );
+        let reopened_client = fixture.manager.client(&reopened.instance_id).await.unwrap();
+        assert_eq!(reopened_client.source_directory, fixture.source);
+        assert_ne!(reopened_client.process_id, old_pid);
         fixture.manager.disconnect().await;
     }
 
@@ -3596,6 +3595,7 @@ mod tests {
         let manager = PiManager {
             runtime: Mutex::new(Some(initial.clone())),
             read_only: Mutex::new(None),
+            test_source_directory: Some(initial.source_directory.clone()),
             retained: Mutex::new(Vec::new()),
         };
         manager
