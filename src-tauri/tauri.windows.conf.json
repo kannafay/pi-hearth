@@ -15,6 +15,7 @@
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,
         "template": "installer/installer.nsi",
+        "installerHooks": "installer/appearance.nsh",
         "customLanguageFiles": { "SimpChinese": "installer/SimpChinese.nsh" },
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",

@@ -463,7 +463,9 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_RUN_TEXT "启动 Pi Hearth"
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW HearthFinishShow
 !insertmacro MUI_PAGE_FINISH
+!insertmacro HearthAppearanceFunctions
 
 Function RunMainBinary
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
@@ -492,7 +494,7 @@ Function un.ConfirmShow ; Add add a `Delete app data` check box
     StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
     IntOp $4 0 * $2
   ${EndIf}
-  IntOp $5 100 * $2
+  IntOp $5 124 * $2
   IntOp $6 400 * $2
   IntOp $7 25 * $2
   IntOp $4 $4 / 96

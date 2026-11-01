@@ -100,18 +100,18 @@ test('Windows setup uses Chinese without a language dialog or administrator inst
   assert.equal(nsis.installMode, 'currentUser')
   assert.deepEqual(nsis.languages, ['SimpChinese'])
   assert.equal(nsis.displayLanguageSelector, false)
-  for (const file of [nsis.template, nsis.customLanguageFiles.SimpChinese])
+  for (const file of [nsis.template, nsis.installerHooks, nsis.customLanguageFiles.SimpChinese])
     assert((await readFile(new URL(`../src-tauri/${file}`, import.meta.url))).length > 0)
 })
 
-test('installer branding uses valid native bitmaps at NSIS header and sidebar dimensions', async () => {
+test('installer branding uses high-resolution native bitmaps without a rasterized wordmark', async () => {
   const config = JSON.parse(
     await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8'),
   )
   const nsis = config.bundle.windows.nsis
   for (const [file, width, height] of [
-    [nsis.headerImage, 150, 57],
-    [nsis.sidebarImage, 164, 314],
+    [nsis.headerImage, 192, 192],
+    [nsis.sidebarImage, 492, 846],
   ]) {
     const bytes = await readFile(new URL(`../src-tauri/${file}`, import.meta.url))
     assert.equal(bytes.toString('ascii', 0, 2), 'BM')
@@ -126,6 +126,61 @@ test('installer branding uses valid native bitmaps at NSIS header and sidebar di
     const icon = await readFile(new URL(`../src-tauri/${file}`, import.meta.url))
     assert.equal(icon.readUInt32LE(0), 0x10000, 'installer icon must be an ICO resource')
   }
+  const svg = await readFile(new URL('../public/pi.svg', import.meta.url), 'utf8')
+  const palette = new Set([
+    0xffffff,
+    ...[...svg.matchAll(/fill="#([0-9A-Fa-f]{6})"/g)].map((match) => parseInt(match[1], 16)),
+  ])
+  const header = await readFile(new URL(`../src-tauri/${nsis.headerImage}`, import.meta.url))
+  const colors = new Set()
+  for (let pixel = header.readUInt32LE(10); pixel < header.length; pixel += 3)
+    colors.add(header.readUIntLE(pixel, 3))
+  assert.deepEqual(
+    colors,
+    palette,
+    'the pixel logo must retain its SVG colors without blur or text',
+  )
+})
+
+test('compact installer UI contains every required native dialog and no executable code', async () => {
+  const bytes = await readFile(new URL('../src-tauri/installer/compact-ui.dll', import.meta.url))
+  assert.equal(bytes.toString('ascii', 0, 2), 'MZ')
+  const pe = bytes.readUInt32LE(0x3c)
+  assert.equal(bytes.toString('ascii', pe, pe + 4), 'PE\0\0')
+  assert.equal(bytes.readUInt16LE(pe + 4), 0x14c, 'NSIS uses x86 dialog resources')
+  const optional = pe + 24
+  assert.equal(bytes.readUInt16LE(optional), 0x10b)
+  assert.equal(bytes.readUInt32LE(optional + 4), 0, 'resource-only DLL must contain no code')
+  assert.equal(bytes.readUInt32LE(optional + 16), 0, 'resource-only DLL must have no entry point')
+  const sectionStart = optional + bytes.readUInt16LE(pe + 20)
+  const toFileOffset = (rva) => {
+    for (let index = 0; index < bytes.readUInt16LE(pe + 6); index++) {
+      const section = sectionStart + index * 40
+      const address = bytes.readUInt32LE(section + 12)
+      if (rva >= address && rva < address + bytes.readUInt32LE(section + 8))
+        return bytes.readUInt32LE(section + 20) + rva - address
+    }
+    throw new Error('resource address is outside the PE sections')
+  }
+  const resources = toFileOffset(bytes.readUInt32LE(optional + 112))
+  const entries = (relative) => {
+    const directory = resources + relative
+    const count = bytes.readUInt16LE(directory + 12) + bytes.readUInt16LE(directory + 14)
+    return Array.from({ length: count }, (_, index) => ({
+      id: bytes.readUInt32LE(directory + 16 + index * 8),
+      offset: bytes.readUInt32LE(directory + 20 + index * 8) & 0x7fffffff,
+    }))
+  }
+  const dialogs = entries(entries(0).find((entry) => entry.id === 5).offset)
+  assert.deepEqual(
+    dialogs.map((entry) => entry.id),
+    [102, 103, 104, 105, 106, 107, 108, 109, 111],
+  )
+  const main = dialogs.find((entry) => entry.id === 105)
+  const data = resources + entries(main.offset)[0].offset
+  const dialog = toFileOffset(bytes.readUInt32LE(data))
+  assert(bytes.readUInt16LE(dialog + 24) < 200, 'outer dialog must retain the compact layout')
+  assert(bytes.includes(Buffer.from('Pi Hearth', 'utf16le')), 'brand name must remain native text')
 })
 
 test('all Tauri installer messages have Chinese translations without unresolved template variables', async () => {

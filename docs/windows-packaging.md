@@ -29,11 +29,17 @@ NSIS 安装包按当前用户安装，使用 Pi Hearth 图标与品牌图片，�
 
 界面配置位于 `src-tauri/tauri.windows.conf.json`，中文提示与安装模板位于 `src-tauri/installer/`。模板基于 [Tauri CLI 2.12.4 的官方模板](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi)（Git blob `75efe3da953fb6914a08359705d94d9ee8732542`），沿用其安装、更新、WebView2、快捷方式与卸载流程；MIT 许可随源码保留。自定义部分为品牌、中文页面、跳过欢迎页、成功后直接显示完成页、默认程序目录，以及发布者名称变更后从卸载记录恢复旧安装路径。升级 CLI 时需对照上游模板合并修复，再验证安装与卸载。
 
-品牌图片使用现有 Pi 图标，BMP 产物提交到仓库，构建无需额外图像工具。需要更新图片时，在 Windows 执行：
+安装窗口使用 `compact-ui.rc` 定义的紧凑布局，窗口高度从 222 缩至 198 个对话框单位，按 Windows 字体和 DPI 自动缩放；目录输入、进度与完成页一并适配。`appearance.nsh` 负责原生品牌字体与完成页布局，两个完成选项按原生复选框高度紧凑排列。
+
+品牌标志直接从 `public/pi.svg` 绘制为高分辨率位图，标题图片为 192 × 192，侧图为 492 × 846；“Pi Hearth”等品牌文字由 Windows 原生控件绘制，避免整张低分辨率图片被放大。BMP 和仅含窗口资源的 `compact-ui.dll` 提交到仓库，正常打包无需重新生成。
+
+修改图标或窗口布局后，在已有 MSVC 与 Windows SDK 的 Windows 开发机执行：
 
 ```powershell
 ./scripts/generate-installer-assets.ps1
 ```
+
+生成脚本会调用 SDK 的 `rc.exe` 和 MSVC 的 `link.exe`。资源 DLL 没有入口点或可执行代码，NSIS 仅提取其中的对话框。NSIS Modern UI 资源的上游版本标识保留在源码注释中，许可位于 `LICENSE.nsis.txt`；升级 NSIS 时需检查窗口资源兼容性。
 
 ```text
 Pi Hearth.exe
