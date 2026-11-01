@@ -11,7 +11,9 @@ pnpm install --frozen-lockfile
 pnpm desktop:build
 ```
 
-Tauri 的 Windows 构建钩子自动运行 `pnpm runtime:prepare` 和前端构建，产物位于 `src-tauri/target/release/bundle/nsis/`。首次构建需要联网下载官方 Node.js 和 Tauri 安装工具；Node.js 缓存在 `work/downloads/`，按版本文件中的 SHA-256 校验。校验失败时停止构建。
+Tauri 的 Windows 构建钩子自动运行 `pnpm runtime:prepare` 和前端构建。`pnpm desktop:build` 成功后会把当前版本的 Windows x64 安装包复制到项目根目录的 `release/`，例如 `release/Pi Hearth_0.1.0_x64-setup.exe`；同版本再次构建会覆盖该文件，其他版本不自动删除。该目录已加入 Git 忽略规则。编译缓存与 Tauri 原始产物仍位于 `src-tauri/target/`；单独执行 `pnpm tauri build` 或 `pnpm tauri bundle` 时，安装包仍输出到 `src-tauri/target/release/bundle/nsis/`。
+
+首次构建需要联网下载官方 Node.js 和 Tauri 安装工具；Node.js 缓存在 `work/downloads/`，按版本文件中的 SHA-256 校验。校验失败时停止构建。
 
 Node.js 版本与校验值位于 `runtime/windows-runtime.json`。Pi 版本同时锁定在根项目和 `runtime/package.json`，构建时检查一致性。通过 pnpm 的锁文件部署生产依赖，使用真实目录布局，检查并拒绝链接回开发环境的符号链接或目录联接。现有依赖安全覆盖和补丁继续生效。
 

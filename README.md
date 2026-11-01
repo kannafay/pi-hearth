@@ -88,7 +88,7 @@ Rust 读取 `PI_CODING_AGENT_DIR` 或默认的 `~/.pi/agent` 配置，将凭证�
 | `pnpm desktop`            | 启动 Tauri 桌面开发环境                                           |
 | `pnpm dev`                | 启动浏览器前端预览                                                |
 | `pnpm build`              | 类型检查并构建前端                                                |
-| `pnpm desktop:build`      | 构建桌面应用与安装包                                              |
+| `pnpm desktop:build`      | 构建桌面应用，Windows 安装包归集到根目录 `release/`               |
 | `pnpm check`              | 前端全量检查：类型、Lint、单元测试、Node 集成测试与格式           |
 | `pnpm check:rust`         | 检查 Rust 桌面核心                                                |
 | `pnpm test:rust`          | Rust 协议、凭证与状态测试                                         |

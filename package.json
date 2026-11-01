@@ -11,7 +11,7 @@
     "dev": "vite",
     "desktop": "node scripts/check-rust.mjs && tauri dev",
     "build": "tsc -b && vite build",
-    "desktop:build": "tauri build",
+    "desktop:build": "tauri build && node scripts/collect-installer.mjs",
     "desktop:standalone": "tauri build --debug --no-bundle",
     "runtime:prepare": "node scripts/prepare-runtime.mjs",
     "runtime:verify": "node scripts/verify-installed-runtime.mjs",

@@ -11,6 +11,56 @@ import {
   verifyArchive,
 } from '../scripts/prepare-runtime.mjs'
 import { cleanEnvironment } from '../scripts/verify-installed-runtime.mjs'
+import { collectInstaller } from '../scripts/collect-installer.mjs'
+
+test('desktop release collection exports only the current installer and replaces the previous copy', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hearth-release-中文 空格-'))
+  try {
+    const bundle = path.join(root, 'src-tauri/target/release/bundle/nsis')
+    await mkdir(bundle, { recursive: true })
+    await writeFile(
+      path.join(root, 'src-tauri/tauri.conf.json'),
+      JSON.stringify({ productName: 'Pi Hearth', version: '0.1.0' }),
+    )
+    const name = 'Pi Hearth_0.1.0_x64-setup.exe'
+    const source = path.join(bundle, name)
+    await writeFile(source, 'current installer')
+    await writeFile(path.join(bundle, 'Pi Hearth_0.0.1_x64-setup.exe'), 'old installer')
+    const destination = await collectInstaller(root)
+    assert.equal(destination, path.join(root, 'release', name))
+    assert.equal(await readFile(destination, 'utf8'), 'current installer')
+    assert.equal(await readFile(source, 'utf8'), 'current installer')
+    await assert.rejects(readFile(path.join(root, 'release/Pi Hearth_0.0.1_x64-setup.exe')), {
+      code: 'ENOENT',
+    })
+    await writeFile(path.join(root, 'release/keep.txt'), 'unrelated file')
+    await writeFile(source, 'rebuilt installer')
+    await collectInstaller(root)
+    assert.equal(await readFile(destination, 'utf8'), 'rebuilt installer')
+    assert.equal(await readFile(path.join(root, 'release/keep.txt'), 'utf8'), 'unrelated file')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('release collection fails when the current installer is missing instead of exporting an old version', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hearth-missing-release-'))
+  try {
+    const bundle = path.join(root, 'src-tauri/target/release/bundle/nsis')
+    await mkdir(bundle, { recursive: true })
+    await writeFile(
+      path.join(root, 'src-tauri/tauri.conf.json'),
+      JSON.stringify({ productName: 'Pi Hearth', version: '0.2.0' }),
+    )
+    await writeFile(path.join(bundle, 'Pi Hearth_0.1.0_x64-setup.exe'), 'old installer')
+    await assert.rejects(collectInstaller(root), /未找到当前版本/)
+    await assert.rejects(readFile(path.join(root, 'release/Pi Hearth_0.1.0_x64-setup.exe')), {
+      code: 'ENOENT',
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('installed runtime checks have no developer executable search path or model credentials', () => {
   const environment = cleanEnvironment({
