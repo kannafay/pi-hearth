@@ -42,6 +42,11 @@ export async function openDeveloperConsole() {
   await invoke<void>('developer_console_open')
 }
 
+export async function resetWindowSize() {
+  requireDesktop()
+  await invoke<void>('window_reset_size')
+}
+
 export async function setWindowTheme(theme: 'light' | 'dark' | null, transitionId?: string) {
   if (isDesktop())
     await invoke<void>('set_window_theme', { theme, ...(transitionId ? { transitionId } : {}) })

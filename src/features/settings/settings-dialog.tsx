@@ -36,6 +36,7 @@ import { ProjectLocationSettings } from './project-location-settings'
 import { StorageLocationSettings } from './storage-location-settings'
 import { DeveloperModeSettings } from './developer-mode-settings'
 import { PiRuntimeSettings } from './pi-runtime-settings'
+import { WindowSizeSettings } from './window-size-settings'
 import { SettingsRow } from './settings-row'
 import { FieldError } from '@/components/ui/field'
 import { ResourceSettings } from './resource-settings'
@@ -234,6 +235,7 @@ export function SettingsDialog({
                   </Select>
                 }
               />
+              <WindowSizeSettings />
             </SettingsPanel>
             <SettingsPanel
               value="models"

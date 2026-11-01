@@ -40,6 +40,7 @@ fn privileged_commands_are_only_accessible_to_the_local_main_window() {
             "app_update_settings",
             "workspace_change_projects_directory",
             "developer_console_open",
+            "window_reset_size",
         ] {
             assert!(
                 authority

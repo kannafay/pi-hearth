@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -12,6 +12,7 @@ import {
   getPiConfigDirectory,
   isDesktop,
   openPiConfigDirectory,
+  resetWindowSize,
   setWindowTheme,
 } from '@/lib/desktop'
 import { loadResourceCatalog } from '@/lib/resources'
@@ -24,6 +25,7 @@ vi.mock('@/lib/desktop', () => ({
   isDesktop: vi.fn(),
   setWindowTheme: vi.fn().mockResolvedValue(undefined),
   openDeveloperConsole: vi.fn().mockResolvedValue(undefined),
+  resetWindowSize: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/app/use-media-query', () => ({ useMediaQuery: vi.fn() }))
 vi.mock('@/lib/resources', () => ({ loadResourceCatalog: vi.fn() }))
@@ -52,11 +54,16 @@ beforeEach(() => {
   vi.mocked(getPiRuntimeVersion).mockClear()
   vi.mocked(getPiConfigDirectory).mockReset().mockResolvedValue('C:\\Users\\admin\\.pi\\agent')
   vi.mocked(openPiConfigDirectory).mockClear()
+  vi.mocked(resetWindowSize).mockReset().mockResolvedValue(undefined)
 })
 
 test('browser preview shows its limits without invoking the desktop bridge', async () => {
   const user = userEvent.setup()
   render(<SettingsHarness />)
+  const reset = screen.getByRole('button', { name: '重置窗口大小' })
+  expect(reset).toBeDisabled()
+  await user.click(reset)
+  expect(resetWindowSize).not.toHaveBeenCalled()
   await user.click(screen.getByRole('tab', { name: '存储' }))
   expect(screen.getByRole('heading', { name: '存储' })).toBeVisible()
   expect(screen.getByText('项目保存位置')).toBeVisible()
@@ -65,6 +72,46 @@ test('browser preview shows its limits without invoking the desktop bridge', asy
   await user.click(screen.getByRole('tab', { name: '运行诊断' }))
   expect(screen.getByText(/当前为浏览器预览/)).toBeVisible()
   expect(getAppVersion).not.toHaveBeenCalled()
+})
+
+test('appearance resets the desktop window once and disables the button while pending', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  let finish!: () => void
+  vi.mocked(resetWindowSize).mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finish = resolve
+    }),
+  )
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  const reset = screen.getByRole('button', { name: '重置窗口大小' })
+  expect(reset).toBeEnabled()
+  await user.click(reset)
+  expect(reset).toBeDisabled()
+  expect(reset).toHaveAttribute('aria-busy', 'true')
+  await user.click(reset)
+  expect(resetWindowSize).toHaveBeenCalledExactlyOnceWith()
+  await act(async () => finish())
+  expect(reset).toBeEnabled()
+  expect(reset).toHaveAttribute('aria-busy', 'false')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+test('a failed window reset displays an error and can be retried', async () => {
+  vi.mocked(isDesktop).mockReturnValue(true)
+  vi.mocked(getAppVersion).mockResolvedValue('0.1.0')
+  vi.mocked(resetWindowSize).mockRejectedValueOnce('无法保存窗口状态')
+  const user = userEvent.setup()
+  render(<SettingsHarness />)
+  const reset = screen.getByRole('button', { name: '重置窗口大小' })
+  await user.click(reset)
+  expect(await screen.findByRole('alert')).toHaveTextContent('无法重置窗口大小：无法保存窗口状态')
+  expect(reset).toBeEnabled()
+  await user.click(reset)
+  expect(resetWindowSize).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: '界面主题' })).toBeEnabled()
 })
 
 test('desktop diagnostics displays the version returned by Rust', async () => {

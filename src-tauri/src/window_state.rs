@@ -104,6 +104,27 @@ pub fn window_startup_ready(window: tauri::WebviewWindow) -> Result<(), String> 
     present(window.app_handle()).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn window_reset_size(window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("只有主窗口可以重置大小。".into());
+    }
+    let app = window.app_handle();
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .ok_or("找不到默认窗口配置。")?;
+    window.unmaximize().map_err(|error| error.to_string())?;
+    window
+        .set_size(tauri::LogicalSize::new(config.width, config.height))
+        .map_err(|error| error.to_string())?;
+    app.save_window_state(flags())
+        .map_err(|error| error.to_string())
+}
+
 fn present(app: &AppHandle) -> tauri::Result<()> {
     let state = app.state::<Persistence>();
     if state.presented.swap(true, Ordering::SeqCst) {
