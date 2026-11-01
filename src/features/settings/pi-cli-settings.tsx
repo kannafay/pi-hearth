@@ -58,7 +58,7 @@ export function PiCliSettings() {
   return (
     <>
       <SettingsRow
-        title="Pi CLI 版本"
+        title="Pi 运行时版本"
         value={version ?? (versionError ? '暂不可用' : desktop ? '正在读取…' : '开发预览')}
       >
         <FieldError>{versionError}</FieldError>

@@ -81,6 +81,8 @@ test('About shows the app and runtime versions and opens the resolved Pi configu
   render(<SettingsHarness />)
   expect(getPiCliVersion).not.toHaveBeenCalled()
   await user.click(screen.getByRole('tab', { name: '关于' }))
+  expect(screen.getByText('Pi 运行时版本')).toBeVisible()
+  expect(screen.queryByText('Pi CLI 版本')).not.toBeInTheDocument()
   expect(await screen.findByText('1.3.0')).toBeVisible()
   expect(screen.getByText('0.1.0')).toBeVisible()
   expect(screen.getByText('C:\\Users\\admin\\.pi\\agent')).toBeVisible()
