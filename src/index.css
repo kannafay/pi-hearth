@@ -289,6 +289,7 @@ select {
 .workspace-navigation {
   --muted: var(--sidebar-row-selected);
   --sidebar-accent: var(--muted);
+  --sidebar-action-hover: color-mix(in oklch, var(--foreground) 6%, transparent);
   --sidebar-motion-duration: 200ms;
   --sidebar-motion-ease: cubic-bezier(0.26, 0, 0.18, 1);
 }
@@ -297,6 +298,7 @@ select {
   --muted: oklch(0.3 0.006 300);
   --sidebar-row-hover: var(--selection-hover);
   --sidebar-accent: var(--selection-hover);
+  --sidebar-action-hover: color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
 @property --sidebar-title-tail-opacity {
@@ -307,7 +309,6 @@ select {
 
 :is(.sidebar-session-row, .sidebar-project-row) {
   --sidebar-row-surface: var(--sidebar-row-hover);
-  --sidebar-action-hover: color-mix(in oklch, var(--foreground) 12%, transparent);
   --sidebar-row-actions-width: 5.25rem;
   --sidebar-row-title-inset: 0.5rem;
   position: relative;
@@ -342,6 +343,15 @@ select {
 
 .sidebar-session-row[data-selected='true'] {
   --sidebar-row-surface: var(--sidebar-row-selected);
+  color: var(--foreground);
+}
+
+/* Keep the title bright while moving between the link and its actions. */
+.sidebar-session-row:is(
+  :hover,
+  :has(:focus-visible),
+  :has([data-slot='dropdown-menu-trigger'][aria-expanded='true'])
+) {
   color: var(--foreground);
 }
 
