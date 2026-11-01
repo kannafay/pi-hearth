@@ -104,4 +104,8 @@ Rust 读取 `PI_CODING_AGENT_DIR` 或默认的 `~/.pi/agent` 配置，将凭证�
 
 Linux 的 GTK3 仍依赖 GLib 0.18。`src-tauri/vendor/security-patches.json` 记录官方安全补丁的回移、旧宏依赖的移除和单实例插件的 zbus 6 适配，以及原始包校验值。GLib 保留原版本号，按版本扫描的工具可能仍会告警；实际使用的是仓库内已修复的源码。上游提供兼容版本后应移除对应本地补丁。
 
+## 开源许可
+
+本项目自有代码采用 [MIT 许可证](LICENSE)，允许修改、商用与再分发，使用时请保留版权和许可声明。第三方组件保留各自的许可证与版权声明，详见 [第三方许可说明](THIRD_PARTY_NOTICES.md)。
+
 Linux 回归入口为 `tests/linux-security/check.sh`。使用同目录的 Dockerfile 创建验证环境，将仓库只读挂载到 `/workspace`，再在容器中执行该脚本；覆盖应用编译、优化构建下的 GLib 字符串迭代、宏错误提示和真实 D-Bus 单实例转发。
