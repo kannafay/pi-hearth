@@ -88,7 +88,7 @@ Rust 读取 `PI_CODING_AGENT_DIR` 或默认的 `~/.pi/agent` 配置，将凭证�
 | `pnpm dev`                | 启动浏览器前端预览                                                |
 | `pnpm build`              | 类型检查并构建前端                                                |
 | `pnpm desktop:build`      | 构建桌面应用与安装包                                              |
-| `pnpm check`              | 类型、Lint、前端测试与格式检查                                    |
+| `pnpm check`              | 前端全量检查：类型、Lint、单元测试、Node 集成测试与格式           |
 | `pnpm check:rust`         | 检查 Rust 桌面核心                                                |
 | `pnpm test:rust`          | Rust 协议、凭证与状态测试                                         |
 | `pnpm test:rpc:live`      | 使用本机模型验证多轮、流式和停止，会产生真实 API 请求             |
@@ -96,6 +96,8 @@ Rust 读取 `PI_CODING_AGENT_DIR` 或默认的 `~/.pi/agent` 配置，将凭证�
 | `pnpm test:sessions`      | 验证原生会话目录发现与历史解析                                    |
 | `pnpm test:sessions:live` | 使用本机模型验证项目指令、会话隔离与历史续聊，会产生真实 API 请求 |
 | `pnpm format:rust`        | 检查 Rust 格式                                                    |
+
+按改动范围选择测试，具体规则见[项目约定中的测试与验证](AGENTS.md#测试与验证)。
 
 前端代码位于 `src/`，桌面核心位于 `src-tauri/`。`src/components/ui/` 保存 shadcn/ui 官方 Base UI 版组件源码，`components.json` 使用 `base-nova`。组件源码在仓库内维护；添加组件时参照官方 Base UI 版本，并沿用现有样式。项目不安装 shadcn CLI，避免引入其尚无补丁的传递依赖。
 
