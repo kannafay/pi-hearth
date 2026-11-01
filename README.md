@@ -56,6 +56,12 @@ pnpm desktop
 
 `pnpm desktop` 启动前会检查 `cargo` 和 `rustc` 是否可用。缺失或工具链异常时，会停止启动并显示中文安装命令、PATH 检查与终端重开指引；检查不会自动安装 Rust。Windows 可手动运行 `winget install --id Rustlang.Rustup --exact`，安装时选择 MSVC 工具链；若已安装 rustup 但缺少 stable，可运行 `rustup toolchain install stable`。安装完成后重新打开终端，再运行 `pnpm desktop`。
 
+Windows 还会离线编译并链接一个无外部依赖的最小 Rust 程序，确认 MSVC 链接器和 Windows SDK 可用；临时文件会在检查后清理。检查失败时会显示中文安装或修复指引，不会自动安装系统组件。可在管理员终端手动执行下面的命令，安装 C++ 构建工作负载及推荐组件：
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
 只查看前端时运行 `pnpm dev`，访问 `http://127.0.0.1:1420`。浏览器预览可以调整主题和查看布局；本地项目与对话通过桌面端提供。
 
 在 CC Switch 中配置 Pi 的 API Key 与模型后，打开桌面端即可开始普通对话，无需先选择项目或手动连接。输入区可直接切换模型。Enter 发送，Shift+Enter 换行；生成时可停止。修改 CC Switch 配置后，新建对话会重新读取配置。
